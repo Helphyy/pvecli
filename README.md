@@ -17,20 +17,6 @@ Built with [Typer](https://typer.tiangolo.com/), [Rich](https://rich.readthedocs
 
 Requires **Python 3.10+**.
 
-### pipx (recommended)
-
-[pipx](https://pipx.pypa.io/) installs CLI tools in isolated environments:
-
-```bash
-pipx install pvecli
-```
-
-Upgrade later with:
-
-```bash
-pipx upgrade pvecli
-```
-
 ### From source
 
 ```bash
