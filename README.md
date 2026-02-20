@@ -17,12 +17,8 @@ Built with [Typer](https://typer.tiangolo.com/), [Rich](https://rich.readthedocs
 
 Requires **Python 3.10+**.
 
-### From source
-
 ```bash
-git clone https://github.com/yourusername/pvecli.git
-cd pvecli
-pipx install .
+pipx install git+https://github.com/Helphyy/pvecli.git
 ```
 
 ## Quick Start
@@ -297,7 +293,7 @@ pvecli --install-completion fish
 ## Development
 
 ```bash
-git clone https://github.com/yourusername/pvecli.git
+git clone https://github.com/Helphyy/pvecli.git
 cd pvecli
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
