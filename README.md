@@ -109,7 +109,7 @@ pvecli config login                Open Proxmox web UI in browser
 ```
 pvecli node list                   List all cluster nodes
 pvecli node show [NODE]            Show node details (--all for all)
-pvecli node vnc [NODE]             Open VNC shell to a node (--background)
+pvecli node vnc [NODE]             Open VNC shell to a node (background by default, --no-background)
 pvecli node ssh [NODE]             SSH into a node
 ```
 
@@ -128,7 +128,7 @@ pvecli vm clone [VMID]             Clone a VM (many options, interactive)
 pvecli vm edit [VMID]              Edit VM configuration interactively
 pvecli vm remove [VMIDS]           Delete VMs (--purge, --force)
 pvecli vm exec [VMID] [CMD]        Run command via QEMU Guest Agent
-pvecli vm vnc [VMID]               Open VNC console (--background)
+pvecli vm vnc [VMID]               Open VNC console (background by default, --no-background)
 pvecli vm ssh [VMID]               SSH into VM (--jump for jump host)
 pvecli vm rdp [VMID]               Open RDP session
 ```
@@ -163,7 +163,7 @@ pvecli ct reboot [CTIDS]           Reboot containers
 pvecli ct clone [CTID]             Clone a container
 pvecli ct edit [CTID]              Edit container configuration
 pvecli ct remove [CTIDS]           Delete containers (--purge, --force)
-pvecli ct vnc [CTID]               Open VNC console (--background)
+pvecli ct vnc [CTID]               Open VNC console (background by default, --no-background)
 pvecli ct ssh [CTID]               SSH into container (--jump)
 ```
 

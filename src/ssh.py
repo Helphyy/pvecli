@@ -40,7 +40,6 @@ def exec_ssh(args: list[str]) -> None:
     if result.returncode == 255:
         print_error(
             "SSH connection failed. Common causes:\n"
-            "  - Host key has changed (VM rebuilt?): use --accept-host-key / -A\n"
             "  - Host unreachable or connection refused\n"
             "  - Authentication failed"
         )

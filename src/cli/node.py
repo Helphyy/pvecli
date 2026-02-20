@@ -181,7 +181,7 @@ def _render_node_panel(node: str, status: dict, version: dict, node_status: str 
 @async_to_sync
 async def node_vnc(
     node: str = typer.Argument(None, help="Node name"),
-    background: bool = typer.Option(False, "--background", "-b", is_flag=True, help="Run VNC server in background"),
+    no_background: bool = typer.Option(False, "--no-background", "-b", is_flag=True, help="Run VNC server in foreground (blocking)"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Open an authenticated VNC shell for a node."""
@@ -239,7 +239,11 @@ async def node_vnc(
         url = server.get_browser_url()
         open_browser_window(url)
 
-        if background:
+        if no_background:
+            print_success(f"Opening VNC shell for node '{node}'...")
+            console.print("[dim]Press Enter to stop the server[/dim]")
+            await server.run()
+        else:
             import json
             import subprocess
             import sys
@@ -252,10 +256,6 @@ async def node_vnc(
                 start_new_session=True,
             )
             print_success(f"VNC shell for node '{node}' running in background (PID: {proc.pid})")
-        else:
-            print_success(f"Opening VNC shell for node '{node}'...")
-            console.print("[dim]Press Enter to stop the server[/dim]")
-            await server.run()
 
     except PVECliError as e:
         print_error(str(e))

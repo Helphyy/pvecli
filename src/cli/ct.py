@@ -2701,7 +2701,7 @@ async def remove_template(
 @async_to_sync
 async def ct_vnc(
     ctid: int = typer.Argument(None, help="Container ID"),
-    background: bool = typer.Option(False, "--background", "-b", is_flag=True, help="Run VNC server in background"),
+    no_background: bool = typer.Option(False, "--no-background", "-b", is_flag=True, help="Run VNC server in foreground (blocking)"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Open an authenticated VNC console for a container."""
@@ -2758,7 +2758,11 @@ async def ct_vnc(
         url = server.get_browser_url()
         open_browser_window(url)
 
-        if background:
+        if no_background:
+            print_success(f"Opening VNC console for CT {ctid} ({ct_name})...")
+            console.print("[dim]Press Enter to stop the server[/dim]")
+            await server.run()
+        else:
             import json
             import subprocess
             import sys
@@ -2771,10 +2775,6 @@ async def ct_vnc(
                 start_new_session=True,
             )
             print_success(f"VNC console for CT {ctid} ({ct_name}) running in background (PID: {proc.pid})")
-        else:
-            print_success(f"Opening VNC console for CT {ctid} ({ct_name})...")
-            console.print("[dim]Press Enter to stop the server[/dim]")
-            await server.run()
 
     except PVECliError as e:
         print_error(str(e))

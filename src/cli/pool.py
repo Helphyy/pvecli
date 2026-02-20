@@ -170,7 +170,7 @@ async def show_pool(
 @app.command("add")
 @async_to_sync
 async def add_pool(
-    poolid: str = typer.Argument(None, help="Pool ID(s) - single or comma-separated (e.g., dev or dev,staging,prod)"),
+    poolid: str = typer.Argument(None, help="Pool ID(s) - single or comma/semicolon-separated (e.g., dev or dev,staging,prod)"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
     comment: str = typer.Option(None, "--comment", "-c", help="Pool description"),
 ) -> None:
@@ -181,7 +181,8 @@ async def add_pool(
         pool_ids: list[str] = []
 
         if poolid:
-            pool_ids = [p.strip() for p in poolid.split(",") if p.strip()]
+            import re
+            pool_ids = [p.strip() for p in re.split(r"[,;]", poolid) if p.strip()]
         else:
             # Interactive mode: ask for pool names in a loop
             while True:
