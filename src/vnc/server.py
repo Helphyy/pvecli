@@ -9,6 +9,7 @@ from http import HTTPStatus
 from pathlib import Path, PurePosixPath
 from urllib.parse import quote, unquote, urlparse
 
+import websockets.exceptions
 from websockets.asyncio.client import connect
 from websockets.asyncio.server import ServerConnection, serve
 from websockets.datastructures import Headers
@@ -138,12 +139,18 @@ class VNCProxyServer:
         ) as proxmox_ws:
 
             async def client_to_proxmox() -> None:
-                async for msg in client_ws:
-                    await proxmox_ws.send(msg)
+                try:
+                    async for msg in client_ws:
+                        await proxmox_ws.send(msg)
+                except websockets.exceptions.ConnectionClosed:
+                    pass
 
             async def proxmox_to_client() -> None:
-                async for msg in proxmox_ws:
-                    await client_ws.send(msg)
+                try:
+                    async for msg in proxmox_ws:
+                        await client_ws.send(msg)
+                except websockets.exceptions.ConnectionClosed:
+                    pass
 
             tasks = [
                 asyncio.create_task(client_to_proxmox()),
