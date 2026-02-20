@@ -21,6 +21,12 @@ Requires **Python 3.10+**.
 pipx install git+https://github.com/Helphyy/pvecli.git
 ```
 
+To upgrade:
+
+```bash
+pipx upgrade pvecli
+```
+
 ## Quick Start
 
 ### 1. Create an API Token in Proxmox
@@ -103,7 +109,7 @@ pvecli config login                Open Proxmox web UI in browser
 ```
 pvecli node list                   List all cluster nodes
 pvecli node show [NODE]            Show node details (--all for all)
-pvecli node vnc [NODE]             Open VNC shell to a node
+pvecli node vnc [NODE]             Open VNC shell to a node (--background)
 pvecli node ssh [NODE]             SSH into a node
 ```
 
@@ -122,7 +128,7 @@ pvecli vm clone [VMID]             Clone a VM (many options, interactive)
 pvecli vm edit [VMID]              Edit VM configuration interactively
 pvecli vm remove [VMIDS]           Delete VMs (--purge, --force)
 pvecli vm exec [VMID] [CMD]        Run command via QEMU Guest Agent
-pvecli vm vnc [VMID]               Open VNC console
+pvecli vm vnc [VMID]               Open VNC console (--background)
 pvecli vm ssh [VMID]               SSH into VM (--jump for jump host)
 pvecli vm rdp [VMID]               Open RDP session
 ```
@@ -157,7 +163,7 @@ pvecli ct reboot [CTIDS]           Reboot containers
 pvecli ct clone [CTID]             Clone a container
 pvecli ct edit [CTID]              Edit container configuration
 pvecli ct remove [CTIDS]           Delete containers (--purge, --force)
-pvecli ct vnc [CTID]               Open VNC console
+pvecli ct vnc [CTID]               Open VNC console (--background)
 pvecli ct ssh [CTID]               SSH into container (--jump)
 ```
 
@@ -194,7 +200,7 @@ pvecli storage content remove [NODE] [STOR] Delete content
 ```
 pvecli pool list                            List all resource pools
 pvecli pool show [POOLID]                   Show pool details
-pvecli pool add [POOLID]                    Create a pool (--comment)
+pvecli pool add [POOLIDS]                   Create pool(s) (--comment)
 pvecli pool remove [POOLID]                 Delete pool (--force)
 pvecli pool content add [POOLID] [VMIDS]    Add VMs/CTs to pool
 pvecli pool content remove [POOLID] [VMIDS] Remove VMs/CTs from pool
