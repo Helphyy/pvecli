@@ -3241,6 +3241,7 @@ def create_vm(
 @async_to_sync
 async def vm_vnc(
     vmid: int = typer.Argument(None, help="VM ID"),
+    background: bool = typer.Option(False, "--background", "-b", is_flag=True, help="Run VNC server in background"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Open an authenticated VNC console for a VM."""
@@ -3297,10 +3298,25 @@ async def vm_vnc(
 
         server = VNCProxyServer(**server_config)
         url = server.get_browser_url()
-        print_success(f"Opening VNC console for VM {vmid} ({vm_name})...")
-        console.print("[dim]Press Enter to stop the server[/dim]")
         open_browser_window(url)
-        await server.run()
+
+        if background:
+            import json
+            import subprocess
+            import sys
+
+            proc = subprocess.Popen(
+                [sys.executable, "-m", "src.vnc", json.dumps(server_config)],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+            print_success(f"VNC console for VM {vmid} ({vm_name}) running in background (PID: {proc.pid})")
+        else:
+            print_success(f"Opening VNC console for VM {vmid} ({vm_name})...")
+            console.print("[dim]Press Enter to stop the server[/dim]")
+            await server.run()
 
     except PVECliError as e:
         print_error(str(e))
@@ -3314,7 +3330,7 @@ async def vm_ssh(
     user: str = typer.Option(None, "--user", "-u", help="SSH user"),
     port: int = typer.Option(None, "--port", "-P", help="SSH port"),
     key: str = typer.Option(None, "--key", "-i", help="Path to SSH key"),
-    jump: bool = typer.Option(False, "--jump", "-J", is_flag=True, help="Use node as jump host"),
+    jump: bool = typer.Option(False, "--jump", "-j", is_flag=True, help="Use node as jump host"),
     command: str = typer.Option(None, "--command", "-c", help="Execute command instead of shell"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
@@ -3375,7 +3391,7 @@ async def vm_rdp(
     port: int = typer.Option(None, "--port", "-P", help="RDP port"),
     fullscreen: bool = typer.Option(False, "--fullscreen", "-f", is_flag=True, help="Fullscreen mode"),
     resolution: str = typer.Option(None, "--resolution", "-r", help="Resolution (e.g. 1920x1080)"),
-    jump: bool = typer.Option(False, "--jump", "-J", is_flag=True, help="Use node as jump host for RDP"),
+    jump: bool = typer.Option(False, "--jump", "-j", is_flag=True, help="Use node as jump host for RDP"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """RDP into a VM (IP resolved via QEMU Guest Agent)."""

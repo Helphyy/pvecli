@@ -157,8 +157,14 @@ class VNCProxyServer:
 
     # -- Server lifecycle --
 
-    async def run(self) -> None:
-        """Start the server. Blocks until Enter is pressed or all connections close."""
+    async def run(self, interactive: bool = True) -> None:
+        """Start the server.
+
+        Args:
+            interactive: If True (default), wait for Enter key or all
+                connections to close.  If False (background mode), only
+                wait for connections to close — no stdin reading.
+        """
         async with serve(
             self.handle_vnc_proxy,
             "localhost",
@@ -167,18 +173,27 @@ class VNCProxyServer:
             # Disable server-side ping to not interfere with VNC protocol
             ping_interval=None,
         ):
-            # Wait for Enter key in a background thread
-            loop = asyncio.get_event_loop()
-            stdin_task = asyncio.ensure_future(
-                loop.run_in_executor(None, sys.stdin.readline)
-            )
+            if interactive:
+                # Wait for Enter key in a background thread
+                loop = asyncio.get_event_loop()
+                stdin_task = asyncio.ensure_future(
+                    loop.run_in_executor(None, sys.stdin.readline)
+                )
 
-            while not stdin_task.done():
-                await asyncio.sleep(1)
-                # Auto-exit when all connections close after initial use
-                if self._ever_connected and self._active_connections == 0:
-                    idle = time.monotonic() - self._last_disconnect
-                    if idle >= self.DISCONNECT_GRACE:
-                        break
+                while not stdin_task.done():
+                    await asyncio.sleep(1)
+                    # Auto-exit when all connections close after initial use
+                    if self._ever_connected and self._active_connections == 0:
+                        idle = time.monotonic() - self._last_disconnect
+                        if idle >= self.DISCONNECT_GRACE:
+                            break
 
-            stdin_task.cancel()
+                stdin_task.cancel()
+            else:
+                # Background mode: wait for connections to close
+                while True:
+                    await asyncio.sleep(1)
+                    if self._ever_connected and self._active_connections == 0:
+                        idle = time.monotonic() - self._last_disconnect
+                        if idle >= self.DISCONNECT_GRACE:
+                            break
