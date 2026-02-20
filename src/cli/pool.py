@@ -170,37 +170,50 @@ async def show_pool(
 @app.command("add")
 @async_to_sync
 async def add_pool(
-    poolid: str = typer.Argument(None, help="Pool ID"),
+    poolid: str = typer.Argument(None, help="Pool ID(s) - single or comma-separated (e.g., dev or dev,staging,prod)"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
     comment: str = typer.Option(None, "--comment", "-c", help="Pool description"),
 ) -> None:
-    """Create a new resource pool."""
+    """Create one or more resource pools."""
     config_manager = ConfigManager()
 
     try:
-        if not poolid:
-            poolid = prompt("  Pool ID")
-            if not poolid.strip():
-                print_error("Pool ID cannot be empty")
-                raise typer.Exit(1)
-            poolid = poolid.strip()
+        pool_ids: list[str] = []
+
+        if poolid:
+            pool_ids = [p.strip() for p in poolid.split(",") if p.strip()]
+        else:
+            # Interactive mode: ask for pool names in a loop
+            while True:
+                name = prompt("  Pool ID")
+                if not name.strip():
+                    print_error("Pool ID cannot be empty")
+                    raise typer.Exit(1)
+                pool_ids.append(name.strip())
+                if not confirm("  Create another pool?", default=False):
+                    break
+
+        if not pool_ids:
+            print_error("No pool IDs provided")
+            raise typer.Exit(1)
 
         profile_config = config_manager.get_profile(profile)
 
         async with ProxmoxClient(profile_config) as client:
-            data = {"poolid": poolid}
-            if comment:
-                data["comment"] = comment
+            for pid in pool_ids:
+                data: dict[str, str] = {"poolid": pid}
+                if comment:
+                    data["comment"] = comment
 
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                console=console,
-            ) as progress:
-                progress.add_task(description=f"Creating pool '{poolid}'...", total=None)
-                await client.post("/pools", data=data)
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[progress.description]{task.description}"),
+                    console=console,
+                ) as progress:
+                    progress.add_task(description=f"Creating pool '{pid}'...", total=None)
+                    await client.post("/pools", data=data)
 
-            print_success(f"Pool '{poolid}' created successfully")
+                print_success(f"Pool '{pid}' created successfully")
 
     except KeyboardInterrupt:
         console.print()
