@@ -47,7 +47,7 @@ def open_browser_window(url: str) -> None:
                            stdout=subprocess.DEVNULL,
                            stderr=subprocess.DEVNULL)
             return
-        except Exception:
+        except (FileNotFoundError, PermissionError, OSError):
             pass
 
     # Try Chrome/Chromium with --new-window flag
@@ -59,7 +59,7 @@ def open_browser_window(url: str) -> None:
                                stdout=subprocess.DEVNULL,
                                stderr=subprocess.DEVNULL)
                 return
-            except Exception:
+            except (FileNotFoundError, PermissionError, OSError):
                 pass
 
     # Fallback to default browser
