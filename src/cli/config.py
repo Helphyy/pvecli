@@ -19,7 +19,7 @@ from ..utils import (
     prompt,
 )
 from ..utils.helpers import async_to_sync
-from ..utils.menu import select_menu
+from ..utils.menu import multi_select_menu, select_menu
 from ..utils.network import resolve_node_host
 
 app = typer.Typer(help="Manage pvecli configuration", no_args_is_help=True)
@@ -301,16 +301,35 @@ def remove_profile(
             print_success(f"Removed {profile_count} profile(s)")
         else:
             if not name:
-                name = _pick_profile(config_manager)
-                if name is None:
+                config = config_manager.get()
+                if not config.profiles:
+                    print_info("No profiles configured. Run 'pvecli config add' to create one.")
                     return
 
-            if not confirm(f"Remove profile '{name}'?", default=False):
+                names = sorted(config.profiles.keys())
+                sel = multi_select_menu(names, "  Profiles to remove (Space to toggle, Enter to confirm):")
+                if sel is None:
+                    print_cancelled()
+                    return
+                selected = [names[i] for i in sel]
+                if not selected:
+                    print_cancelled()
+                    return
+            else:
+                selected = [name]
+
+            label = ", ".join(f"'{n}'" for n in selected)
+            if not confirm(f"Remove profile(s) {label}?", default=False):
                 print_cancelled()
                 return
 
-            config_manager.remove_profile(name)
-            print_success(f"Profile '{name}' removed")
+            for n in selected:
+                config_manager.remove_profile(n)
+
+            if len(selected) == 1:
+                print_success(f"Profile '{selected[0]}' removed")
+            else:
+                print_success(f"{len(selected)} profiles removed: {', '.join(selected)}")
 
     except PVECliError as e:
         print_error(str(e))
