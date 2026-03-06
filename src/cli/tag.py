@@ -12,7 +12,7 @@ from ..utils import confirm, console, print_cancelled, print_error, print_succes
 from ..utils.helpers import async_to_sync, ordered_group
 from ..utils.menu import multi_select_menu, select_menu
 
-app = typer.Typer(help="Manage tags globally", no_args_is_help=True, cls=ordered_group(["add", "remove", "color", "list"]))
+app = typer.Typer(help="Manage tags globally", no_args_is_help=True, cls=ordered_group(["add", "edit", "remove", "color", "list"]))
 color_app = typer.Typer(help="Manage color palette", no_args_is_help=True, cls=ordered_group(["add", "remove", "init", "list"]))
 app.add_typer(color_app, name="color")
 
@@ -312,6 +312,59 @@ async def add_tag(
             await client.update_cluster_options(**{"tag-style": new_style})
 
         print_success(f"Tag '{tag}' color set to #{color}")
+
+    except KeyboardInterrupt:
+        console.print()
+        print_cancelled()
+    except PVECliError as e:
+        print_error(str(e))
+        raise typer.Exit(1)
+
+
+@app.command("edit")
+@async_to_sync
+async def edit_tag(
+    tag: str = typer.Argument(None, help="Tag name to edit"),
+    color: str = typer.Option(None, "--color", "-c", help="New hex color (e.g. ff4444)"),
+    profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+) -> None:
+    """Change the color of an existing tag."""
+    config_manager = ConfigManager()
+
+    try:
+        profile_config = config_manager.get_profile(profile)
+
+        async with ProxmoxClient(profile_config) as client:
+            options = await client.get_cluster_options()
+            existing_style = options.get("tag-style", "")
+            color_map = _parse_color_map(existing_style)
+
+            resources = await client.get_cluster_resources(resource_type="vm")
+            tag_counts = _count_tags_from_resources(resources)
+            all_tags = sorted(set(tag_counts) | set(color_map))
+
+            if not all_tags:
+                print_warning("No tags found in the cluster")
+                return
+
+            if not tag:
+                idx = select_menu(all_tags, "  Select tag to edit:")
+                if idx is None:
+                    print_cancelled()
+                    return
+                tag = all_tags[idx]
+
+            if not color:
+                color = _pick_color(tag)
+                if color is None:
+                    return
+
+            color = color.lstrip("#")
+            color_map[tag] = color
+            new_style = _build_tag_style(color_map, existing_style)
+            await client.update_cluster_options(**{"tag-style": new_style})
+
+        print_success(f"Tag '{tag}' color updated to #{color}")
 
     except KeyboardInterrupt:
         console.print()

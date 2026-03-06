@@ -320,10 +320,6 @@ async def shared_add_tag(
 
         new_tags = ";".join(tag_list)
 
-        if skipped_tags:
-            for skipped in skipped_tags:
-                print_warning(f"Tag '{skipped}' already exists on {label} {resource_id}")
-
         if not added_tags:
             print_info("No new tags to add")
             return
