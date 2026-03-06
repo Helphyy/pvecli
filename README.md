@@ -10,7 +10,7 @@
 [![Proxmox VE](https://img.shields.io/badge/Proxmox-VE-E57000?logo=proxmox&logoColor=white)](https://www.proxmox.com)
 [![pipx](https://img.shields.io/badge/install%20with-pipx-0ea5e9)](https://pipx.pypa.io)
 
-[Installation](#installation) · [Quick Start](#quick-start) · [Commands](docs/commands.md) · [Configuration](docs/configuration.md)
+[Installation](#installation) · [Quick Start](#quick-start) · [Configuration](docs/configuration.md) · [Commands](docs/commands.md)
 
 </div>
 
