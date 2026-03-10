@@ -18,6 +18,22 @@ def select_menu(items: list[str], title: str) -> int | None:
     return menu.show()
 
 
+def reorder_menu(items: list[str], title: str) -> tuple[int | None, str | None]:
+    """Show a menu that accepts u/d/r keys for reordering in addition to Enter.
+
+    Returns (cursor_index, key) where key is one of 'enter', 'u', 'd', 'r', or None.
+    """
+    menu = TerminalMenu(
+        items,
+        title=title,
+        accept_keys=("enter", "u", "d", "r"),
+        menu_cursor="> ",
+        menu_cursor_style=("fg_cyan", "bold"),
+    )
+    idx = menu.show()
+    return idx, menu.chosen_accept_key
+
+
 def multi_select_menu(
     items: list[str],
     title: str,

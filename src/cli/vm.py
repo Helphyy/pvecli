@@ -29,6 +29,7 @@ from ..utils import (
     print_success,
     print_warning,
     prompt,
+    reorder_menu,
     select_menu,
     usage_bar,
 )
@@ -389,6 +390,80 @@ async def show_vm(
 
 _VM_DISK_RE = re.compile(r"^(scsi|virtio|ide|sata|efidisk)\d+$")
 _VM_NET_RE = re.compile(r"^net\d+$")
+_VM_BOOTABLE_RE = re.compile(r"^(scsi|virtio|ide|sata|net)\d+$")
+
+
+def _parse_boot_order(boot_val: str) -> list[str]:
+    """Parse Proxmox boot string 'order=scsi0;net0' into a list."""
+    if boot_val.startswith("order="):
+        return [d.strip() for d in boot_val[6:].split(";") if d.strip()]
+    return []
+
+
+def _format_boot_order(order: list[str]) -> str:
+    return "order=" + ";".join(order)
+
+
+def _boot_order_save(order: list[str], orig_boot: str, changes: dict) -> None:
+    new_boot = _format_boot_order(order)
+    if new_boot != orig_boot:
+        changes["boot"] = new_boot
+    elif "boot" in changes:
+        del changes["boot"]
+
+
+async def _edit_vm_boot_order(config: dict, changes: dict, deletes: set) -> None:
+    """Boot order sub-menu: navigate with arrows, u/d to move entry, r to remove."""
+    orig_boot = config.get("boot", "")
+
+    while True:
+        current_boot = changes.get("boot", orig_boot)
+        order = _parse_boot_order(current_boot)
+
+        all_devices = sorted(
+            k for k in set(list(config) + list(changes)) - deletes
+            if _VM_BOOTABLE_RE.match(k)
+        )
+        available = [d for d in all_devices if d not in order]
+
+        items = [f"  {i + 1}. {dev}" for i, dev in enumerate(order)]
+        items.append("  " + "─" * 28)
+        sep_idx = len(items) - 1
+        add_idx = len(items)
+        items.append("  + Add device" if available else "  (no more devices)")
+        items.append("  Back")
+        back_idx = len(items) - 1
+
+        idx, key = reorder_menu(items, "\n  Boot Order  [u: move up  d: move down  r: remove  Enter: add/back]:")
+
+        if idx is None or (key == "enter" and idx == back_idx):
+            return
+
+        # separator or out of bounds → ignore
+        if idx == sep_idx:
+            continue
+
+        # Enter on "Add device"
+        if key == "enter" and idx == add_idx:
+            if not available:
+                continue
+            pi = select_menu(available, "  Add to boot order:")
+            if pi is not None:
+                order.append(available[pi])
+                _boot_order_save(order, orig_boot, changes)
+            continue
+
+        # u / d / r on a device entry
+        if idx < len(order):
+            if key == "u" and idx > 0:
+                order[idx], order[idx - 1] = order[idx - 1], order[idx]
+                _boot_order_save(order, orig_boot, changes)
+            elif key == "d" and idx < len(order) - 1:
+                order[idx], order[idx + 1] = order[idx + 1], order[idx]
+                _boot_order_save(order, orig_boot, changes)
+            elif key == "r":
+                order.pop(idx)
+                _boot_order_save(order, orig_boot, changes)
 
 
 def _is_cdrom(val: str) -> bool:
@@ -755,6 +830,15 @@ async def edit_vm(
                 options.append(f"{tags_prefix}{'Tags'.ljust(max_label)}  {tags_display}")
                 tags_menu_idx = len(options) - 1
 
+                # Boot Order
+                orig_boot = config.get("boot", "")
+                current_boot = changes.get("boot", orig_boot)
+                boot_order = _parse_boot_order(current_boot)
+                boot_display = " → ".join(boot_order) if boot_order else "(default)"
+                boot_prefix = "* " if "boot" in changes else "  "
+                options.append(f"{boot_prefix}{'Boot Order'.ljust(max_label)}  {boot_display}")
+                boot_menu_idx = len(options) - 1
+
                 # Separator + sub-menus
                 options.append("  " + "─" * (max_label + 20))
 
@@ -835,6 +919,10 @@ async def edit_vm(
                             del changes["tags"]
                     continue
 
+                if selected == boot_menu_idx:
+                    await _edit_vm_boot_order(config, changes, deletes)
+                    continue
+
                 if selected == disks_menu_idx:
                     await _edit_vm_disks(config, changes, resizes, deletes, client, node)
                     continue
@@ -891,6 +979,11 @@ async def edit_vm(
 
             if "tags" in changes:
                 console.print(f"  Tags: {config.get('tags', '') or '(none)'} -> {changes['tags'] or '(none)'}")
+
+            if "boot" in changes:
+                old_order = " → ".join(_parse_boot_order(config.get("boot", ""))) or "(default)"
+                new_order = " → ".join(_parse_boot_order(changes["boot"])) or "(default)"
+                console.print(f"  Boot Order: {old_order} -> {new_order}")
 
             for dk in sorted(k for k in changes if _VM_DISK_RE.match(k)):
                 if dk in config:

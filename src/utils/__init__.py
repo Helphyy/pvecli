@@ -7,6 +7,7 @@ from .helpers import (
 )
 from .menu import (
     multi_select_menu,
+    reorder_menu,
     select_menu,
 )
 from .output import (
@@ -44,6 +45,7 @@ __all__ = [
     "join_tags",
     "multi_select_menu",
     "open_browser_window",
+    "reorder_menu",
     "ordered_group",
     "parse_tags",
     "print_cancelled",
