@@ -1,3 +1,3 @@
 """pvecli - Modern CLI for Proxmox VE API."""
 
-__version__ = "1.2.0"
+__version__ = "1.3.1"

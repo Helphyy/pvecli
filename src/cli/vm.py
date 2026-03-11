@@ -3483,7 +3483,9 @@ async def vm_rdp(
     domain: str = typer.Option(None, "--domain", "-d", help="RDP domain"),
     port: int = typer.Option(None, "--port", "-P", help="RDP port"),
     fullscreen: bool = typer.Option(False, "--fullscreen", "-f", is_flag=True, help="Fullscreen mode"),
-    resolution: str = typer.Option(None, "--resolution", "-r", help="Resolution (e.g. 1920x1080)"),
+    resolution: str = typer.Option(None, "--resolution", "-r", help="Fixed resolution, e.g. 1920x1080 (disables dynamic resize)"),
+    scale: int = typer.Option(None, "--scale", "-s", help="Desktop scale factor for HiDPI/4K, e.g. 200"),
+    smart_sizing: bool = typer.Option(False, "--smart-sizing", "-S", is_flag=True, help="Scale remote desktop to window size"),
     jump: bool = typer.Option(False, "--jump", "-j", is_flag=True, help="Use node as jump host for RDP"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
@@ -3538,6 +3540,10 @@ async def vm_rdp(
 
             ip = await resolve_vm_ip(client, node, vmid)
 
+        if smart_sizing and (resolution or scale):
+            print_error("--smart-sizing (-S) is incompatible with --resolution and --scale (xfreerdp limitation)")
+            raise typer.Exit(1)
+
         rdp_user = user or profile_config.rdp_user
         rdp_port = port or profile_config.rdp_port
 
@@ -3570,13 +3576,20 @@ async def vm_rdp(
             rdp_host = "localhost"
             rdp_port = local_port
 
-        try:
-            args = build_rdp_command(client_type, rdp_host, rdp_port, rdp_user, rdp_password, rdp_domain, fullscreen, resolution)
-            target = f"{rdp_user}@{rdp_host}" if rdp_user else rdp_host
-            console.print(f"[dim]Connecting to {target}:{rdp_port} via {client_type}...[/dim]")
-            exec_rdp(args)
-        finally:
-            if tunnel_proc:
+        args = build_rdp_command(client_type, rdp_host, rdp_port, rdp_user, rdp_password, rdp_domain, fullscreen, resolution, scale, smart_sizing)
+        target = f"{rdp_user}@{rdp_host}" if rdp_user else rdp_host
+        console.print(f"[dim]Connecting to {target}:{rdp_port} via {client_type}...[/dim]")
+        console.print(
+            "[dim]Shortcuts: [bold]Ctrl+Alt+Enter[/bold] fullscreen  "
+            "[bold]Right Ctrl[/bold] release mouse/kbd  "
+            "[bold]Ctrl+Alt+D[/bold] disconnect[/dim]"
+        )
+        rdp_proc = exec_rdp(args)
+        if tunnel_proc:
+            # Keep tunnel alive until RDP session ends
+            try:
+                rdp_proc.wait()
+            finally:
                 tunnel_proc.terminate()
 
     except KeyboardInterrupt:

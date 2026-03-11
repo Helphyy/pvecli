@@ -50,6 +50,8 @@ def build_rdp_command(
     domain: str | None = None,
     fullscreen: bool = False,
     resolution: str | None = None,
+    scale: int | None = None,
+    smart_sizing: bool = False,
 ) -> list[str]:
     """Build RDP command arguments for the detected client."""
     if client_type in ("xfreerdp3", "xfreerdp"):
@@ -58,12 +60,21 @@ def build_rdp_command(
             args.append(f"/u:{user}")
         if password:
             args.append(f"/p:{password}")
-        args.append(f"/d:{domain or ''}")
-        args += ["/dynamic-resolution", "+clipboard", "/cert:ignore", "/log-level:FATAL"]
+        if domain:
+            args.append(f"/d:{domain}")
+        if smart_sizing:
+            args.append("/smart-sizing")
+        else:
+            if resolution:
+                args.append(f"/size:{resolution}")
+            if scale:
+                args.append(f"/scale-desktop:{scale}")
+        args += ["/cert:ignore", "/log-level:FATAL"]
         if fullscreen:
             args.append("/f")
-        if resolution:
-            args.append(f"/size:{resolution}")
+        if not smart_sizing and not resolution:
+            args.append("+dynamic-resolution")
+        args.append("+clipboard")
         return args
 
     if client_type == "rdesktop":
@@ -90,19 +101,9 @@ def build_rdp_command(
     raise PVECliError(f"Unknown RDP client type: {client_type}")
 
 
-def exec_rdp(args: list[str]) -> int:
-    """Launch the RDP client, showing stderr only on failure."""
-    proc = subprocess.Popen(args, stderr=subprocess.PIPE)
-    _, stderr = proc.communicate()
-    if proc.returncode != 0 and stderr:
-        # Extract the last meaningful error line
-        for line in reversed(stderr.decode(errors="replace").splitlines()):
-            if "[ERROR]" in line or "ERRCONNECT" in line:
-                # e.g. [ERROR][com.freerdp...] - some message
-                msg = line.split("] - ", 1)[-1].strip() if "] - " in line else line.strip()
-                raise PVECliError(f"RDP connection failed: {msg}")
-        raise PVECliError("RDP connection failed (check credentials or network)")
-    return proc.returncode
+def exec_rdp(args: list[str]) -> subprocess.Popen:
+    """Launch the RDP client in the background and return the process."""
+    return subprocess.Popen(args, stderr=subprocess.DEVNULL)
 
 
 def create_ssh_tunnel(
