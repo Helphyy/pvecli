@@ -170,7 +170,7 @@ class VNCProxyServer:
         Args:
             interactive: If True (default), wait for Enter key or all
                 connections to close.  If False (background mode), only
-                wait for connections to close — no stdin reading.
+                wait for connections to close - no stdin reading.
         """
         async with serve(
             self.handle_vnc_proxy,

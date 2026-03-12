@@ -12,7 +12,7 @@ from rich.prompt import Confirm, IntPrompt, Prompt
 from rich.table import Table
 
 from ..api.client import ProxmoxClient
-from ..api.exceptions import PVECliError
+from ..api.exceptions import PVECliError, PermissionError as PVEPermissionError
 from ..config import ConfigManager
 from ..utils import (
     confirm,
@@ -55,10 +55,16 @@ from ._shared import (
 
 _CMD_ORDER = [
     "start", "stop", "shutdown", "reboot", "suspend", "resume",
+    "lock", "unlock",
     "add", "clone", "edit", "remove",
-    "tag", "snapshot",
+    "tag", "snapshot", "template",
     "vnc", "ssh", "rdp", "exec",
     "list", "show",
+]
+
+_VM_LOCK_VALUES = [
+    "backup", "clone", "create", "migrate", "rollback",
+    "snapshot", "snapshot-delete", "suspending", "suspended",
 ]
 
 
@@ -162,7 +168,12 @@ async def list_vms(
                 tags = vm.get("tags", "")
                 node_name = vm.get("node", "-")
                 vm_status = vm.get("status", "unknown")
+                vm_lock = vm.get("lock", "")
                 status_color = get_status_color(vm_status)
+                if vm_lock:
+                    status_str = f"[bright_black]locked ({vm_lock})[/bright_black]"
+                else:
+                    status_str = f"[{status_color}]{vm_status}[/{status_color}]"
 
                 if vm_status == "running":
                     cpu_usage = vm.get("cpu", 0) * 100
@@ -194,7 +205,7 @@ async def list_vms(
                     vmid,
                     name,
                     node_name,
-                    f"[{status_color}]{vm_status}[/{status_color}]",
+                    status_str,
                     cpu_str,
                     mem_str,
                     disk_str,
@@ -238,11 +249,16 @@ async def show_vm(
             # Build the display
             vm_name = config.get("name", status.get("name", f"VM {vmid}"))
             vm_status = status.get("status", "unknown")
+            vm_lock = status.get("lock", "") or config.get("lock", "")
             status_color = get_status_color(vm_status)
 
             lines = []
             lines.append("[bold]── General ──[/bold]")
-            lines.append(f"[bold]Status:[/bold]      [{status_color}]{vm_status}[/{status_color}]")
+            if vm_lock:
+                status_line = f"[bold]Status:[/bold]      [bright_black]locked ({vm_lock})[/bright_black]"
+            else:
+                status_line = f"[bold]Status:[/bold]      [{status_color}]{vm_status}[/{status_color}]"
+            lines.append(status_line)
             lines.append(f"[bold]Node:[/bold]        {node}")
 
             if vm_status == "running":
@@ -1471,6 +1487,79 @@ async def resume_vm(
         raise typer.Exit(1)
 
 
+@app.command("lock")
+@async_to_sync
+async def lock_vm(
+    vmid: int = typer.Argument(None, help="VM ID"),
+    lock_type: str = typer.Argument(None, help=f"Lock type: {', '.join(_VM_LOCK_VALUES)}"),
+    profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+) -> None:
+    """Lock a VM - requires root@pam authentication."""
+    config_manager = ConfigManager()
+    try:
+        profile_config = config_manager.get_profile(profile)
+        async with ProxmoxClient(profile_config) as client:
+            if vmid is None:
+                vmid = await _select_vm(client)
+                if vmid is None:
+                    print_cancelled()
+                    return
+            if lock_type is None:
+                console.print("\n[bold]Lock type:[/bold]")
+                idx = select_menu(_VM_LOCK_VALUES, "Select lock type:")
+                if idx is None:
+                    print_cancelled()
+                    return
+                lock_type = _VM_LOCK_VALUES[idx]
+            elif lock_type not in _VM_LOCK_VALUES:
+                print_error(f"Invalid lock type '{lock_type}'. Valid: {', '.join(_VM_LOCK_VALUES)}")
+                raise typer.Exit(1)
+            node, _ = await _get_vm_node(client, vmid)
+            await client.lock_vm(node, vmid, lock_type)
+            print_success(f"VM {vmid} locked ({lock_type})")
+    except PVEPermissionError:
+        print_error("Permission denied - lock/unlock requires root@pam authentication.")
+        raise typer.Exit(1)
+    except PVECliError as e:
+        print_error(str(e))
+        raise typer.Exit(1)
+
+
+@app.command("unlock")
+@async_to_sync
+async def unlock_vm(
+    vmid: int = typer.Argument(None, help="VM ID"),
+    profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+) -> None:
+    """Unlock a VM - requires root@pam authentication."""
+    config_manager = ConfigManager()
+    try:
+        profile_config = config_manager.get_profile(profile)
+        async with ProxmoxClient(profile_config) as client:
+            if vmid is None:
+                vms = await client.get_vms()
+                locked = [vm for vm in vms if vm.get("lock")]
+                if not locked:
+                    print_info("No locked VMs found")
+                    return
+                locked = sorted(locked, key=lambda x: x.get("vmid", 0))
+                items = [f"{vm.get('vmid')} - {vm.get('name', 'unnamed')} (locked: {vm.get('lock')})" for vm in locked]
+                idx = select_menu(items, "  Select a VM to unlock:")
+                if idx is None:
+                    print_cancelled()
+                    return
+                vmid = locked[idx].get("vmid")
+            node, _ = await _get_vm_node(client, vmid)
+            await client.unlock_vm(node, vmid)
+            print_success(f"VM {vmid} unlocked")
+    except PVEPermissionError:
+        print_error("Permission denied - lock/unlock requires root@pam authentication.")
+        raise typer.Exit(1)
+    except PVECliError as e:
+        print_error(str(e))
+        raise typer.Exit(1)
+
+
 @app.command("exec")
 @async_to_sync
 async def exec_vm_command(
@@ -1581,7 +1670,6 @@ async def exec_vm_command(
 
 
 @app.command("clone")
-@async_to_sync
 def clone_vm(
     vmid: int = typer.Argument(None, help="Source VM ID"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
@@ -1589,38 +1677,16 @@ def clone_vm(
     name: str = typer.Option(None, "--name", "-na", help="New VM name"),
     pool: str = typer.Option(None, "--pool", "-pl", help="Pool name"),
     onboot: bool = typer.Option(None, "--onboot/--no-onboot", "-ob", help="Start at boot"),
-    iso_storage: str = typer.Option(None, "--iso-storage", "-iss", help="Storage for ISO"),
-    iso: str = typer.Option(None, "--iso", "-i", help="ISO file name (from iso-storage)"),
-    os_type: str = typer.Option(None, "--os-type", "-ot", help="OS type: linux or windows"),
-    os_version: str = typer.Option(None, "--os-version", "-ov", help="OS version (e.g., '11/2022/2025', '6.x')"),
-    agent: bool = typer.Option(True, "--agent/--no-agent", "-ag", help="Enable QEMU Guest Agent"),
-    sockets: int = typer.Option(None, "--sockets", "-so", help="CPU sockets"),
-    cores: int = typer.Option(None, "--cores", "-co", help="CPU cores per socket"),
-    vcpus: int = typer.Option(None, "--vcpus", "-vc", help="vCPU count at startup"),
-    cpu_type: str = typer.Option(None, "--cpu-type", "-ct", help="CPU type: x86-64-v2-AES or host"),
-    memory: int = typer.Option(None, "--memory", "-me", help="RAM in MiB"),
-    disk_storage: str = typer.Option(None, "--disk-storage", "-ds", help="Storage for primary disk"),
-    disk_size: int = typer.Option(None, "--disk-size", "-dz", help="Disk size in GB"),
-    disk_format: str = typer.Option(None, "--disk-format", "-df", help="Disk format: qcow2, raw, vmdk"),
-    bridge: str = typer.Option(None, "--bridge", "-br", help="Network bridge"),
-    vlan: str = typer.Option(None, "--vlan", "-vl", help="VLAN tag"),
-    firewall: bool = typer.Option(None, "--firewall/--no-firewall", "-fw", help="Enable firewall"),
-    link_down: bool = typer.Option(None, "--link-down/--no-link-down", "-ld", help="Start disconnected"),
-    virtio_iso_storage: str = typer.Option(None, "--virtio-iso-storage", "-vis", help="Storage for VirtIO ISO (Windows only)"),
-    virtio_iso: str = typer.Option(None, "--virtio-iso", "-vi", help="VirtIO ISO file name (Windows only)"),
-    tpm_storage: str = typer.Option(None, "--tpm-storage", "-ts", help="Storage for TPM (Windows 11/2022/2025 only)"),
-    efi_storage: str = typer.Option(None, "--efi-storage", "-es", help="Storage for EFI (Windows 11/2022/2025 only)"),
-    full: bool = typer.Option(False, "--full", "-fu", help="Create full clone (not linked)"),
-    target: str = typer.Option(None, "--target", "-ta", help="Target node"),
+    full: bool = typer.Option(False, "--full", "-fu", help="Create full clone (templates only; default is linked)"),
+    target: str = typer.Option(None, "--target", "-ta", help="Target node (full clone only)"),
 ) -> None:
-    """Clone a VM with optional interactive mode.
+    """Clone a VM.
 
     Examples:
         pvecli vm clone 100                                  # Interactive mode
-        pvecli vm clone 100 --newid 101 --name my-vm         # With name
+        pvecli vm clone 100 --newid 101 --name my-vm         # Non-interactive
         pvecli vm clone 100 --newid 101 --full --target node2 # Full clone to another node
     """
-
 
     config_manager = ConfigManager()
 
@@ -1636,7 +1702,6 @@ def clone_vm(
                 print_cancelled()
                 return
 
-        # Helper function to get source VM config and determine node
         async def get_source_vm_data():
             async with ProxmoxClient(profile_config) as client:
                 resources = await client.get_cluster_resources(resource_type="vm")
@@ -1653,8 +1718,6 @@ def clone_vm(
                     "source_config": source_config,
                     "next_vmid": await client.get_next_vmid(),
                     "pools": await client.get_pools(),
-                    "storages": await client.get_storage_list(source_node),
-                    "bridges": await client.get_network_interfaces(source_node),
                     "resources": resources,
                     "cluster_options": await client.get_cluster_options(),
                 }
@@ -1662,203 +1725,73 @@ def clone_vm(
         source_data = asyncio.run(get_source_vm_data())
         source_node = source_data["source_node"]
         source_config = source_data["source_config"]
+        is_template = source_config.get("template") == 1
 
-        # Check if we have enough arguments for non-interactive mode
-        has_required_args = all([newid, name, iso_storage, iso, os_type])
-
-        if has_required_args:
-            # Non-interactive mode with arguments
-            config: dict[str, Any] = {
+        # Non-interactive mode
+        if newid and name:
+            clone_params: dict[str, Any] = {
                 "node": source_node,
                 "vmid": vmid,
                 "newid": newid,
-                "full": full,
+                "name": name,
             }
-
-            # Required parameters
-            config["name"] = name
-
-            # Optional basic parameters
+            if is_template:
+                clone_params["full"] = 1 if full else 0
+            if target and target != source_node:
+                clone_params["target"] = target
             if pool:
-                config["pool"] = pool
-            config["onboot"] = 1 if onboot else 0
-            config["agent"] = 1 if agent else 0
+                clone_params["pool"] = pool
 
-            # ISO configuration
-            config["ide2"] = f"{iso_storage}:iso/{iso},media=cdrom"
+            post_config: dict[str, Any] = {}
+            if onboot is not None:
+                post_config["onboot"] = 1 if onboot else 0
 
-            # OS Type determination
-            is_windows = os_type.lower() == "windows"
-
-            if is_windows:
-                # Windows OS type mapping
-                if not os_version:
-                    os_version = "11/2022/2025"  # Default
-
-                if "11" in os_version or "2022" in os_version or "2025" in os_version:
-                    config["ostype"] = "win11"
-                    needs_tpm = True
-                elif "10" in os_version or "2016" in os_version or "2019" in os_version:
-                    config["ostype"] = "win10"
-                    needs_tpm = False
-                elif "8" in os_version or "2012" in os_version:
-                    config["ostype"] = "win8"
-                    needs_tpm = False
-                elif "7" in os_version or "2008" in os_version:
-                    config["ostype"] = "win7"
-                    needs_tpm = False
-                elif "xp" in os_version.lower() or "2003" in os_version:
-                    config["ostype"] = "wxp"
-                    needs_tpm = False
-                elif "2000" in os_version:
-                    config["ostype"] = "w2k"
-                    needs_tpm = False
-                else:
-                    config["ostype"] = "win11"
-                    needs_tpm = True
-
-                # VirtIO drivers
-                if virtio_iso_storage and virtio_iso:
-                    config["ide3"] = f"{virtio_iso_storage}:iso/{virtio_iso},media=cdrom"
-
-                # TPM for Windows 11/2022/2025
-                if needs_tpm:
-                    if not tpm_storage:
-                        print_error("--tpm-storage is required for Windows 11/2022/2025")
-                        raise typer.Exit(1)
-                    if not efi_storage:
-                        print_error("--efi-storage is required for Windows 11/2022/2025")
-                        raise typer.Exit(1)
-                    config["tpmstate0"] = f"{tpm_storage}:1,version=v2.0"
-                    config["efidisk0"] = f"{efi_storage}:1,efitype=4m,pre-enrolled-keys=1"
-                    config["bios"] = "ovmf"
-            else:
-                # Linux OS type
-                if os_version and "2.4" in os_version:
-                    config["ostype"] = "l24"
-                else:
-                    config["ostype"] = "l26"
-
-            # CPU configuration
-            config["sockets"] = sockets if sockets else 1
-            config["cores"] = cores if cores else 2
-
-            total_possible_vcpus = config["sockets"] * config["cores"]
-            if vcpus and vcpus != total_possible_vcpus:
-                if vcpus > total_possible_vcpus:
-                    print_warning(f"vCPU count cannot exceed {total_possible_vcpus}, setting to {total_possible_vcpus}")
-                    vcpus = total_possible_vcpus
-                config["vcpus"] = vcpus
-
-            config["cpu"] = cpu_type if cpu_type else "x86-64-v2-AES"
-
-            # Memory configuration
-            memory_value = memory if memory else 2048
-            config["memory"] = memory_value
-            config["balloon"] = memory_value
-
-            # Disk configuration
-            if disk_storage and disk_size:
-                format_str = disk_format if disk_format else "qcow2"
-                if is_windows:
-                    config["scsi0"] = f"{disk_storage}:{disk_size},format={format_str}"
-                    config["scsihw"] = "virtio-scsi-pci"
-                else:
-                    config["virtio0"] = f"{disk_storage}:{disk_size},format={format_str}"
-
-            # Network configuration
-            if bridge:
-                net_config = f"virtio,bridge={bridge}"
-                if vlan:
-                    net_config += f",tag={vlan}"
-                if firewall:
-                    net_config += ",firewall=1"
-                if link_down:
-                    net_config += ",link_down=1"
-                config["net0"] = net_config
-
-            # Clone VM
-            target_node = target if target else source_node
-
-            async def clone():
+            async def clone_noninteractive():
                 async with ProxmoxClient(profile_config) as client:
-                    clone_params = {
-                        "node": source_node,
-                        "vmid": vmid,
-                        "newid": newid,
-                        "name": name,
-                        "full": full,
-                    }
-                    if target_node != source_node:
-                        clone_params["target"] = target_node
-                    if pool:
-                        clone_params["pool"] = pool
-
                     upid = await client.clone_vm(**clone_params)
                     console.print(f"\n[cyan]Cloning VM {vmid} to {newid}...[/cyan]")
                     await client.wait_for_task(source_node, upid, timeout=600)
-
-                    # Apply additional config
-                    config_to_apply = {k: v for k, v in config.items() if k not in ["node", "vmid", "newid", "name", "full"]}
-                    if config_to_apply:
-                        await client.update_vm_config(target_node, newid, **config_to_apply)
-
+                    if post_config:
+                        t_node = target if target else source_node
+                        await client.update_vm_config(t_node, newid, **post_config)
                     return newid
 
-            cloned_vmid = asyncio.run(clone())
+            cloned_vmid = asyncio.run(clone_noninteractive())
             print_success(f"VM {vmid} cloned to {cloned_vmid} successfully!")
             return
 
         # Interactive mode
-        async def get_data():
-            async with ProxmoxClient(profile_config) as client:
-                return {
-                    "next_vmid": source_data["next_vmid"],
-                    "pools": source_data["pools"],
-                    "storages": source_data["storages"],
-                    "bridges": source_data["bridges"],
-                }
-
-        data = asyncio.run(get_data())
-
-        # Configuration dict
-        config: dict[str, Any] = {
-            "node": source_node,
-            "vmid": vmid,
-        }
+        data = source_data
+        clone_cfg: dict[str, Any] = {}
+        post_cfg: dict[str, Any] = {}
 
         console.print("\n[bold cyan]═══ VM Clone Wizard ═══[/bold cyan]\n")
 
         # 1. VMID
         if newid is not None:
-            config["newid"] = newid
+            clone_cfg["newid"] = newid
         else:
             default_vmid = data["next_vmid"]
             vmid_input = None
             while vmid_input is None:
                 try:
-                    vmid_str = Prompt.ask(
-                        "[bold]New VMID[/bold]",
-                        default=str(default_vmid),
-                    )
-                    config["newid"] = int(vmid_str)
+                    vmid_str = Prompt.ask("[bold]New VMID[/bold]", default=str(default_vmid))
+                    clone_cfg["newid"] = int(vmid_str)
                     vmid_input = True
                 except ValueError:
                     print_error("VMID must be a valid number (e.g., 100, 102)")
 
-        newid = config["newid"]
-
         # 2. Name
         if name:
-            config["name"] = name
+            clone_cfg["name"] = name
         else:
-            default_name = source_config.get("name", f"vm-{newid}")
+            default_name = source_config.get("name", f"vm-{clone_cfg['newid']}")
             vm_name = Prompt.ask("[bold]VM Name[/bold]", default=default_name)
-            config["name"] = vm_name.strip() if vm_name.strip() else default_name
+            clone_cfg["name"] = vm_name.strip() if vm_name.strip() else default_name
 
         # 3. Pool
         if pool:
-            config["pool"] = pool
+            clone_cfg["pool"] = pool
         else:
             pools = data["pools"]
             if pools:
@@ -1866,10 +1799,9 @@ def clone_vm(
                 console.print("\n[bold]Pool:[/bold]")
                 pool_idx = select_menu(pool_options, "Select pool:")
                 if pool_idx and pool_idx > 0:
-                    config["pool"] = pool_options[pool_idx]
+                    clone_cfg["pool"] = pool_options[pool_idx]
 
-        # 3b. Tags
-
+        # 4. Tags
         known_tags = set()
         for r in data["resources"]:
             for t in r.get("tags", "").split(";"):
@@ -1879,385 +1811,63 @@ def clone_vm(
         cm = _parse_color_map(data["cluster_options"].get("tag-style", ""))
         known_tags.update(cm)
 
+        source_tags = source_config.get("tags", "")
         if known_tags:
             tag_list = sorted(known_tags)
             entries = ["(none)"] + tag_list + ["+ Add custom tag"]
             console.print("\n[bold]Tags:[/bold]")
-            sel = multi_select_menu(entries, "  Tags (Space to toggle, Enter to confirm):")
-            if sel is not None:
+            sel = multi_select_menu(entries, "  Tags (Space/toggle, Enter/confirm, rien = copier source):")
+            if not sel:
+                # Nothing selected → copy source tags
+                if source_tags:
+                    post_cfg["tags"] = source_tags
+            else:
                 chosen = [entries[i] for i in sel]
-                result_tags = [t for t in chosen if t not in ("(none)", "+ Add custom tag")]
-                if "+ Add custom tag" in chosen:
-                    custom = Prompt.ask("  Custom tag name")
-                    if custom and custom.strip():
-                        result_tags.append(custom.strip())
-                if result_tags:
-                    config["tags"] = ";".join(sorted(result_tags))
+                if "(none)" not in chosen:
+                    result_tags = [t for t in chosen if t != "+ Add custom tag"]
+                    if "+ Add custom tag" in chosen:
+                        custom = Prompt.ask("  Custom tag name")
+                        if custom and custom.strip():
+                            result_tags.append(custom.strip())
+                    if result_tags:
+                        post_cfg["tags"] = ";".join(sorted(result_tags))
         else:
-            custom = Prompt.ask("[bold]Tag[/bold] (leave empty for none)", default="")
+            default_tags = source_tags
+            custom = Prompt.ask("[bold]Tags[/bold] (leave empty for none)", default=default_tags)
             if custom and custom.strip():
-                config["tags"] = custom.strip()
+                post_cfg["tags"] = custom.strip()
 
-        # 4. Start at boot
+        # 5. Start at boot
         if onboot is not None:
-            config["onboot"] = 1 if onboot else 0
+            post_cfg["onboot"] = 1 if onboot else 0
         else:
-            config["onboot"] = 1 if Confirm.ask("[bold]Start at boot?[/bold]", default=False) else 0
+            post_cfg["onboot"] = 1 if Confirm.ask("[bold]Start at boot?[/bold]", default=False) else 0
 
-        # 5. Clone type
-        if not full:
-            config["full"] = 0 if Confirm.ask("[bold]Create linked clone?[/bold]", default=True) else 1
-        else:
-            config["full"] = 1
+        # 6. Clone type (only for templates; normal VMs always do full clone)
+        if is_template:
+            if full:
+                clone_cfg["full"] = 1
+            else:
+                clone_cfg["full"] = 0 if Confirm.ask("[bold]Create linked clone?[/bold]", default=True) else 1
 
-        # 6. Target node
+        # 7. Target node
         if target:
-            config["target"] = target
-        # else: target remains source_node, no need to set explicitly
-
-        # 7. OS Selection
-        console.print("\n[bold cyan]─── OS Configuration ───[/bold cyan]\n")
-
-        # 7.1 & 7.2. Storage and ISO selection
-        if iso_storage and iso:
-            # Use provided ISO configuration
-            config["ide2"] = f"{iso_storage}:iso/{iso},media=cdrom"
-            selected_storage = iso_storage
-        else:
-            iso_storages = [s for s in data["storages"] if "iso" in s.get("content", "").split(",")]
-
-            if not iso_storages:
-                print_error("No storage with ISO content found")
-                raise typer.Exit(1)
-
-            storage_names = [s.get("storage", "") for s in iso_storages]
-
-            if iso_storage:
-                # Storage provided but not ISO
-                selected_storage = iso_storage
-            else:
-                # Ask for storage
-                console.print("[bold]ISO Storage:[/bold]")
-                storage_idx = select_menu(storage_names, "Select storage for ISO:")
-                if storage_idx is None:
-                    print_error("No storage selected")
-                    raise typer.Exit(1)
-                selected_storage = storage_names[storage_idx]
-
-            # Get ISOs from selected storage
-            async def get_isos():
-                async with ProxmoxClient(profile_config) as client:
-                    return await client.get_storage_content(source_node, selected_storage, "iso")
-
-            isos = asyncio.run(get_isos())
-
-            if not isos:
-                print_error(f"No ISOs found in storage {selected_storage}")
-                raise typer.Exit(1)
-
-            iso_names = [iso.get("volid", "").split("/")[-1] for iso in isos]
-            console.print(f"\n[bold]ISO from {selected_storage}:[/bold]")
-            iso_idx = select_menu(iso_names, "Select ISO:")
-            if iso_idx is None:
-                print_error("No ISO selected")
-                raise typer.Exit(1)
-
-            selected_iso = isos[iso_idx].get("volid", "")
-            config["ide2"] = f"{selected_iso},media=cdrom"
-
-        # 7.3. OS Type
-        if os_type:
-            is_windows = os_type.lower() == "windows"
-        else:
-            console.print("\n[bold]OS Type:[/bold]")
-            os_types = ["Linux", "Windows"]
-            os_idx = select_menu(os_types, "Select OS type:")
-            is_windows = os_idx == 1
-
-        # 7.4. OS Version
-        if is_windows:
-            if os_version:
-                # Use provided version
-                # Determine ostype based on provided version
-                if "11" in os_version or "2022" in os_version or "2025" in os_version:
-                    config["ostype"] = "win11"
-                    needs_tpm = True
-                elif "10" in os_version or "2016" in os_version or "2019" in os_version:
-                    config["ostype"] = "win10"
-                    needs_tpm = False
-                elif "8" in os_version or "2012" in os_version:
-                    config["ostype"] = "win8"
-                    needs_tpm = False
-                elif "7" in os_version or "2008" in os_version:
-                    config["ostype"] = "win7"
-                    needs_tpm = False
-                elif "xp" in os_version.lower() or "2003" in os_version:
-                    config["ostype"] = "wxp"
-                    needs_tpm = False
-                elif "2000" in os_version:
-                    config["ostype"] = "w2k"
-                    needs_tpm = False
-                else:
-                    config["ostype"] = "win11"
-                    needs_tpm = True
-            else:
-                # Ask user for version
-                win_versions = [
-                    "11/2022/2025",
-                    "10/2016/2019",
-                    "8.x/2012/2012r2",
-                    "7/2008r2",
-                    "Vista/2008",
-                    "XP/2003",
-                    "2000",
-                ]
-                console.print("\n[bold]Windows Version:[/bold]")
-                win_idx = select_menu(win_versions, "Select version:")
-                # Determine ostype based on selection
-                if win_idx == 0:  # 11/2022/2025
-                    config["ostype"] = "win11"
-                    needs_tpm = True
-                elif win_idx == 1:  # 10/2016/2019
-                    config["ostype"] = "win10"
-                    needs_tpm = False
-                elif win_idx == 2:  # 8.x/2012/2012r2
-                    config["ostype"] = "win8"
-                    needs_tpm = False
-                elif win_idx == 3:  # 7/2008r2
-                    config["ostype"] = "win7"
-                    needs_tpm = False
-                elif win_idx == 4:  # Vista/2008
-                    config["ostype"] = "win7"
-                    needs_tpm = False
-                elif win_idx == 5:  # XP/2003
-                    config["ostype"] = "wxp"
-                    needs_tpm = False
-                else:  # 2000
-                    config["ostype"] = "w2k"
-                    needs_tpm = False
-
-            # 8.1. VirtIO Drivers
-            if virtio_iso_storage and virtio_iso:
-                # Use provided VirtIO ISO
-                config["ide3"] = f"{virtio_iso_storage}:iso/{virtio_iso},media=cdrom"
-            elif not virtio_iso and Confirm.ask("\n[bold]Mount VirtIO drivers ISO?[/bold]", default=True):
-                # Ask for storage again for VirtIO ISO
-                console.print("[bold]VirtIO ISO Storage:[/bold]")
-                virtio_storage_idx = select_menu(storage_names, "Select storage for VirtIO ISO:")
-                if virtio_storage_idx is not None:
-                    virtio_selected_storage = storage_names[virtio_storage_idx]
-
-                    # Get all ISOs from selected storage
-                    async def get_virtio_isos():
-                        async with ProxmoxClient(profile_config) as client:
-                            return await client.get_storage_content(source_node, virtio_selected_storage, "iso")
-
-                    virtio_isos_all = asyncio.run(get_virtio_isos())
-
-                    if virtio_isos_all:
-                        virtio_iso_names = [iso.get("volid", "").split("/")[-1] for iso in virtio_isos_all]
-                        console.print(f"\n[bold]VirtIO ISO from {virtio_selected_storage}:[/bold]")
-                        virtio_idx = select_menu(virtio_iso_names, "Select VirtIO ISO:")
-                        if virtio_idx is not None:
-                            virtio_iso = virtio_isos_all[virtio_idx].get("volid", "")
-                            config["ide3"] = f"{virtio_iso},media=cdrom"
-                    else:
-                        print_warning(f"No ISOs found in storage {virtio_selected_storage}")
-
-            # 8.3. TPM
-            if needs_tpm:
-                console.print("\n[bold cyan]TPM required for this OS[/bold cyan]")
-                storage_names_all = [s.get("storage", "") for s in data["storages"]]
-                console.print("[bold]TPM Storage:[/bold]")
-                tpm_idx = select_menu(storage_names_all, "Select storage for TPM:")
-                if tpm_idx is not None:
-                    tpm_storage = storage_names_all[tpm_idx]
-                    config["tpmstate0"] = f"{tpm_storage}:1,version=v2.0"
-
-            # 8.4. EFI Disk
-            if needs_tpm:
-                storage_names_all = [s.get("storage", "") for s in data["storages"]]
-                console.print("[bold]EFI Storage:[/bold]")
-                efi_idx = select_menu(storage_names_all, "Select storage for EFI:")
-                if efi_idx is not None:
-                    efi_storage = storage_names_all[efi_idx]
-                    config["efidisk0"] = f"{efi_storage}:1,efitype=4m,pre-enrolled-keys=1"
-                    config["bios"] = "ovmf"
-
-        else:
-            # Linux
-            linux_versions = [
-                "6.x Kernel or 2.6 Kernel",
-                "2.4 Kernel",
-            ]
-            console.print("\n[bold]Linux Kernel Version:[/bold]")
-            linux_idx = select_menu(linux_versions, "Select kernel version:")
-
-            # Determine ostype based on kernel version
-            if linux_idx == 0:  # 6.x or 2.6 Kernel
-                config["ostype"] = "l26"
-            else:  # 2.4 Kernel
-                config["ostype"] = "l24"
-
-        # 9. QEMU Guest Agent
-        if agent is not None:
-            config["agent"] = 1 if agent else 0
-        else:
-            console.print("\n[bold cyan]─── Additional Configuration ───[/bold cyan]\n")
-            config["agent"] = 1 if Confirm.ask("[bold]Enable QEMU Guest Agent?[/bold]", default=True) else 0
-
-        # 10. CPU
-        if sockets or cores or cpu_type:
-            # At least one CPU parameter provided
-            config["sockets"] = sockets if sockets else 1
-            config["cores"] = cores if cores else 2
-        else:
-            console.print("\n[bold]CPU Configuration:[/bold]")
-            config["sockets"] = IntPrompt.ask("Number of sockets", default=1)
-            config["cores"] = IntPrompt.ask("Number of cores per socket", default=2)
-
-        # Calculate total possible vCPUs
-        total_possible_vcpus = config["sockets"] * config["cores"]
-
-        # Ask for vCPU count at startup (hot-plug)
-        if vcpus:
-            if vcpus > total_possible_vcpus:
-                print_warning(f"vCPU count cannot exceed {total_possible_vcpus}, setting to {total_possible_vcpus}")
-                config["vcpus"] = total_possible_vcpus
-            else:
-                config["vcpus"] = vcpus
-        elif vcpus is None:
-            # Ask interactively
-            console.print(f"\n[dim]Total vCPUs available: {total_possible_vcpus}[/dim]")
-            vcpu_count = IntPrompt.ask(
-                "vCPU count at startup (leave empty to use all)",
-                default=total_possible_vcpus
-            )
-            if vcpu_count and vcpu_count != total_possible_vcpus:
-                if vcpu_count > total_possible_vcpus:
-                    print_warning(f"vCPU count cannot exceed {total_possible_vcpus}, setting to {total_possible_vcpus}")
-                    vcpu_count = total_possible_vcpus
-                config["vcpus"] = vcpu_count
-
-        if cpu_type:
-            config["cpu"] = cpu_type
-        elif cpu_type is None:
-            console.print("\n[bold]CPU Type:[/bold]")
-            cpu_types = ["x86-64-v2-AES (default)", "host"]
-            cpu_idx = select_menu(cpu_types, "Select CPU type:")
-            if cpu_idx == 1:
-                config["cpu"] = "host"
-            else:
-                config["cpu"] = "x86-64-v2-AES"
-
-        # 11. RAM
-        if memory:
-            config["memory"] = memory
-            config["balloon"] = memory
-        elif memory is None:
-            console.print("\n[bold]Memory Configuration:[/bold]")
-            memory_value = IntPrompt.ask("RAM (MiB)", default=2048)
-            config["memory"] = memory_value
-            config["balloon"] = memory_value
-
-        # 11.5. Primary Disk
-        if disk_storage and disk_size:
-            # Use provided disk configuration
-            format_str = disk_format if disk_format else "qcow2"
-            if is_windows:
-                config["scsi0"] = f"{disk_storage}:{disk_size},format={format_str}"
-                config["scsihw"] = "virtio-scsi-pci"
-            else:
-                config["virtio0"] = f"{disk_storage}:{disk_size},format={format_str}"
-        elif disk_storage is None and disk_size is None:
-            # Ask interactively
-            console.print("\n[bold cyan]─── Disk Configuration ───[/bold cyan]\n")
-            if Confirm.ask("[bold]Add primary disk?[/bold]", default=True):
-                storage_names_all = [s.get("storage", "") for s in data["storages"]]
-                console.print("[bold]Disk Storage:[/bold]")
-                disk_idx = select_menu(storage_names_all, "Select storage for primary disk:")
-                if disk_idx is not None:
-                    disk_storage = storage_names_all[disk_idx]
-                    disk_size = IntPrompt.ask("Disk size (GB)", default=32)
-
-                    # Disk format
-                    console.print("\n[bold]Disk Format:[/bold]")
-                    disk_formats = ["qcow2", "raw", "vmdk"]
-                    format_idx = select_menu(disk_formats, "Select disk format:")
-                    disk_format = disk_formats[format_idx] if format_idx is not None else "qcow2"
-
-                    # Use virtio for Linux, scsi for Windows
-                    if is_windows:
-                        config["scsi0"] = f"{disk_storage}:{disk_size},format={disk_format}"
-                        config["scsihw"] = "virtio-scsi-pci"
-                    else:
-                        config["virtio0"] = f"{disk_storage}:{disk_size},format={disk_format}"
-
-        # 12. Network
-        if bridge:
-            # Use provided network configuration
-            net_config = f"virtio,bridge={bridge}"
-
-            # VLAN
-            if vlan:
-                net_config += f",tag={vlan}"
-
-            # Firewall
-            if firewall:
-                net_config += ",firewall=1"
-
-            # Link state
-            if link_down:
-                net_config += ",link_down=1"
-
-            config["net0"] = net_config
-        elif bridge is None:
-            # Ask interactively
-            console.print("\n[bold cyan]─── Network Configuration ───[/bold cyan]\n")
-            bridges = [b for b in data["bridges"] if b.get("type") == "bridge"]
-
-            if bridges:
-                bridge_names = [b.get("iface", "") for b in bridges]
-                console.print("[bold]Bridge:[/bold]")
-                bridge_idx = select_menu(bridge_names, "Select bridge:")
-                if bridge_idx is not None:
-                    bridge = bridge_names[bridge_idx]
-
-                    # Build net0 config
-                    net_config = f"virtio,bridge={bridge}"
-
-                    # VLAN
-                    vlan = Prompt.ask("VLAN tag (leave empty for none)", default="")
-                    if vlan:
-                        net_config += f",tag={vlan}"
-
-                    # Firewall
-                    if Confirm.ask("Enable firewall?", default=False):
-                        net_config += ",firewall=1"
-
-                    # Link state
-                    if Confirm.ask("Start disconnected?", default=False):
-                        net_config += ",link_down=1"
-
-                    config["net0"] = net_config
+            clone_cfg["target"] = target
 
         # Summary
         console.print("\n[bold cyan]═══ Configuration Summary ═══[/bold cyan]\n")
         console.print(f"[bold]Source VMID:[/bold] {vmid}")
-        console.print(f"[bold]New VMID:[/bold] {config['newid']}")
-        console.print(f"[bold]Name:[/bold] {config['name']}")
-        if "pool" in config:
-            console.print(f"[bold]Pool:[/bold] {config['pool']}")
-        if "tags" in config:
-            console.print(f"[bold]Tags:[/bold] {config['tags']}")
-        console.print(f"[bold]Clone Type:[/bold] {'Full' if config.get('full') else 'Linked'}")
-        console.print(f"[bold]CPU:[/bold] {config['sockets']} socket(s) × {config['cores']} core(s) ({config['cpu']})")
-        console.print(f"[bold]Memory:[/bold] {config['memory']} MiB")
-        if "net0" in config:
-            console.print(f"[bold]Network:[/bold] {config['net0']}")
-        console.print(f"[bold]OS Type:[/bold] {config['ostype']}")
-        if "ide2" in config:
-            console.print(f"[bold]ISO:[/bold] {config['ide2']}")
+        console.print(f"[bold]New VMID:[/bold] {clone_cfg['newid']}")
+        console.print(f"[bold]Name:[/bold] {clone_cfg['name']}")
+        if "pool" in clone_cfg:
+            console.print(f"[bold]Pool:[/bold] {clone_cfg['pool']}")
+        if "tags" in post_cfg:
+            console.print(f"[bold]Tags:[/bold] {post_cfg['tags']}")
+        if is_template:
+            console.print(f"[bold]Clone Type:[/bold] {'Full' if clone_cfg.get('full') else 'Linked'}")
+        if "target" in clone_cfg:
+            console.print(f"[bold]Target Node:[/bold] {clone_cfg['target']}")
+        console.print(f"[bold]Start at boot:[/bold] {'Yes' if post_cfg.get('onboot') else 'No'}")
 
         console.print()
 
@@ -2265,36 +1875,34 @@ def clone_vm(
             print_cancelled()
             return
 
-        # Clone VM
-        target_node = config.pop("target", source_node)
+        target_node = clone_cfg.pop("target", source_node)
 
         async def clone():
             async with ProxmoxClient(profile_config) as client:
                 clone_params = {
                     "node": source_node,
                     "vmid": vmid,
-                    "newid": config.pop("newid"),
-                    "name": config.pop("name"),
-                    "full": config.pop("full", 0),
+                    "newid": clone_cfg.pop("newid"),
+                    "name": clone_cfg.pop("name"),
                 }
+                if "full" in clone_cfg:
+                    clone_params["full"] = clone_cfg.pop("full")
                 if target_node != source_node:
                     clone_params["target"] = target_node
-                if "pool" in config:
-                    clone_params["pool"] = config.pop("pool")
+                if "pool" in clone_cfg:
+                    clone_params["pool"] = clone_cfg.pop("pool")
 
                 upid = await client.clone_vm(**clone_params)
                 console.print(f"\n[cyan]Cloning VM {vmid}...[/cyan]")
                 console.print(f"[cyan]Task ID:[/cyan] {upid}")
                 await client.wait_for_task(source_node, upid, timeout=600)
 
-                # Apply remaining config
-                if config:
-                    await client.update_vm_config(target_node, clone_params["newid"], **config)
+                if post_cfg:
+                    await client.update_vm_config(target_node, clone_params["newid"], **post_cfg)
 
                 return clone_params["newid"]
 
         cloned_vmid = asyncio.run(clone())
-
         print_success(f"VM {vmid} cloned to {cloned_vmid} successfully!")
 
     except PVECliError as e:
@@ -2304,6 +1912,7 @@ def clone_vm(
         console.print()
         print_cancelled()
         raise typer.Exit(0)
+
 
 
 @app.command("remove")
@@ -2932,12 +2541,12 @@ def create_vm(
 
         if known_tags:
             tag_list = sorted(known_tags)
-            entries = ["(none)"] + tag_list + ["+ Add custom tag"]
+            entries = tag_list + ["+ Add custom tag"]
             console.print("\n[bold]Tags:[/bold]")
-            sel = multi_select_menu(entries, "  Tags (Space to toggle, Enter to confirm):")
-            if sel is not None:
+            sel = multi_select_menu(entries, "  Tags (Space/toggle, Enter/confirm, rien = pas de tag):")
+            if sel:
                 chosen = [entries[i] for i in sel]
-                result_tags = [t for t in chosen if t not in ("(none)", "+ Add custom tag")]
+                result_tags = [t for t in chosen if t != "+ Add custom tag"]
                 if "+ Add custom tag" in chosen:
                     custom = Prompt.ask("  Custom tag name")
                     if custom and custom.strip():
@@ -3595,6 +3204,66 @@ async def vm_rdp(
     except KeyboardInterrupt:
         console.print()
         print_cancelled()
+    except PVECliError as e:
+        print_error(str(e))
+        raise typer.Exit(1)
+
+
+@app.command("template")
+@async_to_sync
+async def convert_vm_template(
+    vmids: str = typer.Argument(None, help="VM ID(s) - single or comma-separated (e.g., 100 or 100,101,102)"),
+    profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+) -> None:
+    """Convert one or more VMs to templates."""
+    config_manager = ConfigManager()
+    try:
+        profile_config = config_manager.get_profile(profile)
+        async with ProxmoxClient(profile_config) as client:
+            vmid_list: list[int] = []
+
+            if vmids is None:
+                vms = await client.get_vms()
+                candidates = sorted(
+                    [vm for vm in vms if not vm.get("template")],
+                    key=lambda x: x.get("vmid", 0),
+                )
+                if not candidates:
+                    print_info("No VMs available to convert")
+                    return
+                items = [
+                    f"{vm.get('vmid')} - {vm.get('name', 'unnamed')} ({vm.get('status', '?')})"
+                    for vm in candidates
+                ]
+                sel = multi_select_menu(items, "  Select VMs to convert to template:")
+                if not sel:
+                    print_cancelled()
+                    return
+                vmid_list = [candidates[i]["vmid"] for i in sel]
+            else:
+                vmid_list = parse_id_list(vmids, "VM")
+
+            converted = 0
+            for vmid in vmid_list:
+                try:
+                    node, status = await _get_vm_node(client, vmid)
+                    if status == "running":
+                        print_warning(f"VM {vmid} is running - stop it first")
+                        continue
+                    upid = await run_with_spinner(
+                        client, node,
+                        f"Converting VM {vmid} to template...",
+                        client.convert_vm_to_template(node, vmid),
+                        f"Waiting for VM {vmid}...",
+                    )
+                    print_success(f"VM {vmid} converted to template")
+                    converted += 1
+                except PVECliError as e:
+                    print_error(f"VM {vmid}: {e}")
+
+            if len(vmid_list) > 1:
+                print_info(f"Summary: {converted}/{len(vmid_list)} converted")
+
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)

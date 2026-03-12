@@ -288,7 +288,7 @@ async def remove_pool(
                         parts.append(f"{len(cts)} CT(s)")
                     if storages:
                         parts.append(f"{len(storages)} storage(s)")
-                    print_warning(f"Pool '{pid}' contains {', '.join(parts)} — use --force to delete anyway")
+                    print_warning(f"Pool '{pid}' contains {', '.join(parts)} - use --force to delete anyway")
 
             if not empty:
                 return

@@ -730,6 +730,18 @@ class ProxmoxClient:
         if data:
             await self.put(f"/nodes/{node}/qemu/{vmid}/config", data=data)
 
+    async def lock_vm(self, node: str, vmid: int, lock: str) -> None:
+        """Set a lock on a VM."""
+        await self.put(f"/nodes/{node}/qemu/{vmid}/config", data={"lock": lock})
+
+    async def unlock_vm(self, node: str, vmid: int) -> None:
+        """Remove the lock from a VM."""
+        await self.put(f"/nodes/{node}/qemu/{vmid}/config", data={"delete": "lock", "skiplock": 1})
+
+    async def convert_vm_to_template(self, node: str, vmid: int) -> str:
+        """Convert a VM to a template. Returns UPID."""
+        return await self.post(f"/nodes/{node}/qemu/{vmid}/template")
+
     async def resize_vm_disk(self, node: str, vmid: int, disk: str, size: str) -> None:
         """Resize a VM disk.
 
@@ -1153,6 +1165,18 @@ class ProxmoxClient:
 
         if data:
             await self.put(f"/nodes/{node}/lxc/{vmid}/config", data=data)
+
+    async def lock_container(self, node: str, vmid: int, lock: str) -> None:
+        """Set a lock on a container."""
+        await self.put(f"/nodes/{node}/lxc/{vmid}/config", data={"lock": lock})
+
+    async def unlock_container(self, node: str, vmid: int) -> None:
+        """Remove the lock from a container."""
+        await self.put(f"/nodes/{node}/lxc/{vmid}/config", data={"delete": "lock"})
+
+    async def convert_container_to_template(self, node: str, vmid: int) -> None:
+        """Convert a container to a template."""
+        await self.post(f"/nodes/{node}/lxc/{vmid}/template")
 
     async def resize_container_disk(self, node: str, vmid: int, disk: str, size: str) -> None:
         """Resize a container disk.

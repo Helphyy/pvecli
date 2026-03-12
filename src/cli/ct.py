@@ -55,7 +55,7 @@ from ._shared import (
 _CMD_ORDER = [
     "start", "stop", "shutdown", "reboot",
     "add", "clone", "edit", "remove",
-    "tag", "snapshot", "template",
+    "tag", "snapshot", "template", "image",
     "vnc", "ssh",
     "list", "show",
 ]
@@ -119,7 +119,12 @@ async def list_containers(
                 tags = ct.get("tags", "")
                 node_name = ct.get("node", "-")
                 ct_status = ct.get("status", "unknown")
+                ct_lock = ct.get("lock", "")
                 status_color = get_status_color(ct_status)
+                if ct_lock:
+                    status_str = f"[bright_black]locked ({ct_lock})[/bright_black]"
+                else:
+                    status_str = f"[{status_color}]{ct_status}[/{status_color}]"
 
                 if ct_status == "running":
                     cpu_usage = ct.get("cpu", 0) * 100
@@ -151,7 +156,7 @@ async def list_containers(
                     ctid,
                     name,
                     node_name,
-                    f"[{status_color}]{ct_status}[/{status_color}]",
+                    status_str,
                     cpu_str,
                     mem_str,
                     disk_str,
@@ -194,11 +199,15 @@ async def show_container(
             # Build the display
             ct_name = config.get("hostname", status.get("name", f"CT {ctid}"))
             ct_status = status.get("status", "unknown")
+            ct_lock = status.get("lock", "") or config.get("lock", "")
             status_color = get_status_color(ct_status)
 
             lines = []
             lines.append("[bold]── General ──[/bold]")
-            lines.append(f"[bold]Status:[/bold]      [{status_color}]{ct_status}[/{status_color}]")
+            status_line = f"[bold]Status:[/bold]      [{status_color}]{ct_status}[/{status_color}]"
+            if ct_lock:
+                status_line = f"[bold]Status:[/bold]      [bright_black]locked ({ct_lock})[/bright_black]"
+            lines.append(status_line)
             lines.append(f"[bold]Node:[/bold]        {node}")
 
             if ct_status == "running":
@@ -1195,245 +1204,258 @@ async def reboot_container(
 
 
 @app.command("clone")
-@async_to_sync
-async def clone_container(
-    ctid: int = typer.Argument(None, help="Source container ID (CTID)"),
-    newid: int = typer.Argument(None, help="New container ID"),
+def clone_container(
+    ctid: int = typer.Argument(None, help="Source container ID"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+    newid: int = typer.Option(None, "--newid", "-id", help="New container ID (auto-assigned if not specified)"),
     hostname: str = typer.Option(None, "--hostname", "-hn", help="New container hostname"),
-    target: str = typer.Option(None, "--target", "-ta", help="Target node"),
-    full: bool = typer.Option(False, "--full", "-fu", help="Create full clone (not linked)"),
-    pool: str = typer.Option(None, "--pool", help="Add to pool"),
-    storage: str = typer.Option(None, "--storage", "-s", help="Target storage"),
-    cores: int = typer.Option(None, "--cores", "-co", help="CPU cores"),
-    memory: int = typer.Option(None, "--memory", "-me", help="Memory (MB)"),
-    description: str = typer.Option(None, "--description", "-de", help="Container description"),
-    snapname: str = typer.Option(None, "--snap", help="Clone from snapshot"),
-    wait: bool = typer.Option(False, "--wait", "-w", help="Wait for operation to complete"),
+    pool: str = typer.Option(None, "--pool", "-pl", help="Pool name"),
+    onboot: bool = typer.Option(None, "--onboot/--no-onboot", "-ob", help="Start at boot"),
+    full: bool = typer.Option(False, "--full", "-fu", help="Create full clone (templates only; default is linked)"),
+    target: str = typer.Option(None, "--target", "-ta", help="Target node (full clone only)"),
 ) -> None:
-    """Clone a container with optional interactive mode.
+    """Clone a container.
 
     Examples:
-        pvecli ct clone 101 102                                  # Interactive mode
-        pvecli ct clone 101 102 --hostname my-container          # With hostname
-        pvecli ct clone 101 102 --full --target node2            # Full clone to another node
+        pvecli ct clone 101                                      # Interactive mode
+        pvecli ct clone 101 --newid 102 --hostname my-ct         # Non-interactive
+        pvecli ct clone 101 --newid 102 --full --target node2    # Full clone to another node
     """
     config_manager = ConfigManager()
 
     try:
         profile_config = config_manager.get_profile(profile)
 
-        async with ProxmoxClient(profile_config) as client:
+        if ctid is None:
+            async def _pick_ct():
+                async with ProxmoxClient(profile_config) as client:
+                    return await _select_ct(client)
+            ctid = asyncio.run(_pick_ct())
             if ctid is None:
-                ctid = await _select_ct(client)
-                if ctid is None:
-                    print_cancelled()
-                    return
-            # Find source node and get config
-            node, _ = await _get_container_node(client, ctid)
-            source_config = await client.get_container_config(node, vmid=ctid)
+                print_cancelled()
+                return
 
-            # Get resources once
-            resources = await client.get_cluster_resources(resource_type="vm")
+        async def get_source_ct_data():
+            async with ProxmoxClient(profile_config) as client:
+                resources = await client.get_cluster_resources(resource_type="vm")
+                ct_resource = next((r for r in resources if r.get("vmid") == ctid), None)
 
-            # If newid not provided, enter interactive mode
-            if newid is None:
-                console.print("\n[bold cyan]═══ Container Clone Wizard ═══[/bold cyan]\n")
+                if not ct_resource:
+                    raise PVECliError(f"Source container {ctid} not found")
 
-                # Find next available ID via Proxmox API
-                next_ctid = await client.get_next_vmid()
+                source_node = ct_resource.get("node")
+                source_config = await client.get_container_config(source_node, vmid=ctid)
 
-                while True:
-                    try:
-                        newid_input = prompt("New container ID", default=str(next_ctid))
-                        newid = int(newid_input)
-                        break
-                    except ValueError:
-                        print_error(f"Invalid container ID: '{newid_input}'. Must be a number.")
+                # Check if rootfs storage supports linked clones (thinprovisioned)
+                rootfs = source_config.get("rootfs", "")
+                rootfs_storage = rootfs.split(":")[0] if ":" in rootfs else ""
+                linked_clone_supported = False
+                if rootfs_storage:
+                    storages = await client.get_storage_list(source_node)
+                    st = next((s for s in storages if s.get("storage") == rootfs_storage), None)
+                    linked_clone_supported = bool(st and st.get("thinprovisioned"))
 
-            # Check if newid already exists
-            new_ct_exists = any(r.get("vmid") == newid for r in resources)
-            if new_ct_exists:
-                print_error(f"Container {newid} already exists")
-                raise typer.Exit(1)
+                return {
+                    "source_node": source_node,
+                    "source_config": source_config,
+                    "next_vmid": await client.get_next_vmid(),
+                    "pools": await client.get_pools(),
+                    "resources": resources,
+                    "cluster_options": await client.get_cluster_options(),
+                    "linked_clone_supported": linked_clone_supported,
+                }
 
-            clone_params = {
-                "node": node,
+        source_data = asyncio.run(get_source_ct_data())
+        source_node = source_data["source_node"]
+        source_config = source_data["source_config"]
+        is_template = source_config.get("template") == 1
+        linked_clone_supported = source_data["linked_clone_supported"]
+
+        # Non-interactive mode
+        if newid and hostname:
+            clone_params: dict[str, Any] = {
+                "node": source_node,
                 "vmid": ctid,
                 "newid": newid,
+                "hostname": hostname,
             }
-
-            # Interactive mode if only ctid and newid are provided
-            if not any([hostname, target, pool, storage, cores, memory, description, snapname, full]):
-                # Get default values
-                default_hostname = source_config.get("hostname", f"ct-{newid}")
-                default_target = node
-
-                console.print("\n[bold cyan]─── Clone Parameters ───[/bold cyan]\n")
-
-                hostname = prompt("Hostname", default=default_hostname)
-                if not hostname:
-                    hostname = default_hostname
-
-                target_input = prompt("Target node", default=default_target)
-                if target_input and target_input != node:
-                    target = target_input
-
-                if confirm("Create full clone?", default=False):
-                    full = True
-
-                # Pool selection
-                pools = await client.get_pools()
-                if pools:
-                    pool_options = ["(none)"] + [p.get("poolid", "") for p in pools]
-                    console.print("\n[bold]Pool:[/bold]")
-                    pool_idx = select_menu(pool_options, "Select pool:")
-                    if pool_idx and pool_idx > 0:
-                        pool = pool_options[pool_idx]
-
-                # Tag selection
-                cluster_opts = await client.get_cluster_options()
-                known_tags = set()
-                for r in resources:
-                    for t in r.get("tags", "").split(";"):
-                        t = t.strip()
-                        if t:
-                            known_tags.add(t)
-                cm = _parse_color_map(cluster_opts.get("tag-style", ""))
-                known_tags.update(cm)
-
-                if known_tags:
-                    tag_list = sorted(known_tags)
-                    entries = ["(none)"] + tag_list + ["+ Add custom tag"]
-                    console.print("\n[bold]Tags:[/bold]")
-                    sel = multi_select_menu(entries, "  Tags (Space to toggle, Enter to confirm):")
-                    if sel is not None:
-                        chosen = [entries[i] for i in sel]
-                        result_tags = [t for t in chosen if t not in ("(none)", "+ Add custom tag")]
-                        if "+ Add custom tag" in chosen:
-                            custom = Prompt.ask("  Custom tag name")
-                            if custom and custom.strip():
-                                result_tags.append(custom.strip())
-                        if result_tags:
-                            clone_params["tags"] = ";".join(sorted(result_tags))
-
-                # Get source container storage - try to find storage from container config
-                source_storage = None
-                rootfs = source_config.get("rootfs", "")
-                if rootfs:
-                    # rootfs format is typically "storage:content/path" or just "storage"
-                    if ":" in rootfs:
-                        source_storage = rootfs.split(":")[0]
-                    else:
-                        source_storage = rootfs
-
-                # Storage selection
-                storages = await client.get_storage_list(node)
-                if storages:
-                    storage_names = [s.get("storage", "") for s in storages]
-                    # Pre-select source storage
-                    storage_items = []
-                    default_idx = 0
-                    for i, sn in enumerate(storage_names):
-                        suffix = " (source)" if sn == source_storage else ""
-                        storage_items.append(f"{sn}{suffix}")
-                        if sn == source_storage:
-                            default_idx = i
-                    console.print("\n[bold]Storage:[/bold]")
-                    storage_idx = select_menu(storage_items, "Select storage:")
-                    if storage_idx is not None:
-                        storage = storage_names[storage_idx]
-
-                default_description = f"Cloned from {ctid} to {newid}"
-                description = prompt("Description", default=default_description)
-                description = description if description else None
-
-                # CPU configuration
-                default_cores = source_config.get("cores", "")
-                cores_input = prompt("CPU cores", default=str(default_cores) if default_cores else "")
-                if cores_input:
-                    cores = int(cores_input)
-
-                # Memory configuration
-                default_memory = source_config.get("memory", "")
-                memory_input = prompt("Memory (MB)", default=str(default_memory) if default_memory else "")
-                if memory_input:
-                    memory = int(memory_input)
-
-            # Add optional parameters if provided
-            if hostname:
-                clone_params["hostname"] = hostname
-            if target:
+            if is_template:
+                clone_params["full"] = 1 if full else 0
+            if target and target != source_node:
                 clone_params["target"] = target
-            if full:
-                clone_params["full"] = full
             if pool:
                 clone_params["pool"] = pool
-            if storage:
-                clone_params["storage"] = storage
-            if cores:
-                clone_params["cores"] = cores
-            if memory:
-                clone_params["memory"] = memory
-            if description:
-                clone_params["description"] = description
-            if snapname:
-                clone_params["snapname"] = snapname
 
-            # Display summary
-            clone_type = "full" if full else "linked"
-            print_info(f"\nClone Summary:")
-            print_info(f"  Source:      {ctid}")
-            print_info(f"  Destination: {newid}")
-            print_info(f"  Type:        {clone_type}")
-            if hostname:
-                print_info(f"  Hostname:    {hostname}")
-            if target and target != node:
-                print_info(f"  Target Node: {target}")
-            if pool:
-                print_info(f"  Pool:        {pool}")
-            if storage:
-                print_info(f"  Storage:     {storage}")
-            if description:
-                print_info(f"  Description: {description}")
-            if clone_params.get("tags"):
-                print_info(f"  Tags:        {clone_params['tags']}")
+            post_config: dict[str, Any] = {}
+            if onboot is not None:
+                post_config["onboot"] = 1 if onboot else 0
 
-            if not confirm("\nProceed with clone?", default=True):
-                print_cancelled()
-                raise typer.Exit()
-
-            # Extract tags (not supported by clone API, applied after)
-            clone_tags = clone_params.pop("tags", None)
-
-            try:
-                with Progress(
-                    SpinnerColumn(),
-                    TextColumn("[progress.description]{task.description}"),
-                    console=console,
-                ) as progress:
-                    progress.add_task(
-                        description=f"Cloning container {ctid} to {newid} ({clone_type})...",
-                        total=None,
-                    )
+            async def clone_noninteractive():
+                async with ProxmoxClient(profile_config) as client:
                     upid = await client.clone_container(**clone_params)
+                    console.print(f"\n[cyan]Cloning container {ctid} to {newid}...[/cyan]")
+                    await client.wait_for_task(source_node, upid, timeout=600)
+                    if post_config:
+                        t_node = target if target else source_node
+                        await client.update_container_config(t_node, newid, **post_config)
+                    return newid
 
-                    if wait:
-                        progress.update(0, description=f"Waiting for clone to complete...")
-                        await client.wait_for_task(node, upid, timeout=600)
+            cloned_ctid = asyncio.run(clone_noninteractive())
+            print_success(f"Container {ctid} cloned to {cloned_ctid} successfully!")
+            return
 
-                # Apply tags after clone
-                if clone_tags:
-                    target_node = clone_params.get("target", node)
-                    await client.update_container_config(target_node, newid, tags=clone_tags)
+        # Interactive mode
+        data = source_data
+        clone_cfg: dict[str, Any] = {}
+        post_cfg: dict[str, Any] = {}
 
-                print_success(f"Container {ctid} cloned to {newid} successfully")
-            except PVECliError as e:
-                raise
+        console.print("\n[bold cyan]═══ Container Clone Wizard ═══[/bold cyan]\n")
+
+        # 1. New CTID
+        if newid is not None:
+            clone_cfg["newid"] = newid
+        else:
+            default_ctid = data["next_vmid"]
+            ctid_input = None
+            while ctid_input is None:
+                try:
+                    ctid_str = Prompt.ask("[bold]New CTID[/bold]", default=str(default_ctid))
+                    clone_cfg["newid"] = int(ctid_str)
+                    ctid_input = True
+                except ValueError:
+                    print_error("CTID must be a valid number (e.g., 100, 102)")
+
+        # 2. Hostname
+        if hostname:
+            clone_cfg["hostname"] = hostname
+        else:
+            default_hostname = source_config.get("hostname", f"ct-{clone_cfg['newid']}")
+            hn = Prompt.ask("[bold]Hostname[/bold]", default=default_hostname)
+            clone_cfg["hostname"] = hn.strip() if hn.strip() else default_hostname
+
+        # 3. Pool
+        if pool:
+            clone_cfg["pool"] = pool
+        else:
+            pools = data["pools"]
+            if pools:
+                pool_options = ["(none)"] + [p.get("poolid", "") for p in pools]
+                console.print("\n[bold]Pool:[/bold]")
+                pool_idx = select_menu(pool_options, "Select pool:")
+                if pool_idx and pool_idx > 0:
+                    clone_cfg["pool"] = pool_options[pool_idx]
+
+        # 4. Tags
+        known_tags = set()
+        for r in data["resources"]:
+            for t in r.get("tags", "").split(";"):
+                t = t.strip()
+                if t:
+                    known_tags.add(t)
+        cm = _parse_color_map(data["cluster_options"].get("tag-style", ""))
+        known_tags.update(cm)
+
+        source_tags = source_config.get("tags", "")
+        if known_tags:
+            tag_list = sorted(known_tags)
+            entries = ["(none)"] + tag_list + ["+ Add custom tag"]
+            console.print("\n[bold]Tags:[/bold]")
+            sel = multi_select_menu(entries, "  Tags (Space/toggle, Enter/confirm, rien = copier source):")
+            if not sel:
+                # Nothing selected → copy source tags
+                if source_tags:
+                    post_cfg["tags"] = source_tags
+            else:
+                chosen = [entries[i] for i in sel]
+                if "(none)" not in chosen:
+                    result_tags = [t for t in chosen if t != "+ Add custom tag"]
+                    if "+ Add custom tag" in chosen:
+                        custom = Prompt.ask("  Custom tag name")
+                        if custom and custom.strip():
+                            result_tags.append(custom.strip())
+                    if result_tags:
+                        post_cfg["tags"] = ";".join(sorted(result_tags))
+        else:
+            default_tags = source_tags
+            custom = Prompt.ask("[bold]Tags[/bold] (leave empty for none)", default=default_tags)
+            if custom and custom.strip():
+                post_cfg["tags"] = custom.strip()
+
+        # 5. Start at boot
+        if onboot is not None:
+            post_cfg["onboot"] = 1 if onboot else 0
+        else:
+            post_cfg["onboot"] = 1 if Confirm.ask("[bold]Start at boot?[/bold]", default=False) else 0
+
+        # 6. Clone type (only for templates on thin-provisioned storage)
+        if is_template:
+            if full or not linked_clone_supported:
+                clone_cfg["full"] = 1
+            else:
+                clone_cfg["full"] = 0 if Confirm.ask("[bold]Create linked clone?[/bold]", default=True) else 1
+
+        # 7. Target node
+        if target:
+            clone_cfg["target"] = target
+
+        # Summary
+        console.print("\n[bold cyan]═══ Configuration Summary ═══[/bold cyan]\n")
+        console.print(f"[bold]Source CTID:[/bold] {ctid}")
+        console.print(f"[bold]New CTID:[/bold] {clone_cfg['newid']}")
+        console.print(f"[bold]Hostname:[/bold] {clone_cfg['hostname']}")
+        if "pool" in clone_cfg:
+            console.print(f"[bold]Pool:[/bold] {clone_cfg['pool']}")
+        if "tags" in post_cfg:
+            console.print(f"[bold]Tags:[/bold] {post_cfg['tags']}")
+        if is_template:
+            console.print(f"[bold]Clone Type:[/bold] {'Full' if clone_cfg.get('full') else 'Linked'}")
+        if "target" in clone_cfg:
+            console.print(f"[bold]Target Node:[/bold] {clone_cfg['target']}")
+        console.print(f"[bold]Start at boot:[/bold] {'Yes' if post_cfg.get('onboot') else 'No'}")
+
+        console.print()
+
+        if not Confirm.ask("[bold]Clone container with this configuration?[/bold]", default=True):
+            print_cancelled()
+            return
+
+        target_node = clone_cfg.pop("target", source_node)
+
+        async def clone():
+            async with ProxmoxClient(profile_config) as client:
+                clone_params = {
+                    "node": source_node,
+                    "vmid": ctid,
+                    "newid": clone_cfg.pop("newid"),
+                    "hostname": clone_cfg.pop("hostname"),
+                }
+                if "full" in clone_cfg:
+                    clone_params["full"] = clone_cfg.pop("full")
+                if target_node != source_node:
+                    clone_params["target"] = target_node
+                if "pool" in clone_cfg:
+                    clone_params["pool"] = clone_cfg.pop("pool")
+
+                upid = await client.clone_container(**clone_params)
+                console.print(f"\n[cyan]Cloning container {ctid}...[/cyan]")
+                console.print(f"[cyan]Task ID:[/cyan] {upid}")
+                await client.wait_for_task(source_node, upid, timeout=600)
+
+                if post_cfg:
+                    await client.update_container_config(target_node, clone_params["newid"], **post_cfg)
+
+                return clone_params["newid"]
+
+        cloned_ctid = asyncio.run(clone())
+        print_success(f"Container {ctid} cloned to {cloned_ctid} successfully!")
 
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)
+    except KeyboardInterrupt:
+        console.print()
+        print_cancelled()
+        raise typer.Exit(0)
 
 
 @app.command("remove")
@@ -1790,8 +1812,8 @@ def create_container(
     hostname: str = typer.Option(None, "--hostname", "-ho", help="Container hostname"),
     pool: str = typer.Option(None, "--pool", "-po", help="Pool name"),
     onboot: bool = typer.Option(None, "--onboot/--no-onboot", "-ob", help="Start at boot"),
-    template_storage: str = typer.Option(None, "--template-storage", "-ts", help="Storage for template"),
-    template: str = typer.Option(None, "--template", "-t", help="Template file name (from template-storage)"),
+    template_storage: str = typer.Option(None, "--template-storage", "-ts", help="Storage for LXC image"),
+    template: str = typer.Option(None, "--template", "-t", help="LXC image file name (from template-storage)"),
     unprivileged: bool = typer.Option(True, "--unprivileged/--privileged", "-u/-pr", help="Unprivileged container"),
     password: str = typer.Option(None, "--password", "-pw", help="Root password"),
     cores: int = typer.Option(None, "--cores", "-co", help="Number of CPU cores"),
@@ -2054,12 +2076,12 @@ def create_container(
 
         if known_tags:
             tag_list = sorted(known_tags)
-            entries = ["(none)"] + tag_list + ["+ Add custom tag"]
+            entries = tag_list + ["+ Add custom tag"]
             console.print("\n[bold]Tags:[/bold]")
-            sel = multi_select_menu(entries, "  Tags (Space to toggle, Enter to confirm):")
-            if sel is not None:
+            sel = multi_select_menu(entries, "  Tags (Space/toggle, Enter/confirm, rien = pas de tag):")
+            if sel:
                 chosen = [entries[i] for i in sel]
-                result_tags = [t for t in chosen if t not in ("(none)", "+ Add custom tag")]
+                result_tags = [t for t in chosen if t != "+ Add custom tag"]
                 if "+ Add custom tag" in chosen:
                     custom = Prompt.ask("  Custom tag name")
                     if custom and custom.strip():
@@ -2077,7 +2099,7 @@ def create_container(
         else:
             config["onboot"] = 1 if Confirm.ask("[bold]Start at boot?[/bold]", default=False) else 0
 
-        # 5. Template Selection
+        # 5. Image Selection
         if template_storage and template:
             # Use provided arguments
             async def get_templates():
@@ -2106,26 +2128,26 @@ def create_container(
             else:
                 config["ostemplate"] = f"{template_storage}:vztmpl/{template}"
         else:
-            # Interactive template selection
-            console.print("\n[bold cyan]─── Template Configuration ───[/bold cyan]\n")
+            # Interactive image selection
+            console.print("\n[bold cyan]─── Image Configuration ───[/bold cyan]\n")
 
-            # Get template storages
+            # Get image storages
             template_storages = [s for s in data["storages"] if "vztmpl" in s.get("content", "").split(",")]
 
             if not template_storages:
-                print_error("No storage with container template content found")
+                print_error("No storage with LXC image content found")
                 raise typer.Exit(1)
 
             storage_names = [s.get("storage", "") for s in template_storages]
-            console.print("[bold]Template Storage:[/bold]")
-            storage_idx = select_menu(storage_names, "Select storage for template:")
+            console.print("[bold]Image Storage:[/bold]")
+            storage_idx = select_menu(storage_names, "Select storage for image:")
             if storage_idx is None:
                 print_error("No storage selected")
                 raise typer.Exit(1)
 
             selected_storage = storage_names[storage_idx]
 
-            # Get templates from selected storage
+            # Get images from selected storage
             async def get_templates():
                 async with ProxmoxClient(profile_config) as client:
                     return await client.get_storage_content(node, selected_storage, "vztmpl")
@@ -2133,14 +2155,14 @@ def create_container(
             templates = asyncio.run(get_templates())
 
             if not templates:
-                print_error(f"No templates found in storage {selected_storage}")
+                print_error(f"No images found in storage {selected_storage}")
                 raise typer.Exit(1)
 
             template_names = [tmpl.get("volid", "").split("/")[-1] for tmpl in templates]
-            console.print(f"\n[bold]Template from {selected_storage}:[/bold]")
-            template_idx = select_menu(template_names, "Select template:")
+            console.print(f"\n[bold]Image from {selected_storage}:[/bold]")
+            template_idx = select_menu(template_names, "Select image:")
             if template_idx is None:
-                print_error("No template selected")
+                print_error("No image selected")
                 raise typer.Exit(1)
 
             selected_template = templates[template_idx].get("volid", "")
@@ -2380,19 +2402,18 @@ def create_container(
         raise typer.Exit(0)
 
 
-# Template subcommand group
-template_app = typer.Typer(help="Manage container templates", no_args_is_help=True, cls=ordered_group(["add", "remove", "list"]))
-app.add_typer(template_app, name="template")
+image_app = typer.Typer(help="Manage LXC image files", no_args_is_help=True, cls=ordered_group(["add", "remove", "list"]))
+app.add_typer(image_app, name="image")
 
 
-@template_app.command("list")
+@image_app.command("list")
 @async_to_sync
 async def list_templates(
     node: str = typer.Argument(None, help="Node name"),
     storage: str = typer.Argument(None, help="Storage name"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
-    """List all container templates in a storage."""
+    """List all LXC images in a storage."""
     config_manager = ConfigManager()
 
     try:
@@ -2420,7 +2441,7 @@ async def list_templates(
                 tmpl_storages = [s for s in storages if "vztmpl" in s.get("content", "").split(",")]
                 storage_ids = sorted(s.get("storage", "") for s in tmpl_storages if s.get("storage"))
                 if not storage_ids:
-                    print_info(f"No template storage found on node '{node}'")
+                    print_info(f"No image storage found on node '{node}'")
                     return
                 if len(storage_ids) == 1:
                     storage = storage_ids[0]
@@ -2435,11 +2456,11 @@ async def list_templates(
             templates = await client.get_storage_content(node, storage, "vztmpl")
 
             if not templates:
-                print_info(f"No templates found in storage '{storage}'")
+                print_info(f"No images found in storage '{storage}'")
                 return
 
             table = create_table(
-                "Templates in " + storage,
+                "Images in " + storage,
                 columns=[
                     ("Name", "cyan"),
                     ("Size", "green"),
@@ -2460,7 +2481,7 @@ async def list_templates(
         raise typer.Exit(1)
 
 
-@template_app.command("add")
+@image_app.command("add")
 @async_to_sync
 async def add_template(
     node: str = typer.Argument(None, help="Node name"),
@@ -2468,7 +2489,7 @@ async def add_template(
     name: str = typer.Option(None, "--name", help="Template filename to download"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
-    """Download a container template from the Proxmox template repository."""
+    """Download an LXC image from the Proxmox repository."""
     import subprocess
 
     config_manager = ConfigManager()
@@ -2495,7 +2516,7 @@ async def add_template(
                 tmpl_storages = [s for s in storages if "vztmpl" in s.get("content", "").split(",")]
                 storage_ids = sorted(s.get("storage", "") for s in tmpl_storages if s.get("storage"))
                 if not storage_ids:
-                    print_info(f"No template storage found on node '{node}'")
+                    print_info(f"No image storage found on node '{node}'")
                     return
                 if len(storage_ids) == 1:
                     storage = storage_ids[0]
@@ -2510,18 +2531,18 @@ async def add_template(
             # If no template specified, use fzf to select
             if not name:
                 # Get available templates
-                console.print("[bold cyan]Fetching available templates...[/bold cyan]")
+                console.print("[bold cyan]Fetching available images...[/bold cyan]")
                 available_templates = await client.get_available_templates(node)
 
                 if not available_templates:
-                    # Fallback: ask user to provide template name manually
-                    console.print("[yellow]Could not fetch templates from repository[/yellow]")
-                    console.print("[dim]You can provide the exact template filename manually[/dim]")
+                    # Fallback: ask user to provide image name manually
+                    console.print("[yellow]Could not fetch images from repository[/yellow]")
+                    console.print("[dim]You can provide the exact image filename manually[/dim]")
                     console.print("[dim]Example: debian-12-standard_12.7-1_amd64.tar.zst[/dim]\n")
-                    name = Prompt.ask("[bold]Template filename[/bold]")
+                    name = Prompt.ask("[bold]Image filename[/bold]")
 
                     if not name:
-                        print_error("Template filename is required")
+                        print_error("Image filename is required")
                         raise typer.Exit(1)
                 else:
                     # Extract template names and keep mapping to full template data
@@ -2535,7 +2556,7 @@ async def add_template(
                             template_map[tmpl_name] = tmpl
 
                     if not template_display:
-                        print_error("No templates found in repository")
+                        print_error("No images found in repository")
                         raise typer.Exit(1)
 
                     # Use fzf for multi-selection with fuzzy search
@@ -2557,14 +2578,14 @@ async def add_template(
                         selected_display = [n for n in selected_display if n]  # Remove empty lines
 
                         if not selected_display:
-                            print_info("No templates selected")
+                            print_info("No images selected")
                             return
 
                         # Map back to full template data
                         selected_names = [(name, template_map[name]) for name in selected_display]
 
                     except FileNotFoundError:
-                        print_error("fzf is not installed. Please install fzf to use template selection.")
+                        print_error("fzf is not installed. Please install fzf to use image selection.")
                         print_info("Install with: sudo apt install fzf (or brew install fzf on macOS)")
                         raise typer.Exit(1)
                     except subprocess.TimeoutExpired:
@@ -2582,12 +2603,12 @@ async def add_template(
                     TextColumn("[progress.description]{task.description}"),
                     console=console,
                 ) as progress:
-                    progress.add_task(description=f"Downloading template '{template_name}'...", total=None)
+                    progress.add_task(description=f"Downloading image '{template_name}'...", total=None)
                     upid = await client.download_template(node, storage, template_name, template_data)
                     progress.update(0, description=f"Waiting for download to complete...")
                     await client.wait_for_task(node, upid, timeout=600)
 
-                print_success(f"Template '{template_name}' downloaded successfully to '{storage}'")
+                print_success(f"Image '{template_name}' downloaded successfully to '{storage}'")
 
     except KeyboardInterrupt:
         console.print()
@@ -2597,7 +2618,7 @@ async def add_template(
         raise typer.Exit(1)
 
 
-@template_app.command("remove")
+@image_app.command("remove")
 @async_to_sync
 async def remove_template(
     node: str = typer.Argument(None, help="Node name"),
@@ -2606,7 +2627,7 @@ async def remove_template(
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
-    """Remove a container template from storage."""
+    """Remove an LXC image from storage."""
     config_manager = ConfigManager()
 
     try:
@@ -2631,7 +2652,7 @@ async def remove_template(
                 tmpl_storages = [s for s in storages if "vztmpl" in s.get("content", "").split(",")]
                 storage_ids = sorted(s.get("storage", "") for s in tmpl_storages if s.get("storage"))
                 if not storage_ids:
-                    print_info(f"No template storage found on node '{node}'")
+                    print_info(f"No image storage found on node '{node}'")
                     return
                 if len(storage_ids) == 1:
                     storage = storage_ids[0]
@@ -2647,14 +2668,14 @@ async def remove_template(
             templates = await client.get_storage_content(node, storage, "vztmpl")
 
             if not templates:
-                print_error(f"No templates found in storage '{storage}'")
+                print_error(f"No images found in storage '{storage}'")
                 raise typer.Exit(1)
 
             # If no template specified, show menu
             if not name:
                 template_names = [tmpl.get("volid", "").split("/")[-1] for tmpl in templates]
-                console.print(f"\n[bold]Templates in {storage}:[/bold]")
-                template_idx = select_menu(template_names, "Select template to remove:")
+                console.print(f"\n[bold]Images in {storage}:[/bold]")
+                template_idx = select_menu(template_names, "Select image to remove:")
 
                 if template_idx is None:
                     print_cancelled()
@@ -2676,18 +2697,18 @@ async def remove_template(
                         break
 
                 if not selected_template:
-                    print_error(f"Template '{name}' not found in storage '{storage}'")
+                    print_error(f"Image '{name}' not found in storage '{storage}'")
                     raise typer.Exit(1)
 
             # Confirmation
             if not yes:
-                if not confirm(f"Remove template '{name}' from storage '{storage}'? This cannot be undone!", default=False):
+                if not confirm(f"Remove image '{name}' from storage '{storage}'? This cannot be undone!", default=False):
                     print_cancelled()
                     return
 
             # Remove template
             await client.delete_storage_content(node, storage, volume)
-            print_success(f"Template '{name}' removed successfully from '{storage}'")
+            print_success(f"Image '{name}' removed successfully from '{storage}'")
 
     except KeyboardInterrupt:
         console.print()
@@ -2834,6 +2855,61 @@ async def ct_ssh(
         args = build_ssh_command(ip, ssh_user, ssh_port, ssh_key, jump=jump_host, command=command)
         console.print(f"[dim]Connecting to {ssh_user}@{ip}...[/dim]")
         exec_ssh(args)
+
+    except PVECliError as e:
+        print_error(str(e))
+        raise typer.Exit(1)
+
+
+@app.command("template")
+@async_to_sync
+async def convert_ct_template(
+    ctids: str = typer.Argument(None, help="CT ID(s) - single or comma-separated (e.g., 100 or 100,101,102)"),
+    profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+) -> None:
+    """Convert one or more containers to templates."""
+    config_manager = ConfigManager()
+    try:
+        profile_config = config_manager.get_profile(profile)
+        async with ProxmoxClient(profile_config) as client:
+            ctid_list: list[int] = []
+
+            if ctids is None:
+                cts = await client.get_containers()
+                candidates = sorted(
+                    [ct for ct in cts if not ct.get("template")],
+                    key=lambda x: x.get("vmid", 0),
+                )
+                if not candidates:
+                    print_info("No containers available to convert")
+                    return
+                items = [
+                    f"{ct.get('vmid')} - {ct.get('name', 'unnamed')} ({ct.get('status', '?')})"
+                    for ct in candidates
+                ]
+                sel = multi_select_menu(items, "  Select containers to convert to template:")
+                if not sel:
+                    print_cancelled()
+                    return
+                ctid_list = [candidates[i]["vmid"] for i in sel]
+            else:
+                ctid_list = parse_id_list(ctids, "CT")
+
+            converted = 0
+            for ctid in ctid_list:
+                try:
+                    node, status = await _get_container_node(client, ctid)
+                    if status == "running":
+                        print_warning(f"CT {ctid} is running - stop it first")
+                        continue
+                    await client.convert_container_to_template(node, ctid)
+                    print_success(f"CT {ctid} converted to template")
+                    converted += 1
+                except PVECliError as e:
+                    print_error(f"CT {ctid}: {e}")
+
+            if len(ctid_list) > 1:
+                print_info(f"Summary: {converted}/{len(ctid_list)} converted")
 
     except PVECliError as e:
         print_error(str(e))
