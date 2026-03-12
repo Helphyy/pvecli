@@ -51,10 +51,10 @@ profiles:
 
 | Field | Type | Default | Description |
 |:------|:-----|:--------|:------------|
-| `host` | string | — | Proxmox hostname or IP |
+| `host` | string | - | Proxmox hostname or IP |
 | `port` | integer | `8006` | Proxmox API port |
 | `verify_ssl` | boolean | `true` | Verify TLS certificate. Set to `false` for self-signed certs |
-| `auth` | object | — | Authentication block |
+| `auth` | object | - | Authentication block |
 
 ### auth block
 
@@ -70,7 +70,7 @@ profiles:
 ## Managing profiles
 
 ```bash
-pvecli config add [NAME]       # Interactive wizard — creates a new profile
+pvecli config add [NAME]       # Interactive wizard - creates a new profile
 pvecli config edit [NAME]      # Edit an existing profile
 pvecli config remove [NAME]    # Remove one profile (or --all)
 pvecli config default [NAME]   # Change the default profile
@@ -87,7 +87,7 @@ pvecli config login            # Open the Proxmox web UI in your browser
 1. Open the Proxmox web UI
 2. Navigate to **Datacenter → Permissions → API Tokens**
 3. Click **Add**, select the user, give the token a name, and uncheck *Privilege Separation* if you want full access
-4. Copy the **Token ID** and **Secret** — the secret is only shown once
+4. Copy the **Token ID** and **Secret** - the secret is only shown once
 
 Recommended minimum permissions for pvecli:
 

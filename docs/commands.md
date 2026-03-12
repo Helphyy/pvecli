@@ -42,9 +42,13 @@ pvecli vm shutdown [VMIDS]         Graceful shutdown (--timeout, --force)
 pvecli vm reboot [VMIDS]           Reboot VMs
 pvecli vm suspend [VMIDS]          Suspend VMs
 pvecli vm resume [VMIDS]           Resume suspended VMs
+pvecli vm lock [VMID] [TYPE]       Lock a VM (requires root@pam)
+pvecli vm unlock [VMID]            Unlock a VM (requires root@pam)
+pvecli vm add [NODE]               Create a new VM (interactive)
 pvecli vm clone [VMID]             Clone a VM (interactive, many options)
 pvecli vm edit [VMID]              Edit VM configuration interactively
 pvecli vm remove [VMIDS]           Delete VMs (--purge, --force)
+pvecli vm template [VMIDS]         Convert VMs to templates (single or comma-separated)
 pvecli vm exec [VMID] [CMD]        Run a command via QEMU Guest Agent
 pvecli vm vnc [VMID]               Open VNC console (background by default, --no-background)
 pvecli vm ssh [VMID]               SSH into VM (--jump for jump host)
@@ -83,6 +87,7 @@ pvecli ct reboot [CTIDS]           Reboot containers
 pvecli ct clone [CTID]             Clone a container
 pvecli ct edit [CTID]              Edit container configuration
 pvecli ct remove [CTIDS]           Delete containers (--purge, --force)
+pvecli ct template [CTIDS]         Convert containers to templates (single or comma-separated)
 pvecli ct vnc [CTID]               Open VNC console (background by default, --no-background)
 pvecli ct ssh [CTID]               SSH into container (--jump)
 ```
@@ -102,6 +107,14 @@ pvecli ct snapshot list [CTID]              List snapshots
 pvecli ct snapshot add [CTID] [NAME]        Create a snapshot
 pvecli ct snapshot rollback [CTID] [NAME]   Rollback to a snapshot (--reboot)
 pvecli ct snapshot remove [CTID] [NAME]     Delete a snapshot
+```
+
+### ct image (LXC image files)
+
+```
+pvecli ct image list [NODE] [STORAGE]   List all LXC images in a storage
+pvecli ct image add [NODE] [STORAGE]    Download an LXC image from the Proxmox repository
+pvecli ct image remove [NODE] [STORAGE] Remove an LXC image from storage
 ```
 
 ---

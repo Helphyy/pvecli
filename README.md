@@ -6,7 +6,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.10+-3776AB?logo=python&logoColor=white)](https://www.python.org)
 [![License](https://img.shields.io/badge/license-MIT-22c55e)](LICENSE.txt)
-[![Version](https://img.shields.io/badge/version-1.2.0-6366f1)](https://github.com/Helphyy/pvecli/releases)
+[![Version](https://img.shields.io/badge/version-1.4.0-6366f1)](https://github.com/Helphyy/pvecli/releases)
 [![Proxmox VE](https://img.shields.io/badge/Proxmox-VE-E57000?logo=proxmox&logoColor=white)](https://www.proxmox.com)
 [![pipx](https://img.shields.io/badge/install%20with-pipx-0ea5e9)](https://pipx.pypa.io)
 
@@ -18,12 +18,12 @@
 
 ## Features
 
-- 🎛 **Interactive menus** — Arrow-key navigation for VMs, containers, nodes, tags and storage
-- 🎯 **Multi-target** — `pvecli vm stop 100,101,102` or pick several items from a menu
-- 🌐 **Multi-cluster** — Switch between homelab and production with `--profile`
-- 🖥 **Remote access** — Built-in VNC, SSH (with jump host), and RDP launchers
-- 🎨 **Rich output** — Tables, spinners, colors, and confirmation prompts
-- ⚡ **Async** — Fast parallel API calls via httpx
+- 🎛 **Interactive menus** - Arrow-key navigation for VMs, containers, nodes, tags and storage
+- 🎯 **Multi-target** - `pvecli vm stop 100,101,102` or pick several items from a menu
+- 🌐 **Multi-cluster** - Switch between homelab and production with `--profile`
+- 🖥 **Remote access** - Built-in VNC, SSH (with jump host), and RDP launchers
+- 🎨 **Rich output** - Tables, spinners, colors, and confirmation prompts
+- ⚡ **Async** - Fast parallel API calls via httpx
 
 ---
 
@@ -69,7 +69,7 @@ pvecli vm list
 pvecli ct list
 ```
 
-> Every command works **interactively** when called without arguments — just navigate the menu with arrow keys.
+> Every command works **interactively** when called without arguments - just navigate the menu with arrow keys.
 
 ---
 
@@ -77,11 +77,11 @@ pvecli ct list
 
 | Group | Description |
 |:------|:------------|
-| `pvecli config` | Manage cluster profiles (add, edit, remove, test, default…) |
+| `pvecli config` | Manage cluster profiles (add, edit, remove, test, default) |
 | `pvecli node` | Node info, VNC shell, SSH |
-| `pvecli vm` | Full VM lifecycle — start, stop, clone, snapshot, VNC, SSH, RDP… |
-| `pvecli ct` | LXC container lifecycle |
-| `pvecli storage` | Storage listing and content management (upload, delete…) |
+| `pvecli vm` | Full VM lifecycle - start, stop, clone, template, snapshot, VNC, SSH, RDP |
+| `pvecli ct` | LXC container lifecycle - start, stop, clone, template, snapshot, VNC, SSH |
+| `pvecli storage` | Storage listing and content management (upload, delete) |
 | `pvecli pool` | Resource pool management |
 | `pvecli cluster` | Cluster status, resources, and task log |
 | `pvecli tag` | Global tag management with color palette |
@@ -143,10 +143,10 @@ pytest            # Test
 
 - Config stored at `~/.config/pvecli/config.yaml` with `600` permissions (owner-read only)
 - API token auth recommended over password auth
-- SSL verification enabled by default — use `verify_ssl: false` only for self-signed certificates
+- SSL verification enabled by default - use `verify_ssl: false` only for self-signed certificates
 
 ---
 
 ## License
 
-MIT — see [LICENSE.txt](LICENSE.txt)
+MIT - see [LICENSE.txt](LICENSE.txt)
