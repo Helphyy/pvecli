@@ -3095,6 +3095,7 @@ async def vm_rdp(
     resolution: str = typer.Option(None, "--resolution", "-r", help="Fixed resolution, e.g. 1920x1080 (disables dynamic resize)"),
     scale: int = typer.Option(None, "--scale", "-s", help="Desktop scale factor for HiDPI/4K, e.g. 200"),
     smart_sizing: bool = typer.Option(False, "--smart-sizing", "-S", is_flag=True, help="Scale remote desktop to window size"),
+    mount: list[str] = typer.Option([], "--mount", "-m", help="Share a local folder (repeatable, e.g. -m ~/Documents)"),
     jump: bool = typer.Option(False, "--jump", "-j", is_flag=True, help="Use node as jump host for RDP"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
@@ -3153,6 +3154,10 @@ async def vm_rdp(
             print_error("--smart-sizing (-S) is incompatible with --resolution and --scale (xfreerdp limitation)")
             raise typer.Exit(1)
 
+        if mount and client_type not in ("xfreerdp3", "xfreerdp", "rdesktop"):
+            print_warning(f"--mount is not supported with {client_type}, shared folders will be ignored")
+            mount = []
+
         rdp_user = user or profile_config.rdp_user
         rdp_port = port or profile_config.rdp_port
 
@@ -3185,7 +3190,7 @@ async def vm_rdp(
             rdp_host = "localhost"
             rdp_port = local_port
 
-        args = build_rdp_command(client_type, rdp_host, rdp_port, rdp_user, rdp_password, rdp_domain, fullscreen, resolution, scale, smart_sizing)
+        args = build_rdp_command(client_type, rdp_host, rdp_port, rdp_user, rdp_password, rdp_domain, fullscreen, resolution, scale, smart_sizing, mount or None)
         target = f"{rdp_user}@{rdp_host}" if rdp_user else rdp_host
         console.print(f"[dim]Connecting to {target}:{rdp_port} via {client_type}...[/dim]")
         console.print(

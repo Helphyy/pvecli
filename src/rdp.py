@@ -52,6 +52,7 @@ def build_rdp_command(
     resolution: str | None = None,
     scale: int | None = None,
     smart_sizing: bool = False,
+    mounts: list[str] | None = None,
 ) -> list[str]:
     """Build RDP command arguments for the detected client."""
     if client_type in ("xfreerdp3", "xfreerdp"):
@@ -75,6 +76,12 @@ def build_rdp_command(
         if not smart_sizing and not resolution:
             args.append("+dynamic-resolution")
         args.append("+clipboard")
+        if mounts:
+            for path in mounts:
+                expanded = os.path.expanduser(path)
+                abs_path = os.path.abspath(expanded)
+                share_name = os.path.basename(abs_path) or "root"
+                args.append(f"/drive:{share_name},{abs_path}")
         return args
 
     if client_type == "rdesktop":
@@ -85,6 +92,12 @@ def build_rdp_command(
             args.append("-f")
         if resolution:
             args += ["-g", resolution]
+        if mounts:
+            for path in mounts:
+                expanded = os.path.expanduser(path)
+                abs_path = os.path.abspath(expanded)
+                share_name = os.path.basename(abs_path) or "root"
+                args += ["-r", f"disk:{share_name}={abs_path}"]
         args.append(f"{host}:{port}")
         return args
 
