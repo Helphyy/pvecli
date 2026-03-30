@@ -3164,6 +3164,8 @@ async def vm_rdp(
         # Prompt for credentials
         from getpass import getpass
         rdp_password = getpass("Password: ")
+        if not rdp_password:
+            print_warning("No password provided -- RDP requires authentication (NLA). Connection will likely fail.")
         rdp_domain = domain if domain is not None else (prompt("Domain (empty for none)") or "")
 
         tunnel_proc = None
