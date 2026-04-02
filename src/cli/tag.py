@@ -1,5 +1,6 @@
 """Global tag management commands."""
 
+import json
 from pathlib import Path
 
 import typer
@@ -12,7 +13,7 @@ from ..utils import confirm, console, print_cancelled, print_error, print_succes
 from ..utils.helpers import async_to_sync, ordered_group
 from ..utils.menu import multi_select_menu, select_menu
 
-app = typer.Typer(help="Manage tags globally", no_args_is_help=True, cls=ordered_group(["add", "edit", "remove", "color", "list"]))
+app = typer.Typer(help="Manage tags globally", no_args_is_help=True, cls=ordered_group(["add", "edit", "remove", "color", "export", "import", "list"]))
 color_app = typer.Typer(help="Manage color palette", no_args_is_help=True, cls=ordered_group(["add", "remove", "init", "list"]))
 app.add_typer(color_app, name="color")
 
@@ -493,6 +494,125 @@ async def remove_tag(
                 suffix = f" + {color_removed} color mapping(s)" if color_removed else ""
                 print_success(f"{len(actionable)} tags removed ({names}) from {total_removed} resource(s){suffix}")
 
+    except KeyboardInterrupt:
+        console.print()
+        print_cancelled()
+    except PVECliError as e:
+        print_error(str(e))
+        raise typer.Exit(1)
+
+
+# ── tag export / import ─────────────────────────────────────────────────
+
+
+@app.command("export")
+@async_to_sync
+async def export_tags(
+    output: str = typer.Option("tags.json", "--output", "-o", help="Output file path"),
+    profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+) -> None:
+    """Export all tags and their colors to a JSON file."""
+    config_manager = ConfigManager()
+
+    try:
+        profile_config = config_manager.get_profile(profile)
+
+        async with ProxmoxClient(profile_config) as client:
+            tag_counts = await _collect_all_tags(client)
+            options = await client.get_cluster_options()
+            color_map = _parse_color_map(options.get("tag-style", ""))
+
+            all_tags = sorted(set(tag_counts) | set(color_map))
+
+            if not all_tags:
+                print_warning("No tags found to export")
+                return
+
+            tags_data = []
+            for tag in all_tags:
+                entry: dict[str, str] = {"name": tag}
+                if tag in color_map:
+                    entry["color"] = color_map[tag]
+                tags_data.append(entry)
+
+            out_path = Path(output)
+            with open(out_path, "w") as f:
+                json.dump({"tags": tags_data}, f, indent=2)
+
+            print_success(f"{len(tags_data)} tag(s) exported to {out_path}")
+
+    except PVECliError as e:
+        print_error(str(e))
+        raise typer.Exit(1)
+
+
+@app.command("import")
+@async_to_sync
+async def import_tags(
+    file: str = typer.Argument("tags.json", help="JSON file to import"),
+    force: bool = typer.Option(False, "--force", "-f", is_flag=True, help="Skip existing tags without warning"),
+    profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+) -> None:
+    """Import tags and their colors from a JSON file."""
+    config_manager = ConfigManager()
+
+    try:
+        file_path = Path(file)
+        if not file_path.exists():
+            print_error(f"File not found: {file_path}")
+            raise typer.Exit(1)
+
+        with open(file_path) as f:
+            data = json.load(f)
+
+        tags_to_import = data.get("tags", [])
+        if not tags_to_import:
+            print_warning("No tags found in file")
+            return
+
+        profile_config = config_manager.get_profile(profile)
+
+        async with ProxmoxClient(profile_config) as client:
+            options = await client.get_cluster_options()
+            existing_style = options.get("tag-style", "")
+            color_map = _parse_color_map(existing_style)
+
+            imported = 0
+            skipped = 0
+
+            for tag_entry in tags_to_import:
+                name = tag_entry.get("name", "")
+                color = tag_entry.get("color")
+                if not name:
+                    continue
+
+                if name in color_map:
+                    if force:
+                        skipped += 1
+                        continue
+                    print_warning(f"Tag '{name}' already exists (color: #{color_map[name].split(':')[0]})")
+                    if not confirm(f"  Overwrite tag '{name}'?"):
+                        skipped += 1
+                        continue
+
+                if color:
+                    color_map[name] = color
+                    imported += 1
+
+            if imported:
+                new_style = _build_tag_style(color_map, existing_style)
+                await client.update_cluster_options(**{"tag-style": new_style})
+
+            if imported:
+                print_success(f"{imported} tag(s) imported from {file_path}")
+            if skipped:
+                console.print(f"  [dim]{skipped} tag(s) skipped[/dim]")
+            if not imported and not skipped:
+                print_warning("Nothing to import")
+
+    except json.JSONDecodeError:
+        print_error(f"Invalid JSON file: {file}")
+        raise typer.Exit(1)
     except KeyboardInterrupt:
         console.print()
         print_cancelled()

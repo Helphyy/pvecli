@@ -1,5 +1,8 @@
 """Pool management commands."""
 
+import json
+from pathlib import Path
+
 import typer
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
@@ -21,7 +24,7 @@ from ..utils import (
 from ..utils.helpers import async_to_sync, ordered_group
 from ..utils.menu import multi_select_menu, select_menu
 
-app = typer.Typer(help="Manage resource pools", no_args_is_help=True, cls=ordered_group(["add", "remove", "content", "list", "show"]))
+app = typer.Typer(help="Manage resource pools", no_args_is_help=True, cls=ordered_group(["add", "remove", "content", "export", "import", "list", "show"]))
 content_app = typer.Typer(help="Manage pool members (VMs/CTs)", no_args_is_help=True)
 app.add_typer(content_app, name="content")
 
@@ -159,6 +162,130 @@ async def show_pool(
             )
             console.print(panel)
 
+    except PVECliError as e:
+        print_error(str(e))
+        raise typer.Exit(1)
+
+
+# ── pool export / import ───────────────────────────────────────────────
+
+
+@app.command("export")
+@async_to_sync
+async def export_pools(
+    output: str = typer.Option("pools.json", "--output", "-o", help="Output file path"),
+    profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+) -> None:
+    """Export all pools to a JSON file."""
+    config_manager = ConfigManager()
+
+    try:
+        profile_config = config_manager.get_profile(profile)
+
+        async with ProxmoxClient(profile_config) as client:
+            pools = await client.get("/pools")
+            if isinstance(pools, dict) and "data" in pools:
+                pools = pools.get("data", [])
+            elif not isinstance(pools, list):
+                pools = []
+
+            if not pools:
+                print_warning("No pools found to export")
+                return
+
+            pools_data = []
+            for pool in sorted(pools, key=lambda x: x.get("poolid", "")):
+                entry: dict[str, str] = {"poolid": pool.get("poolid", "")}
+                comment = pool.get("comment", "")
+                if comment:
+                    entry["comment"] = comment
+                pools_data.append(entry)
+
+            out_path = Path(output)
+            with open(out_path, "w") as f:
+                json.dump({"pools": pools_data}, f, indent=2)
+
+            print_success(f"{len(pools_data)} pool(s) exported to {out_path}")
+
+    except PVECliError as e:
+        print_error(str(e))
+        raise typer.Exit(1)
+
+
+@app.command("import")
+@async_to_sync
+async def import_pools(
+    file: str = typer.Argument("pools.json", help="JSON file to import"),
+    force: bool = typer.Option(False, "--force", "-f", is_flag=True, help="Skip existing pools without warning"),
+    profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+) -> None:
+    """Import pools from a JSON file."""
+    config_manager = ConfigManager()
+
+    try:
+        file_path = Path(file)
+        if not file_path.exists():
+            print_error(f"File not found: {file_path}")
+            raise typer.Exit(1)
+
+        with open(file_path) as f:
+            data = json.load(f)
+
+        pools_to_import = data.get("pools", [])
+        if not pools_to_import:
+            print_warning("No pools found in file")
+            return
+
+        profile_config = config_manager.get_profile(profile)
+
+        async with ProxmoxClient(profile_config) as client:
+            existing_pools = await client.get("/pools")
+            if isinstance(existing_pools, dict) and "data" in existing_pools:
+                existing_pools = existing_pools.get("data", [])
+            elif not isinstance(existing_pools, list):
+                existing_pools = []
+            existing_ids = {p.get("poolid", "") for p in existing_pools}
+
+            created = 0
+            skipped = 0
+
+            for pool_entry in pools_to_import:
+                poolid = pool_entry.get("poolid", "")
+                if not poolid:
+                    continue
+
+                if poolid in existing_ids:
+                    if force:
+                        skipped += 1
+                        continue
+                    print_warning(f"Pool '{poolid}' already exists")
+                    if not confirm(f"  Skip pool '{poolid}'?", default=True):
+                        skipped += 1
+                        continue
+                    skipped += 1
+                    continue
+
+                pool_data: dict[str, str] = {"poolid": poolid}
+                comment = pool_entry.get("comment", "")
+                if comment:
+                    pool_data["comment"] = comment
+
+                await client.post("/pools", data=pool_data)
+                created += 1
+
+            if created:
+                print_success(f"{created} pool(s) imported from {file_path}")
+            if skipped:
+                console.print(f"  [dim]{skipped} pool(s) skipped[/dim]")
+            if not created and not skipped:
+                print_warning("Nothing to import")
+
+    except json.JSONDecodeError:
+        print_error(f"Invalid JSON file: {file}")
+        raise typer.Exit(1)
+    except KeyboardInterrupt:
+        console.print()
+        print_cancelled()
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)
