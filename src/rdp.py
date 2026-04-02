@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 
 from .api.exceptions import PVECliError
 
@@ -70,7 +71,7 @@ def build_rdp_command(
                 args.append(f"/size:{resolution}")
             if scale:
                 args.append(f"/scale-desktop:{scale}")
-        args += ["/cert:ignore", "/log-level:FATAL"]
+        args += ["/cert:ignore", "/log-level:ERROR"]
         if fullscreen:
             args.append("/f")
         if not smart_sizing and not resolution:
@@ -114,9 +115,11 @@ def build_rdp_command(
     raise PVECliError(f"Unknown RDP client type: {client_type}")
 
 
-def exec_rdp(args: list[str]) -> subprocess.Popen:
-    """Launch the RDP client in the background and return the process."""
-    return subprocess.Popen(args, stderr=subprocess.DEVNULL)
+def exec_rdp(args: list[str]) -> tuple[subprocess.Popen, tempfile.TemporaryFile]:
+    """Launch the RDP client and return (process, stderr_file)."""
+    stderr_file = tempfile.TemporaryFile()
+    proc = subprocess.Popen(args, stderr=stderr_file)
+    return proc, stderr_file
 
 
 def create_ssh_tunnel(

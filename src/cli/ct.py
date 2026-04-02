@@ -171,7 +171,7 @@ async def list_containers(
         raise typer.Exit(1)
 
 
-@app.command("show")
+@app.command("info")
 @async_to_sync
 async def show_container(
     ctid: int = typer.Argument(None, help="Container ID (CTID)"),

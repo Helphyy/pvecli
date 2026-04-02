@@ -69,7 +69,7 @@ async def list_pools(
         raise typer.Exit(1)
 
 
-@app.command("show")
+@app.command("info")
 @async_to_sync
 async def show_pool(
     poolid: str = typer.Argument(None, help="Pool ID"),

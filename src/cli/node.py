@@ -78,7 +78,7 @@ async def list_nodes(
         raise typer.Exit(1)
 
 
-@app.command("show")
+@app.command("info")
 @async_to_sync
 async def show_node(
     node: str = typer.Argument(None, help="Node name"),

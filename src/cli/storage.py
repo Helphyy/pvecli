@@ -176,7 +176,7 @@ def _render_storage_panel(node: str, storage: str, status: dict, config: dict) -
     return Panel("\n".join(lines), title=f"Storage: {storage}", border_style="blue")
 
 
-@app.command("show")
+@app.command("info")
 @async_to_sync
 async def show_storage(
     node: str = typer.Argument(None, help="Node name"),

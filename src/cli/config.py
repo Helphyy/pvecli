@@ -618,7 +618,7 @@ def list_profiles() -> None:
 # ── config show ──────────────────────────────────────────────────────────
 
 
-@app.command("show")
+@app.command("info")
 def show_profile(
     name: str = typer.Argument(None, help="Profile name"),
     all_profiles: bool = typer.Option(False, "--all", "-a", is_flag=True, help="Show all profiles"),

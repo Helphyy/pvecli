@@ -3,6 +3,7 @@
 import asyncio
 import re
 import shlex
+import subprocess
 import time
 from typing import Any
 
@@ -220,7 +221,7 @@ async def list_vms(
         raise typer.Exit(1)
 
 
-@app.command("show")
+@app.command("info")
 @async_to_sync
 async def show_vm(
     vmid: int = typer.Argument(None, help="VM ID"),
@@ -3194,19 +3195,48 @@ async def vm_rdp(
 
         args = build_rdp_command(client_type, rdp_host, rdp_port, rdp_user, rdp_password, rdp_domain, fullscreen, resolution, scale, smart_sizing, mount or None)
         target = f"{rdp_user}@{rdp_host}" if rdp_user else rdp_host
-        console.print(f"[dim]Connecting to {target}:{rdp_port} via {client_type}...[/dim]")
-        console.print(
-            "[dim]Shortcuts: [bold]Ctrl+Alt+Enter[/bold] fullscreen  "
-            "[bold]Right Ctrl[/bold] release mouse/kbd  "
-            "[bold]Ctrl+Alt+D[/bold] disconnect[/dim]"
-        )
-        rdp_proc = exec_rdp(args)
-        if tunnel_proc:
-            # Keep tunnel alive until RDP session ends
-            try:
-                rdp_proc.wait()
-            finally:
-                tunnel_proc.terminate()
+        rdp_proc, stderr_file = exec_rdp(args)
+        try:
+            rdp_proc.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            # Connection established — show info and detach
+            stderr_file.close()
+            console.print(f"[dim]Connected to {target}:{rdp_port} via {client_type}[/dim]")
+            console.print(
+                "[dim]Shortcuts: [bold]Ctrl+Alt+Enter[/bold] fullscreen  "
+                "[bold]Right Ctrl[/bold] release mouse/kbd  "
+                "[bold]Ctrl+Alt+D[/bold] disconnect[/dim]"
+            )
+            if tunnel_proc:
+                # Clean up tunnel when RDP session ends (in background)
+                import threading
+                def _cleanup_tunnel(rdp: subprocess.Popen, tunnel: subprocess.Popen) -> None:
+                    rdp.wait()
+                    tunnel.terminate()
+                threading.Thread(target=_cleanup_tunnel, args=(rdp_proc, tunnel_proc), daemon=True).start()
+        else:
+            # Exited quickly — check for errors
+            if rdp_proc.returncode != 0:
+                stderr_file.seek(0)
+                stderr = stderr_file.read().decode(errors="replace")
+                stderr_file.close()
+                error_map = {
+                    "LOGON_FAILURE": "Authentication failed (wrong username, password, or domain)",
+                    "CONNECT_TRANSPORT_FAILED": f"Cannot reach {rdp_host}:{rdp_port} (host unreachable or RDP disabled)",
+                    "CONNECT_DNS_NAME_NOT_RESOLVED": f"Cannot resolve hostname: {rdp_host}",
+                    "ACCOUNT_LOCKED_OUT": "Account is locked out",
+                    "ACCOUNT_DISABLED": "Account is disabled",
+                    "PASSWORD_EXPIRED": "Password has expired",
+                    "PASSWORD_MUST_CHANGE": "Password must be changed before first logon",
+                }
+                msg = None
+                for code, friendly in error_map.items():
+                    if code in stderr:
+                        msg = friendly
+                        break
+                print_error(f"RDP connection failed: {msg or f'exit code {rdp_proc.returncode}'}")
+            else:
+                stderr_file.close()
 
     except KeyboardInterrupt:
         console.print()
