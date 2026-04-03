@@ -1563,10 +1563,11 @@ async def unlock_vm(
 async def _exec_on_vm(
     client: ProxmoxClient,
     vmid: int,
-    cmd_parts: list[str],
+    command: str,
     timeout: int,
     show_header: bool = False,
     quiet: bool = False,
+    shell: str | None = None,
 ) -> int:
     """Execute a command on a single VM. Returns the exit code."""
     node, vm_status = await _get_vm_node(client, vmid)
@@ -1577,6 +1578,19 @@ async def _exec_on_vm(
 
     if show_header:
         console.rule(f"[bold]VM {vmid}[/bold]")
+
+    # Pick shell wrapper: explicit --shell flag, or auto-detect from VM ostype
+    if shell is None:
+        config = await client.get_vm_config(node, vmid)
+        ostype = config.get("ostype", "")
+        shell = "cmd" if ostype.startswith("win") else "sh"
+
+    if shell == "powershell":
+        cmd_parts = ["powershell", "-Command", command]
+    elif shell == "cmd":
+        cmd_parts = ["cmd", "/c", command]
+    else:
+        cmd_parts = ["sh", "-c", command]
 
     result = await client.exec_vm_command(node, vmid, cmd_parts)
     pid = result.get("pid")
@@ -1629,6 +1643,7 @@ async def exec_vm_command(
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
     timeout: int = typer.Option(30, "--timeout", "-t", help="Timeout in seconds"),
     quiet: bool = typer.Option(False, "--quiet", "-q", help="Suppress stderr output"),
+    shell: str = typer.Option(None, "--shell", "-s", help="Shell to use: sh (default for Linux), cmd or powershell (Windows)"),
 ) -> None:
     """Execute a command in one or more VMs via QEMU Guest Agent.
 
@@ -1641,6 +1656,7 @@ async def exec_vm_command(
         pvecli vm exec 102,103,104 -- apt install chrony -y
         pvecli vm exec 10{2..5} -- systemctl status chrony
         pvecli vm exec 102 -- 'apt install chrony -y; systemctl restart chrony'
+        pvecli vm exec 106 -s powershell -- Get-Service
     """
     config_manager = ConfigManager()
 
@@ -1678,16 +1694,13 @@ async def exec_vm_command(
                 print_error("Command cannot be empty")
                 raise typer.Exit(1)
 
-            # Wrap in sh -c so shell features (;, |, &&) work on the remote
-            cmd_parts = ["sh", "-c", command]
-
             show_header = len(vmid_list) > 1
             success_count = 0
             fail_count = 0
 
             for vmid in vmid_list:
                 try:
-                    exitcode = await _exec_on_vm(client, vmid, cmd_parts, timeout, show_header, quiet)
+                    exitcode = await _exec_on_vm(client, vmid, command, timeout, show_header, quiet, shell)
                     if exitcode == 0:
                         success_count += 1
                     else:
