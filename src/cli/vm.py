@@ -1566,6 +1566,7 @@ async def _exec_on_vm(
     cmd_parts: list[str],
     timeout: int,
     show_header: bool = False,
+    quiet: bool = False,
 ) -> int:
     """Execute a command on a single VM. Returns the exit code."""
     node, vm_status = await _get_vm_node(client, vmid)
@@ -1601,7 +1602,7 @@ async def _exec_on_vm(
                 console.print(stdout_data, end="")
 
             stderr_data = status.get("err-data")
-            if stderr_data:
+            if stderr_data and not quiet:
                 if exitcode == 0:
                     print_warning("STDERR:")
                 else:
@@ -1627,6 +1628,7 @@ async def exec_vm_command(
     vmids: str = typer.Argument(None, help="VM ID(s) - single or comma-separated (e.g., 100 or 100,101,102)"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
     timeout: int = typer.Option(30, "--timeout", "-t", help="Timeout in seconds"),
+    quiet: bool = typer.Option(False, "--quiet", "-q", help="Suppress stderr output"),
 ) -> None:
     """Execute a command in one or more VMs via QEMU Guest Agent.
 
@@ -1685,7 +1687,7 @@ async def exec_vm_command(
 
             for vmid in vmid_list:
                 try:
-                    exitcode = await _exec_on_vm(client, vmid, cmd_parts, timeout, show_header)
+                    exitcode = await _exec_on_vm(client, vmid, cmd_parts, timeout, show_header, quiet)
                     if exitcode == 0:
                         success_count += 1
                     else:
