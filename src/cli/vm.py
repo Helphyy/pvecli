@@ -1603,7 +1603,10 @@ async def _exec_on_vm(
 
             stderr_data = status.get("err-data")
             if stderr_data:
-                print_error("STDERR:")
+                if exitcode == 0:
+                    print_warning("STDERR:")
+                else:
+                    print_error("STDERR:")
                 console.print(stderr_data, end="")
 
             if exitcode == 0:
