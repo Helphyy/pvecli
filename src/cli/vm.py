@@ -6,6 +6,7 @@ import subprocess
 import time
 from typing import Any
 
+import click
 import typer
 from rich.panel import Panel
 from rich.prompt import Confirm, IntPrompt, Prompt
@@ -1589,6 +1590,8 @@ async def _exec_on_vm(
         cmd_parts = ["powershell", "-Command", command]
     elif shell == "cmd":
         cmd_parts = ["cmd", "/c", command]
+    elif shell == "bash":
+        cmd_parts = ["bash", "-c", command]
     else:
         cmd_parts = ["sh", "-c", command]
 
@@ -1643,7 +1646,7 @@ async def exec_vm_command(
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
     timeout: int = typer.Option(30, "--timeout", "-t", help="Timeout in seconds"),
     quiet: bool = typer.Option(False, "--quiet", "-q", help="Suppress stderr output"),
-    shell: str = typer.Option(None, "--shell", "-s", help="Shell to use: sh (default for Linux), cmd or powershell (Windows)"),
+    shell: str = typer.Option(None, "--shell", "-s", help="Shell override (default: sh on Linux, cmd on Windows)", click_type=click.Choice(["sh", "bash", "cmd", "powershell"])),
 ) -> None:
     """Execute a command in one or more VMs via QEMU Guest Agent.
 
