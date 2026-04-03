@@ -1615,45 +1615,21 @@ async def _exec_on_vm(
         await asyncio.sleep(0.2)
 
 
-def _parse_exec_args(args: list[str]) -> tuple[list[int], str]:
-    """Parse exec positional args into (vmid_list, command_string).
-
-    Leading integer args (or comma-separated integers) are VMIDs.
-    Everything after is the command.
-    """
-    vmids: list[int] = []
-    cmd_start = 0
-
-    for i, arg in enumerate(args):
-        # Check if arg is comma-separated integers (e.g. "102,103,104")
-        parts = arg.split(",")
-        if all(p.strip().isdigit() for p in parts if p.strip()):
-            for p in parts:
-                p = p.strip()
-                if p:
-                    vmids.append(int(p))
-            cmd_start = i + 1
-        else:
-            break
-
-    command = " ".join(args[cmd_start:])
-    return vmids, command
-
-
 @app.command("exec", context_settings={
     "allow_extra_args": True,
-    "allow_interspersed_args": False,
     "ignore_unknown_options": True,
 })
 @async_to_sync
 async def exec_vm_command(
     ctx: typer.Context,
+    vmids: str = typer.Argument(None, help="VM ID(s) - single or comma-separated (e.g., 100 or 100,101,102)"),
+    command: str = typer.Argument(None, help="Command to execute (quoted string)"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
     timeout: int = typer.Option(30, "--timeout", "-t", help="Timeout in seconds"),
 ) -> None:
     """Execute a command in one or more VMs via QEMU Guest Agent.
 
-    Use -- to separate VM IDs from the command (avoids flag conflicts).
+    Use -- to pass the command without quoting (avoids flag conflicts).
 
     Examples:
         pvecli vm exec 102 "id"
@@ -1667,8 +1643,26 @@ async def exec_vm_command(
     try:
         profile_config = config_manager.get_profile(profile)
 
-        # Parse positional args: leading integers = VMIDs, rest = command
-        vmid_list, command = _parse_exec_args(ctx.args)
+        # Build VMID list
+        vmid_list: list[int] = []
+        if vmids:
+            vmid_list = parse_id_list(vmids, "VM")
+
+        # Handle extra args (from -- or brace expansion)
+        extra = list(ctx.args)
+
+        # If 'command' is actually a VMID (digit) and there are extra args, treat it as VMID
+        if command is not None and command.strip().isdigit() and extra:
+            vmid_list.append(int(command))
+            command = None
+
+        # Consume leading integers from extra args as VMIDs
+        while extra and extra[0].isdigit():
+            vmid_list.append(int(extra.pop(0)))
+
+        # Remaining extra args form the command
+        if extra:
+            command = " ".join(extra)
 
         async with ProxmoxClient(profile_config) as client:
             if not vmid_list:
