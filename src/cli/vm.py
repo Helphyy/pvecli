@@ -2,7 +2,6 @@
 
 import asyncio
 import re
-import shlex
 import subprocess
 import time
 from typing import Any
@@ -1639,6 +1638,7 @@ async def exec_vm_command(
         pvecli vm exec 102 -t 60 -- echo hello
         pvecli vm exec 102,103,104 -- apt install chrony -y
         pvecli vm exec 10{2..5} -- systemctl status chrony
+        pvecli vm exec 102 -- 'apt install chrony -y; systemctl restart chrony'
     """
     config_manager = ConfigManager()
 
@@ -1672,16 +1672,12 @@ async def exec_vm_command(
                     return
                 command = command.strip()
 
-            # Parse command
-            try:
-                cmd_parts = shlex.split(command)
-            except ValueError as e:
-                print_error(f"Invalid command syntax: {e}")
-                raise typer.Exit(1)
-
-            if not cmd_parts:
+            if not command.strip():
                 print_error("Command cannot be empty")
                 raise typer.Exit(1)
+
+            # Wrap in sh -c so shell features (;, |, &&) work on the remote
+            cmd_parts = ["sh", "-c", command]
 
             show_header = len(vmid_list) > 1
             success_count = 0
