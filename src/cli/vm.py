@@ -1623,18 +1623,17 @@ async def _exec_on_vm(
 async def exec_vm_command(
     ctx: typer.Context,
     vmids: str = typer.Argument(None, help="VM ID(s) - single or comma-separated (e.g., 100 or 100,101,102)"),
-    command: str = typer.Argument(None, help="Command to execute (quoted string)"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
     timeout: int = typer.Option(30, "--timeout", "-t", help="Timeout in seconds"),
 ) -> None:
     """Execute a command in one or more VMs via QEMU Guest Agent.
 
-    Use -- to pass the command without quoting (avoids flag conflicts).
+    Command must be passed after -- separator.
 
     Examples:
-        pvecli vm exec 102 "id"
-        pvecli vm exec 102 "ls -la /home"
-        pvecli vm exec 102 "echo hello" --timeout 60
+        pvecli vm exec 102 -- id
+        pvecli vm exec 102 -- ls -la /home
+        pvecli vm exec 102 -t 60 -- echo hello
         pvecli vm exec 102,103,104 -- apt install chrony -y
         pvecli vm exec 10{2..5} -- systemctl status chrony
     """
@@ -1643,26 +1642,17 @@ async def exec_vm_command(
     try:
         profile_config = config_manager.get_profile(profile)
 
-        # Build VMID list
+        # Build VMID list from declared arg + extra integers from brace expansion
         vmid_list: list[int] = []
         if vmids:
             vmid_list = parse_id_list(vmids, "VM")
 
-        # Handle extra args (from -- or brace expansion)
+        # Extra args: leading integers are VMIDs (brace expansion), rest is the command
         extra = list(ctx.args)
-
-        # If 'command' is actually a VMID (digit) and there are extra args, treat it as VMID
-        if command is not None and command.strip().isdigit() and extra:
-            vmid_list.append(int(command))
-            command = None
-
-        # Consume leading integers from extra args as VMIDs
         while extra and extra[0].isdigit():
             vmid_list.append(int(extra.pop(0)))
 
-        # Remaining extra args form the command
-        if extra:
-            command = " ".join(extra)
+        command = " ".join(extra) if extra else None
 
         async with ProxmoxClient(profile_config) as client:
             if not vmid_list:
