@@ -1561,46 +1561,131 @@ async def unlock_vm(
         raise typer.Exit(1)
 
 
-@app.command("exec")
+async def _exec_on_vm(
+    client: ProxmoxClient,
+    vmid: int,
+    cmd_parts: list[str],
+    timeout: int,
+    show_header: bool = False,
+) -> int:
+    """Execute a command on a single VM. Returns the exit code."""
+    node, vm_status = await _get_vm_node(client, vmid)
+
+    if vm_status != "running":
+        print_warning(f"VM {vmid} is not running")
+        return -1
+
+    if show_header:
+        console.rule(f"[bold]VM {vmid}[/bold]")
+
+    result = await client.exec_vm_command(node, vmid, cmd_parts)
+    pid = result.get("pid")
+    if pid is None:
+        print_error(f"VM {vmid}: Failed to execute command: No PID returned")
+        return -1
+
+    start_time = time.time()
+
+    while True:
+        elapsed = time.time() - start_time
+        if elapsed > timeout:
+            print_warning(f"VM {vmid}: Command still running after {timeout}s (PID {pid})")
+            return -1
+
+        status = await client.get_vm_exec_status(node, vmid, pid)
+
+        if status.get("exited"):
+            exitcode = status.get("exitcode", -1)
+
+            stdout_data = status.get("out-data")
+            if stdout_data:
+                console.print(stdout_data, end="")
+
+            stderr_data = status.get("err-data")
+            if stderr_data:
+                print_error("STDERR:")
+                console.print(stderr_data, end="")
+
+            if exitcode == 0:
+                print_success(f"VM {vmid}: Exit code: {exitcode}")
+            else:
+                print_error(f"VM {vmid}: Exit code: {exitcode}")
+            return exitcode
+
+        await asyncio.sleep(0.2)
+
+
+def _parse_exec_args(args: list[str]) -> tuple[list[int], str]:
+    """Parse exec positional args into (vmid_list, command_string).
+
+    Leading integer args (or comma-separated integers) are VMIDs.
+    Everything after is the command.
+    """
+    vmids: list[int] = []
+    cmd_start = 0
+
+    for i, arg in enumerate(args):
+        # Check if arg is comma-separated integers (e.g. "102,103,104")
+        parts = arg.split(",")
+        if all(p.strip().isdigit() for p in parts if p.strip()):
+            for p in parts:
+                p = p.strip()
+                if p:
+                    vmids.append(int(p))
+            cmd_start = i + 1
+        else:
+            break
+
+    command = " ".join(args[cmd_start:])
+    return vmids, command
+
+
+@app.command("exec", context_settings={
+    "allow_extra_args": True,
+    "allow_interspersed_args": False,
+    "ignore_unknown_options": True,
+})
 @async_to_sync
 async def exec_vm_command(
-    vmid: int = typer.Argument(None, help="VM ID"),
-    command: str = typer.Argument(None, help="Command to execute"),
+    ctx: typer.Context,
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
     timeout: int = typer.Option(30, "--timeout", "-t", help="Timeout in seconds"),
 ) -> None:
-    """Execute a command in a VM via QEMU Guest Agent.
+    """Execute a command in one or more VMs via QEMU Guest Agent.
+
+    Use -- to separate VM IDs from the command (avoids flag conflicts).
 
     Examples:
         pvecli vm exec 102 "id"
         pvecli vm exec 102 "ls -la /home"
-        pvecli vm exec 102 "cat /etc/os-release"
         pvecli vm exec 102 "echo hello" --timeout 60
+        pvecli vm exec 102,103,104 -- apt install chrony -y
+        pvecli vm exec 10{2..5} -- systemctl status chrony
     """
     config_manager = ConfigManager()
 
     try:
         profile_config = config_manager.get_profile(profile)
 
+        # Parse positional args: leading integers = VMIDs, rest = command
+        vmid_list, command = _parse_exec_args(ctx.args)
+
         async with ProxmoxClient(profile_config) as client:
-            if vmid is None:
+            if not vmid_list:
                 vmid = await _select_vm(client)
                 if vmid is None:
                     print_cancelled()
                     return
-            if command is None:
+                vmid_list = [vmid]
+
+            if not command:
                 command = prompt("Command to execute")
                 if not command or not command.strip():
                     print_cancelled()
                     return
                 command = command.strip()
-            node, vm_status = await _get_vm_node(client, vmid)
 
-            if vm_status != "running":
-                print_warning(f"VM {vmid} is not running")
-                return
-
-            # Parse command - split by spaces but respect quotes
+            # Parse command
             try:
                 cmd_parts = shlex.split(command)
             except ValueError as e:
@@ -1611,58 +1696,25 @@ async def exec_vm_command(
                 print_error("Command cannot be empty")
                 raise typer.Exit(1)
 
-            # Execute command
-            try:
-                result = await client.exec_vm_command(node, vmid, cmd_parts)
-                pid = result.get("pid")
-                if pid is None:
-                    print_error("Failed to execute command: No PID returned")
-                    raise typer.Exit(1)
+            show_header = len(vmid_list) > 1
+            success_count = 0
+            fail_count = 0
 
-                # Poll for command completion
-                start_time = time.time()
+            for vmid in vmid_list:
+                try:
+                    exitcode = await _exec_on_vm(client, vmid, cmd_parts, timeout, show_header)
+                    if exitcode == 0:
+                        success_count += 1
+                    else:
+                        fail_count += 1
+                except PVECliError as e:
+                    print_error(f"VM {vmid}: {str(e)}")
+                    fail_count += 1
 
-                while True:
-                    elapsed = time.time() - start_time
-                    if elapsed > timeout:
-                        print_warning(f"Command still running after {timeout}s (PID {pid})")
-                        raise typer.Exit(1)
+            if show_header:
+                print_info(f"Summary: {success_count} succeeded, {fail_count} failed")
 
-                    try:
-                        status = await client.get_vm_exec_status(node, vmid, pid)
-
-                        # Check if command has exited
-                        if status.get("exited"):
-                            # Command finished, display output
-                            exitcode = status.get("exitcode", -1)
-
-                            # Display stdout
-                            stdout_data = status.get("out-data")
-                            if stdout_data:
-                                console.print(stdout_data, end="")
-
-                            # Display stderr
-                            stderr_data = status.get("err-data")
-                            if stderr_data:
-                                print_error("STDERR:")
-                                console.print(stderr_data, end="")
-
-                            # Display exit code
-                            if exitcode == 0:
-                                print_success(f"Exit code: {exitcode}")
-                            else:
-                                print_error(f"Exit code: {exitcode}")
-                            raise typer.Exit(exitcode)
-
-                    except PVECliError as e:
-                        print_error(f"Failed to get command status: {str(e)}")
-                        raise typer.Exit(1)
-
-                    # Wait before next poll
-                    await asyncio.sleep(0.2)
-
-            except PVECliError as e:
-                print_error(f"Failed to execute command: {str(e)}")
+            if fail_count > 0:
                 raise typer.Exit(1)
 
     except PVECliError as e:
