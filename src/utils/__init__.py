@@ -24,6 +24,7 @@ from .output import (
     print_success,
     print_warning,
     prompt,
+    prompt_vlan,
     usage_bar,
 )
 from .tags import (
@@ -54,6 +55,7 @@ __all__ = [
     "print_success",
     "print_warning",
     "prompt",
+    "prompt_vlan",
     "select_menu",
     "usage_bar",
 ]

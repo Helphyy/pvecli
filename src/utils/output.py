@@ -112,6 +112,21 @@ def prompt(message: str, default: str | None = None) -> str:
     return Prompt.ask(message, default=default)
 
 
+def prompt_vlan(label: str = "VLAN tag", default: str = "") -> str:
+    """Prompt for a VLAN tag and validate it's a valid integer (1-4094).
+
+    Returns:
+        A valid VLAN tag string, or empty string if none.
+    """
+    while True:
+        value = Prompt.ask(label, default=default) if default else Prompt.ask(label, default="")
+        if not value:
+            return ""
+        if value.isdigit() and 1 <= int(value) <= 4094:
+            return value
+        print_error("VLAN tag must be a number between 1 and 4094")
+
+
 def format_bytes(bytes_value: int) -> str:
     """Format bytes to human-readable string.
 

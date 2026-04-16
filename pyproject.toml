@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pvecli"
-version = "1.7.1"
+version = "1.7.2"
 description = "Modern CLI for Proxmox VE API"
 readme = "README.md"
 requires-python = ">=3.10"

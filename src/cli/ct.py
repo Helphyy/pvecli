@@ -27,6 +27,7 @@ from ..utils import (
     print_error,
     print_info,
     prompt,
+    prompt_vlan,
     print_success,
     print_warning,
     select_menu,
@@ -487,7 +488,7 @@ async def _edit_ct_network(config, changes, deletes, client, node):
                     if gw:
                         net_config += f",gw={gw}"
 
-            vlan = Prompt.ask("  VLAN tag (empty for none)", default="")
+            vlan = prompt_vlan("  VLAN tag (empty for none)")
             if vlan:
                 net_config += f",tag={vlan}"
 
@@ -547,7 +548,7 @@ async def _edit_ct_network(config, changes, deletes, client, node):
 
             # VLAN
             current_vlan = params.get("tag", "")
-            new_vlan = Prompt.ask("  VLAN tag", default=current_vlan if current_vlan else "")
+            new_vlan = prompt_vlan("  VLAN tag", default=current_vlan if current_vlan else "")
             if new_vlan:
                 params["tag"] = new_vlan
             elif "tag" in params:
@@ -1911,6 +1912,11 @@ def create_container(
     try:
         profile_config = config_manager.get_profile(profile)
 
+        # Validate VLAN tag early if provided via CLI
+        if vlan is not None and (not vlan.isdigit() or not (1 <= int(vlan) <= 4094)):
+            print_error("VLAN tag must be a number between 1 and 4094")
+            raise typer.Exit(1)
+
         # Node selection if not provided
         if node is None:
             async def _pick_node():
@@ -2400,7 +2406,7 @@ def create_container(
                     # If None (ip6_idx == 3), don't add IPv6 configuration
 
                     # VLAN
-                    vlan = Prompt.ask("\nVLAN tag (leave empty for none)", default="")
+                    vlan = prompt_vlan("\nVLAN tag (leave empty for none)")
                     if vlan:
                         net_config += f",tag={vlan}"
 

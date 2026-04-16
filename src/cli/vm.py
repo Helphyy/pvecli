@@ -30,6 +30,7 @@ from ..utils import (
     print_success,
     print_warning,
     prompt,
+    prompt_vlan,
     reorder_menu,
     select_menu,
     usage_bar,
@@ -708,7 +709,7 @@ async def _edit_vm_network(config, changes, deletes, client, node):
 
             net_config = f"virtio,bridge={bridges[br_idx]}"
 
-            vlan = Prompt.ask("  VLAN tag (empty for none)", default="")
+            vlan = prompt_vlan("  VLAN tag (empty for none)")
             if vlan:
                 net_config += f",tag={vlan}"
 
@@ -751,7 +752,7 @@ async def _edit_vm_network(config, changes, deletes, client, node):
                     params["bridge"] = bridges[br_idx]
 
             current_vlan = params.get("tag", "")
-            new_vlan = Prompt.ask("  VLAN tag", default=current_vlan if current_vlan else "")
+            new_vlan = prompt_vlan("  VLAN tag", default=current_vlan if current_vlan else "")
             if new_vlan:
                 params["tag"] = new_vlan
             elif "tag" in params:
@@ -2454,6 +2455,11 @@ def create_vm(
     try:
         profile_config = config_manager.get_profile(profile)
 
+        # Validate VLAN tag early if provided via CLI
+        if vlan is not None and (not vlan.isdigit() or not (1 <= int(vlan) <= 4094)):
+            print_error("VLAN tag must be a number between 1 and 4094")
+            raise typer.Exit(1)
+
         # Node selection if not provided
         if node is None:
             async def _pick_node():
@@ -3031,7 +3037,7 @@ def create_vm(
                     net_config = f"virtio,bridge={bridge}"
 
                     # VLAN
-                    vlan = Prompt.ask("VLAN tag (leave empty for none)", default="")
+                    vlan = prompt_vlan("VLAN tag (leave empty for none)")
                     if vlan:
                         net_config += f",tag={vlan}"
 
