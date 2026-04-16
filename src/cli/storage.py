@@ -570,10 +570,21 @@ async def download_content(
         if upid and dl_node:
             print_warning("Cancelling download on Proxmox...")
             try:
-                async def _stop():
-                    async with ProxmoxClient(config_manager.get_profile(profile)) as c:
-                        await c.stop_task(dl_node, upid)
-                asyncio.run(_stop())
+                import httpx
+
+                profile_config = config_manager.get_profile(profile)
+                base = f"https://{profile_config.host}:{profile_config.port}/api2/json"
+                headers = {}
+                if profile_config.auth.type == "token":
+                    headers["Authorization"] = (
+                        f"PVEAPIToken={profile_config.auth.user}!"
+                        f"{profile_config.auth.token_name}={profile_config.auth.token_value}"
+                    )
+                with httpx.Client(verify=profile_config.verify_ssl, timeout=10) as hc:
+                    hc.delete(
+                        f"{base}/nodes/{dl_node}/tasks/{upid}",
+                        headers=headers,
+                    )
                 print_warning("Download task cancelled")
             except Exception:
                 print_warning(f"Could not cancel task. Check Proxmox manually (task: {upid})")
