@@ -6,7 +6,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.10+-3776AB?logo=python&logoColor=white)](https://www.python.org)
 [![License](https://img.shields.io/badge/license-MIT-22c55e)](LICENSE.txt)
-[![Version](https://img.shields.io/badge/version-1.4.0-6366f1)](https://github.com/Helphyy/pvecli/releases)
+[![Version](https://img.shields.io/badge/version-1.7.0-6366f1)](https://github.com/Helphyy/pvecli/releases)
 [![Proxmox VE](https://img.shields.io/badge/Proxmox-VE-E57000?logo=proxmox&logoColor=white)](https://www.proxmox.com)
 [![pipx](https://img.shields.io/badge/install%20with-pipx-0ea5e9)](https://pipx.pypa.io)
 
@@ -19,9 +19,11 @@
 ## Features
 
 - 🎛 **Interactive menus** - Arrow-key navigation for VMs, containers, nodes, tags and storage
-- 🎯 **Multi-target** - `pvecli vm stop 100,101,102` or pick several items from a menu
+- 🎯 **Multi-target** - `pvecli vm stop 100,101,102` or ranges `pvecli vm stop 100-105`
 - 🌐 **Multi-cluster** - Switch between homelab and production with `--profile`
 - 🖥 **Remote access** - Built-in VNC, SSH (with jump host), and RDP launchers
+- ⚙️ **Remote exec** - Run commands on VMs via QEMU Guest Agent with shell support
+- 🔌 **Node & cluster power** - Shutdown/reboot nodes or entire clusters with safe orchestration
 - 🎨 **Rich output** - Tables, spinners, colors, and confirmation prompts
 - ⚡ **Async** - Fast parallel API calls via httpx
 
@@ -77,14 +79,14 @@ pvecli ct list
 
 | Group | Description |
 |:------|:------------|
-| `pvecli config` | Manage cluster profiles (add, edit, remove, test, default) |
-| `pvecli node` | Node info, VNC shell, SSH |
-| `pvecli vm` | Full VM lifecycle - start, stop, clone, template, snapshot, VNC, SSH, RDP |
+| `pvecli config` | Manage cluster profiles (add, edit, remove, test, default, login) |
+| `pvecli node` | Node info, shutdown, reboot, VNC shell, SSH |
+| `pvecli vm` | Full VM lifecycle - start, stop, clone, template, snapshot, exec, VNC, SSH, RDP |
 | `pvecli ct` | LXC container lifecycle - start, stop, clone, template, snapshot, VNC, SSH |
-| `pvecli storage` | Storage listing and content management (upload, delete) |
-| `pvecli pool` | Resource pool management |
-| `pvecli cluster` | Cluster status, resources, and task log |
-| `pvecli tag` | Global tag management with color palette |
+| `pvecli storage` | Storage listing, content management (upload, delete), config |
+| `pvecli pool` | Resource pool management with export/import |
+| `pvecli cluster` | Cluster status, resources, tasks, shutdown, reboot |
+| `pvecli tag` | Global tag management with color palette and export/import |
 
 → **[Full command reference](docs/commands.md)**
 
@@ -93,8 +95,14 @@ pvecli ct list
 ## Examples
 
 ```bash
-# Graceful shutdown across several VMs with a 2-minute timeout
-pvecli vm shutdown 100,101,102 --timeout 120
+# Graceful shutdown with a 2-minute timeout (single, list, or range)
+pvecli vm shutdown 100-105 --timeout 120
+
+# Execute a command on multiple VMs via QEMU Guest Agent
+pvecli vm exec 100-103 -- apt update && apt upgrade -y
+
+# Execute with shell override
+pvecli vm exec 106 -s powershell -- Get-Service
 
 # Snapshot before maintenance
 pvecli vm snapshot add 100 pre-update --description "Before system update"
@@ -107,6 +115,16 @@ pvecli vm list --profile production
 
 # Tag containers for organization
 pvecli ct tag add 200 web,production
+
+# Reboot a single node
+pvecli node reboot pve1
+
+# Shutdown the entire cluster (with HA + Ceph handling)
+pvecli cluster shutdown
+
+# Export/import tags and pools between clusters
+pvecli tag export -o tags.json
+pvecli tag import -i tags.json --profile production
 ```
 
 ---

@@ -101,5 +101,6 @@ Recommended minimum permissions for pvecli:
 | `Datastore.Audit` | `/storage` | List storage and content |
 | `Datastore.AllocateSpace` | `/storage` | Upload content |
 | `Sys.Audit` | `/nodes` | Node information |
+| `Sys.PowerMgmt` | `/nodes` | Node shutdown/reboot |
 | `Pool.Audit` | `/pool` | Pool listing |
 | `Pool.Allocate` | `/pool` | Create/delete pools |
