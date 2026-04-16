@@ -460,6 +460,7 @@ async def download_content(
     checksum_algorithm: str = typer.Option(
         None, "--checksum-algorithm", "-ca", help="Checksum algorithm (md5, sha1, sha256, sha512)"
     ),
+    background: bool = typer.Option(False, "--background", "-b", help="Start download and return immediately"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ) -> None:
@@ -469,6 +470,8 @@ async def download_content(
     from rich.progress import Progress, SpinnerColumn, TextColumn
 
     config_manager = ConfigManager()
+    upid = None
+    dl_node = None
 
     try:
         profile_config = config_manager.get_profile(profile)
@@ -478,6 +481,7 @@ async def download_content(
             if result is None:
                 return
             node, storage = result
+            dl_node = node
 
             if not url:
                 url = prompt("  URL")
@@ -536,28 +540,43 @@ async def download_content(
                 print_cancelled()
                 return
 
+            upid = await client.download_url_to_storage(
+                node=node,
+                storage=storage,
+                url=url,
+                filename=filename,
+                content_type=content_type,
+                checksum=checksum,
+                checksum_algorithm=checksum_algorithm,
+            )
+
+            if background:
+                print_success(f"Download started in background (task: {upid})")
+                print_info("Check progress with: pvecli cluster tasks --running")
+                return
+
             with Progress(
                 SpinnerColumn(),
                 TextColumn("[progress.description]{task.description}"),
                 console=console,
             ) as progress:
                 progress.add_task(description=f"Downloading {filename}...", total=None)
-                upid = await client.download_url_to_storage(
-                    node=node,
-                    storage=storage,
-                    url=url,
-                    filename=filename,
-                    content_type=content_type,
-                    checksum=checksum,
-                    checksum_algorithm=checksum_algorithm,
-                )
-                progress.update(0, description="Waiting for download to complete...")
                 await client.wait_for_task(node, upid, timeout=600)
 
             print_success(f"'{filename}' downloaded to '{storage}'")
 
     except (KeyboardInterrupt, asyncio.CancelledError):
         console.print()
+        if upid and dl_node:
+            print_warning("Cancelling download on Proxmox...")
+            try:
+                async def _stop():
+                    async with ProxmoxClient(config_manager.get_profile(profile)) as c:
+                        await c.stop_task(dl_node, upid)
+                asyncio.run(_stop())
+                print_warning("Download task cancelled")
+            except Exception:
+                print_warning(f"Could not cancel task. Check Proxmox manually (task: {upid})")
         print_cancelled()
     except PVECliError as e:
         print_error(str(e))
