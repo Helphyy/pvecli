@@ -1,5 +1,7 @@
 """Storage management commands."""
 
+import asyncio
+
 import typer
 from rich.panel import Panel
 from rich.table import Table
@@ -554,7 +556,7 @@ async def download_content(
 
             print_success(f"'{filename}' downloaded to '{storage}'")
 
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, asyncio.CancelledError):
         console.print()
         print_cancelled()
     except PVECliError as e:
