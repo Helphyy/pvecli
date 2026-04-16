@@ -471,7 +471,6 @@ async def download_content(
 
     config_manager = ConfigManager()
     upid = None
-    dl_node = None
 
     try:
         profile_config = config_manager.get_profile(profile)
@@ -481,7 +480,6 @@ async def download_content(
             if result is None:
                 return
             node, storage = result
-            dl_node = node
 
             if not url:
                 url = prompt("  URL")
@@ -567,27 +565,9 @@ async def download_content(
 
     except (KeyboardInterrupt, asyncio.CancelledError):
         console.print()
-        if upid and dl_node:
-            print_warning("Cancelling download on Proxmox...")
-            try:
-                import httpx
-
-                profile_config = config_manager.get_profile(profile)
-                base = f"https://{profile_config.host}:{profile_config.port}/api2/json"
-                headers = {}
-                if profile_config.auth.type == "token":
-                    headers["Authorization"] = (
-                        f"PVEAPIToken={profile_config.auth.user}!"
-                        f"{profile_config.auth.token_name}={profile_config.auth.token_value}"
-                    )
-                with httpx.Client(verify=profile_config.verify_ssl, timeout=10) as hc:
-                    hc.delete(
-                        f"{base}/nodes/{dl_node}/tasks/{upid}",
-                        headers=headers,
-                    )
-                print_warning("Download task cancelled")
-            except Exception:
-                print_warning(f"Could not cancel task. Check Proxmox manually (task: {upid})")
+        if upid:
+            print_warning(f"Download continues on Proxmox (task: {upid})")
+            print_info("Check progress with: pvecli cluster tasks --running")
         print_cancelled()
     except PVECliError as e:
         print_error(str(e))
