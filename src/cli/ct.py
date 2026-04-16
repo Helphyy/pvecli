@@ -926,7 +926,7 @@ async def _select_cts(client: ProxmoxClient) -> list[int] | None:
 @app.command("start")
 @async_to_sync
 async def start_container(
-    ctids: str = typer.Argument(None, help="Container ID(s) - single or comma-separated (e.g., 100 or 100,101,102)"),
+    ctids: str = typer.Argument(None, help="Container ID(s) - single, comma-separated, or range (e.g., 100, 100,101, 100-105)"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Start one or more containers."""
@@ -992,7 +992,7 @@ async def start_container(
 @app.command("stop")
 @async_to_sync
 async def stop_container(
-    ctids: str = typer.Argument(None, help="Container ID(s) - single or comma-separated (e.g., 100 or 100,101,102)"),
+    ctids: str = typer.Argument(None, help="Container ID(s) - single, comma-separated, or range (e.g., 100, 100,101, 100-105)"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
     timeout: int = typer.Option(None, "--timeout", "-t", help="Timeout in seconds"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
@@ -1063,7 +1063,7 @@ async def stop_container(
 @app.command("shutdown")
 @async_to_sync
 async def shutdown_container(
-    ctids: str = typer.Argument(None, help="Container ID(s) - single or comma-separated (e.g., 100 or 100,101,102)"),
+    ctids: str = typer.Argument(None, help="Container ID(s) - single, comma-separated, or range (e.g., 100, 100,101, 100-105)"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
     timeout: int = typer.Option(60, "--timeout", "-t", help="Timeout before force stop"),
     force: bool = typer.Option(False, "--force", help="Force stop after timeout"),
@@ -1135,7 +1135,7 @@ async def shutdown_container(
 @app.command("reboot")
 @async_to_sync
 async def reboot_container(
-    ctids: str = typer.Argument(None, help="Container ID(s) - single or comma-separated (e.g., 100 or 100,101,102)"),
+    ctids: str = typer.Argument(None, help="Container ID(s) - single, comma-separated, or range (e.g., 100, 100,101, 100-105)"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
     timeout: int = typer.Option(None, "--timeout", "-t", help="Timeout in seconds"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
@@ -1461,12 +1461,11 @@ def clone_container(
 @app.command("remove")
 @async_to_sync
 async def delete_container(
-    ctids: str = typer.Argument(None, help="Container ID(s) - single or comma-separated (e.g., 100 or 100,101,102)"),
+    ctids: str = typer.Argument(None, help="Container ID(s) - single, comma-separated, or range (e.g., 100, 100,101, 100-105)"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
     purge: bool = typer.Option(False, "--purge", help="Remove from backup/HA config"),
     force: bool = typer.Option(False, "--force", "-f", help="Force stop container before deletion"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
-    wait: bool = typer.Option(False, "--wait", "-w", help="Wait for operation to complete"),
 ) -> None:
     """Delete one or more containers."""
     config_manager = ConfigManager()
@@ -1511,12 +1510,12 @@ async def delete_container(
                             wait_desc=f"Waiting for container to stop...",
                         )
 
-                    # Delete container
+                    # Delete container (always wait to catch errors)
                     await run_with_spinner(
                         client, node,
                         f"Deleting container {ctid}...",
                         client.delete_container(node, ctid, purge=purge),
-                        wait_desc=f"Waiting for deletion to complete..." if wait else None,
+                        wait_desc=f"Waiting for deletion to complete...",
                     )
 
                     print_success(f"Container {ctid} deleted successfully")
@@ -1769,7 +1768,6 @@ async def delete_snapshot(
     name: str = typer.Argument(None, help="Snapshot name"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
-    wait: bool = typer.Option(False, "--wait", "-w", help="Wait for operation to complete"),
 ) -> None:
     """Delete a container snapshot."""
     config_manager = ConfigManager()
@@ -1797,13 +1795,89 @@ async def delete_snapshot(
                     return
                 name = snaps[idx].get("name", "")
             await shared_delete_snapshot(
-                client, ctid, "Container", node, name, yes, wait,
+                client, ctid, "Container", node, name, yes,
                 delete_fn=lambda: client.delete_container_snapshot(node, ctid, name),
             )
 
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)
+def _print_ct_create_command(node: str, config: dict, ctid: int) -> None:
+    """Print the full pvecli ct add command to reproduce a container creation."""
+    parts = [f"pvecli ct add {node}"]
+    parts.append(f"--ctid {ctid}")
+    if config.get("hostname"):
+        parts.append(f"--hostname {config['hostname']}")
+    if config.get("pool"):
+        parts.append(f"--pool {config['pool']}")
+    if config.get("onboot"):
+        parts.append("--onboot")
+    else:
+        parts.append("--no-onboot")
+
+    # Template: extract storage and filename from ostemplate
+    ostemplate = config.get("ostemplate", "")
+    if ostemplate:
+        if ":" in ostemplate:
+            t_stor, t_rest = ostemplate.split(":", 1)
+            t_file = t_rest.replace("vztmpl/", "")
+            parts.append(f"--template-storage {t_stor}")
+            parts.append(f"--template {t_file}")
+
+    if config.get("unprivileged"):
+        parts.append("--unprivileged")
+    else:
+        parts.append("--privileged")
+
+    parts.append(f"--cores {config.get('cores', 1)}")
+    parts.append(f"--memory {config.get('memory', 512)}")
+    if config.get("swap") is not None:
+        parts.append(f"--swap {config['swap']}")
+
+    # Root filesystem
+    rootfs = config.get("rootfs", "")
+    if rootfs:
+        rootfs_parts = rootfs.split(",")
+        stor_size = rootfs_parts[0]
+        if ":" in stor_size:
+            r_stor, r_size = stor_size.split(":", 1)
+            parts.append(f"--rootfs-storage {r_stor}")
+            parts.append(f"--rootfs-size {r_size}")
+
+    # Network
+    net0 = config.get("net0", "")
+    if net0:
+        net_params = parse_kv(net0)
+        if net_params.get("bridge"):
+            parts.append(f"--bridge {net_params['bridge']}")
+        ip_val = net_params.get("ip", "")
+        if ip_val:
+            parts.append(f"--ip {ip_val}")
+        gw_val = net_params.get("gw", "")
+        if gw_val:
+            parts.append(f"--gateway {gw_val}")
+        ip6_val = net_params.get("ip6", "")
+        if ip6_val:
+            parts.append(f"--ip6 {ip6_val}")
+        gw6_val = net_params.get("gw6", "")
+        if gw6_val:
+            parts.append(f"--gateway6 {gw6_val}")
+        if net_params.get("tag"):
+            parts.append(f"--vlan {net_params['tag']}")
+        if net_params.get("firewall") == "1":
+            parts.append("--firewall")
+
+    # Features
+    features = config.get("features", "")
+    if "keyctl=1" in features:
+        parts.append("--keyctl")
+    if "fuse=1" in features:
+        parts.append("--fuse")
+
+    cmd = " \\\n    ".join(parts)
+    console.print(f"\n[dim]{cmd}[/dim]\n")
+
+
 @app.command("add")
 def create_container(
     node: str = typer.Argument(None, help="Node name"),
@@ -2393,6 +2467,10 @@ def create_container(
 
         print_success(f"Container {created_ctid} created successfully!")
 
+        # Offer to print the full CLI command for reproduction
+        if Confirm.ask("\n[bold]Print the full creation command?[/bold]", default=False):
+            _print_ct_create_command(node, config, created_ctid)
+
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)
@@ -2864,7 +2942,7 @@ async def ct_ssh(
 @app.command("template")
 @async_to_sync
 async def convert_ct_template(
-    ctids: str = typer.Argument(None, help="CT ID(s) - single or comma-separated (e.g., 100 or 100,101,102)"),
+    ctids: str = typer.Argument(None, help="CT ID(s) - single, comma-separated, or range (e.g., 100, 100,101, 100-105)"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Convert one or more containers to templates."""

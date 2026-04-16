@@ -33,6 +33,39 @@ from .tag import _parse_color_map
 # Helpers
 # ---------------------------------------------------------------------------
 
+async def detect_connected_node(client: ProxmoxClient, profile_host: str) -> str | None:
+    """Detect which cluster node the API is connected to.
+
+    Compares profile host against node IPs from cluster status.
+    Returns node name or None if detection fails.
+    """
+    import socket
+
+    cluster_status = await client.get_cluster_status()
+    nodes = [e for e in cluster_status if e.get("type") == "node"]
+
+    # Try direct IP match
+    for n in nodes:
+        if n.get("ip") == profile_host:
+            return n.get("name")
+
+    # Try resolving the profile host to an IP
+    try:
+        resolved_ip = socket.gethostbyname(profile_host)
+        for n in nodes:
+            if n.get("ip") == resolved_ip:
+                return n.get("name")
+    except socket.gaierror:
+        pass
+
+    # Try hostname match
+    for n in nodes:
+        if n.get("name") == profile_host:
+            return n.get("name")
+
+    return None
+
+
 async def pick_node(client: ProxmoxClient) -> str | None:
     """Interactive single-select for a node. Returns node name or None."""
     nodes = await client.get_nodes()
@@ -76,22 +109,35 @@ def extract_size(config_str: str) -> str:
 
 
 def parse_id_list(raw: str, label: str = "VM") -> list[int]:
-    """Parse comma-separated ID string into list of ints.
+    """Parse comma-separated ID string with optional ranges into list of ints.
 
     Args:
-        raw: Comma-separated string (e.g. "100,101,102").
+        raw: Comma-separated string, supports ranges
+             (e.g. "100", "100,101,102", "100-105", "100-103,200,300-302").
         label: Resource label for error messages ("VM" or "CT").
     """
-    result = []
+    result: list[int] = []
     for part in raw.split(","):
         part = part.strip()
         if not part:
             continue
-        try:
-            result.append(int(part))
-        except ValueError:
-            print_error(f"Invalid {label} ID: '{part}'")
-            raise typer.Exit(1)
+        if "-" in part:
+            bounds = part.split("-", 1)
+            try:
+                start, end = int(bounds[0].strip()), int(bounds[1].strip())
+            except ValueError:
+                print_error(f"Invalid {label} range: '{part}'")
+                raise typer.Exit(1)
+            if start > end:
+                print_error(f"Invalid {label} range: '{part}' (start > end)")
+                raise typer.Exit(1)
+            result.extend(range(start, end + 1))
+        else:
+            try:
+                result.append(int(part))
+            except ValueError:
+                print_error(f"Invalid {label} ID: '{part}'")
+                raise typer.Exit(1)
     if not result:
         print_error(f"No valid {label} IDs provided")
         raise typer.Exit(1)
@@ -604,7 +650,6 @@ async def shared_delete_snapshot(
     node: str,
     name: str,
     yes: bool,
-    wait: bool,
     delete_fn: Callable[..., Coroutine],
 ) -> None:
     """Delete a snapshot from a VM or container."""
@@ -623,9 +668,9 @@ async def shared_delete_snapshot(
         )
         upid = await delete_fn()
 
-        if wait:
-            progress.update(0, description="Waiting for deletion to complete...")
-            await client.wait_for_task(node, upid, timeout=600)
+        # Always wait to catch errors
+        progress.update(0, description="Waiting for deletion to complete...")
+        await client.wait_for_task(node, upid, timeout=600)
 
     print_success(f"Snapshot '{name}' deleted from {label} {resource_id}")
 

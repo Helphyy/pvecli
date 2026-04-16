@@ -7,13 +7,138 @@ from rich.table import Table
 from ..api.client import ProxmoxClient
 from ..api.exceptions import PVECliError
 from ..config import ConfigManager
-from ..utils import console, format_bytes, format_percentage, format_uptime, print_cancelled, print_error, print_info
+from ..utils import (
+    confirm,
+    console,
+    format_bytes,
+    format_percentage,
+    format_uptime,
+    print_cancelled,
+    print_error,
+    print_info,
+    print_success,
+    print_warning,
+)
 from ..utils.helpers import async_to_sync, ordered_group
 from ..utils.menu import select_menu
 from ..utils.network import resolve_node_host
-from ._shared import pick_node
+from ._shared import detect_connected_node, pick_node
 
-app = typer.Typer(help="Manage cluster nodes", no_args_is_help=True, cls=ordered_group(["vnc", "ssh", "list", "show"]))
+app = typer.Typer(
+    help="Manage cluster nodes",
+    no_args_is_help=True,
+    cls=ordered_group(["shutdown", "reboot", "vnc", "ssh", "list", "show"]),
+)
+
+
+@app.command("shutdown")
+@async_to_sync
+async def shutdown_node(
+    node: str = typer.Argument(None, help="Node name"),
+    profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
+) -> None:
+    """Shutdown a node. Proxmox will stop all guests before powering off."""
+    config_manager = ConfigManager()
+
+    try:
+        profile_config = config_manager.get_profile(profile)
+
+        async with ProxmoxClient(profile_config) as client:
+            if not node:
+                node = await pick_node(client)
+                if node is None:
+                    return
+
+            # Check node exists and is online
+            nodes = await client.get_nodes()
+            node_info = next((n for n in nodes if n.get("node") == node), None)
+            if not node_info:
+                print_error(f"Node '{node}' not found")
+                raise typer.Exit(1)
+            if node_info.get("status") != "online":
+                print_error(f"Node '{node}' is not online (status: {node_info.get('status')})")
+                raise typer.Exit(1)
+
+            # Detect if this is the connected node
+            connected = await detect_connected_node(client, profile_config.host)
+            if connected == node:
+                print_warning(
+                    "You are connected to this node. You will lose CLI access after shutdown."
+                )
+
+            if not yes:
+                if not confirm(
+                    f"Shutdown node '{node}'? All guests will be stopped and the node will power off.",
+                    default=False,
+                ):
+                    print_cancelled()
+                    return
+
+            await client.node_command(node, "shutdown")
+            print_success(
+                f"Shutdown command sent to '{node}'. "
+                "Proxmox will stop all guests then power off the node."
+            )
+
+    except PVECliError as e:
+        print_error(str(e))
+        raise typer.Exit(1)
+
+
+@app.command("reboot")
+@async_to_sync
+async def reboot_node(
+    node: str = typer.Argument(None, help="Node name"),
+    profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
+) -> None:
+    """Reboot a node. Proxmox will stop all guests before rebooting."""
+    config_manager = ConfigManager()
+
+    try:
+        profile_config = config_manager.get_profile(profile)
+
+        async with ProxmoxClient(profile_config) as client:
+            if not node:
+                node = await pick_node(client)
+                if node is None:
+                    return
+
+            # Check node exists and is online
+            nodes = await client.get_nodes()
+            node_info = next((n for n in nodes if n.get("node") == node), None)
+            if not node_info:
+                print_error(f"Node '{node}' not found")
+                raise typer.Exit(1)
+            if node_info.get("status") != "online":
+                print_error(f"Node '{node}' is not online (status: {node_info.get('status')})")
+                raise typer.Exit(1)
+
+            # Detect if this is the connected node
+            connected = await detect_connected_node(client, profile_config.host)
+            if connected == node:
+                print_warning(
+                    "You are connected to this node. CLI access will be temporarily lost during reboot."
+                )
+
+            if not yes:
+                if not confirm(
+                    f"Reboot node '{node}'? All guests will be stopped and the node will restart.",
+                    default=False,
+                ):
+                    print_cancelled()
+                    return
+
+            await client.node_command(node, "reboot")
+            print_success(
+                f"Reboot command sent to '{node}'. "
+                "Proxmox will stop all guests then reboot the node."
+            )
+
+    except PVECliError as e:
+        print_error(str(e))
+        raise typer.Exit(1)
 
 
 @app.command("list")

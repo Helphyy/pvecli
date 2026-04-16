@@ -290,6 +290,92 @@ class ProxmoxClient:
         """
         return await self.get(f"/nodes/{node}/status")
 
+    # Node power management
+
+    async def node_command(self, node: str, command: str) -> None:
+        """Send a power command to a node (shutdown or reboot).
+
+        Args:
+            node: Node name
+            command: "shutdown" or "reboot"
+        """
+        await self.post(f"/nodes/{node}/status", data={"command": command})
+
+    async def stopall_node(
+        self, node: str, force_stop: bool = False, timeout: int | None = None
+    ) -> str:
+        """Stop all VMs and containers on a node.
+
+        Args:
+            node: Node name
+            force_stop: Force stop after timeout
+            timeout: Timeout per guest in seconds
+
+        Returns:
+            Task UPID
+        """
+        data: dict[str, Any] = {}
+        if force_stop:
+            data["force-stop"] = 1
+        if timeout is not None:
+            data["timeout"] = timeout
+        return await self.post(f"/nodes/{node}/stopall", data=data or None)
+
+    # Ceph management
+
+    async def get_ceph_status(self, node: str) -> dict[str, Any]:
+        """Get Ceph cluster status via a node.
+
+        Args:
+            node: Node name (any node with Ceph)
+
+        Returns:
+            Ceph status dict
+        """
+        return await self.get(f"/nodes/{node}/ceph/status")
+
+    async def set_ceph_flag(self, flag: str) -> None:
+        """Set a Ceph OSD flag (e.g. noout, nobackfill).
+
+        Args:
+            flag: Flag name
+        """
+        await self.post(f"/cluster/ceph/flags/{flag}")
+
+    async def unset_ceph_flag(self, flag: str) -> None:
+        """Unset a Ceph OSD flag.
+
+        Args:
+            flag: Flag name
+        """
+        await self.delete(f"/cluster/ceph/flags/{flag}")
+
+    # HA management
+
+    async def get_ha_resources(self) -> list[dict[str, Any]]:
+        """Get list of HA-managed resources.
+
+        Returns:
+            List of HA resources
+        """
+        return await self.get("/cluster/ha/resources")
+
+    async def disable_ha_resource(self, sid: str) -> None:
+        """Disable an HA resource.
+
+        Args:
+            sid: Resource SID (e.g. "vm:100")
+        """
+        await self.put(f"/cluster/ha/resources/{sid}", data={"state": "disabled"})
+
+    async def enable_ha_resource(self, sid: str) -> None:
+        """Enable an HA resource.
+
+        Args:
+            sid: Resource SID (e.g. "vm:100")
+        """
+        await self.put(f"/cluster/ha/resources/{sid}", data={"state": "started"})
+
     async def create_vnc_shell(self, node: str, websocket: bool = True) -> dict[str, Any]:
         """Create a VNC shell proxy to a node.
 

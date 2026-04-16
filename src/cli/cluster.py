@@ -1,20 +1,29 @@
 """Cluster management commands."""
 
+import asyncio
+
 import typer
+from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.prompt import Prompt
 from rich.table import Table
 
 from ..api.client import ProxmoxClient
 from ..api.exceptions import PVECliError
 from ..config import ConfigManager
 from ..utils import (
+    confirm,
     console,
     format_bytes,
     format_percentage,
     get_status_color,
+    print_cancelled,
     print_error,
     print_info,
+    print_success,
+    print_warning,
 )
 from ..utils.helpers import async_to_sync
+from ._shared import detect_connected_node
 
 app = typer.Typer(help="Manage cluster", no_args_is_help=True)
 
@@ -302,6 +311,332 @@ async def cluster_tasks(
                 table.add_row(node, task_type, task_id, user, status_str, start_str)
 
             console.print(table)
+
+    except PVECliError as e:
+        print_error(str(e))
+        raise typer.Exit(1)
+
+
+# ---------------------------------------------------------------------------
+# Cluster shutdown / reboot orchestration
+# ---------------------------------------------------------------------------
+
+_CEPH_FLAGS = ["noout", "nobackfill", "norecover", "norebalance"]
+
+
+async def _orchestrate_cluster_power(
+    client: ProxmoxClient,
+    profile_host: str,
+    command: str,
+    yes: bool,
+    skip_ceph: bool,
+    skip_ha: bool,
+    stopall_timeout: int,
+) -> None:
+    """Orchestrate a full cluster shutdown or reboot."""
+    action = "Shutdown" if command == "shutdown" else "Reboot"
+
+    # Track what was done for interrupt recovery messages
+    ha_disabled: list[str] = []
+    ceph_flags_set = False
+
+    try:
+        # ── Phase 0: Gather info ──────────────────────────────────────
+        nodes = await client.get_nodes()
+        online_nodes = [n for n in nodes if n.get("status") == "online"]
+        if not online_nodes:
+            print_error("No online nodes found")
+            raise typer.Exit(1)
+
+        connected_node = await detect_connected_node(client, profile_host)
+
+        # Count running guests per node
+        resources = await client.get_cluster_resources(resource_type="vm")
+        running_per_node: dict[str, int] = {}
+        for r in resources:
+            if r.get("status") == "running":
+                n = r.get("node", "")
+                running_per_node[n] = running_per_node.get(n, 0) + 1
+
+        # Display summary table
+        table = Table(
+            title=f"Cluster {action} Plan",
+            show_header=True,
+            header_style="bold cyan",
+        )
+        table.add_column("Node", style="cyan")
+        table.add_column("Status")
+        table.add_column("Running Guests", justify="right")
+        table.add_column("Role")
+
+        # Order: workers first, connected node last
+        ordered = sorted(
+            online_nodes,
+            key=lambda n: (n.get("node") == connected_node, n.get("node", "")),
+        )
+
+        for n in ordered:
+            name = n.get("node", "")
+            guests = running_per_node.get(name, 0)
+            role = (
+                "[bold yellow]connected (last)[/bold yellow]"
+                if name == connected_node
+                else ""
+            )
+            table.add_row(
+                name,
+                "[green]online[/green]",
+                str(guests) if guests else "-",
+                role,
+            )
+
+        console.print()
+        console.print(table)
+        total_guests = sum(running_per_node.values())
+        console.print(
+            f"\n[bold red]{action} will affect {len(online_nodes)} node(s) "
+            f"and {total_guests} running guest(s).[/bold red]"
+        )
+        if command == "shutdown":
+            console.print("[dim]Nodes will NOT come back automatically.[/dim]")
+
+        # ── Phase 1: Double confirmation ──────────────────────────────
+        if not yes:
+            if not confirm(f"{action} the entire cluster?", default=False):
+                print_cancelled()
+                return
+
+            typed = Prompt.ask(
+                f"[bold red]Type '{action.upper()}' to confirm[/bold red]"
+            )
+            if typed != action.upper():
+                print_cancelled()
+                return
+
+        # ── Phase 2: Disable HA ───────────────────────────────────────
+        if not skip_ha:
+            try:
+                ha_resources = await client.get_ha_resources()
+                active_ha = [
+                    r
+                    for r in ha_resources
+                    if r.get("state") in ("started", "enabled")
+                ]
+                if active_ha:
+                    console.print(
+                        f"\n[bold cyan]── Disabling {len(active_ha)} HA resource(s) ──[/bold cyan]"
+                    )
+                    for r in active_ha:
+                        sid = r.get("sid", "")
+                        with Progress(
+                            SpinnerColumn(),
+                            TextColumn("[progress.description]{task.description}"),
+                            console=console,
+                        ) as progress:
+                            progress.add_task(
+                                description=f"Disabling HA resource {sid}...",
+                                total=None,
+                            )
+                            await client.disable_ha_resource(sid)
+                        ha_disabled.append(sid)
+                        print_success(f"HA resource {sid} disabled")
+                else:
+                    print_info("No active HA resources found")
+            except PVECliError:
+                print_info("HA not configured or not accessible, skipping")
+
+        # ── Phase 3: Ceph flags ───────────────────────────────────────
+        if not skip_ceph:
+            ceph_node = connected_node or ordered[0].get("node", "")
+            try:
+                await client.get_ceph_status(ceph_node)
+                console.print(
+                    "\n[bold cyan]── Setting Ceph maintenance flags ──[/bold cyan]"
+                )
+                for flag in _CEPH_FLAGS:
+                    with Progress(
+                        SpinnerColumn(),
+                        TextColumn("[progress.description]{task.description}"),
+                        console=console,
+                    ) as progress:
+                        progress.add_task(
+                            description=f"Setting Ceph flag: {flag}...",
+                            total=None,
+                        )
+                        await client.set_ceph_flag(flag)
+                ceph_flags_set = True
+                print_success(f"Ceph flags set: {', '.join(_CEPH_FLAGS)}")
+            except PVECliError:
+                print_info("Ceph not detected, skipping flag management")
+
+        # ── Phase 4: Stop all guests ──────────────────────────────────
+        console.print("\n[bold cyan]── Stopping all guests ──[/bold cyan]")
+
+        node_names = [n.get("node", "") for n in ordered]
+        for name in node_names:
+            guests = running_per_node.get(name, 0)
+            if guests == 0:
+                print_info(f"No running guests on '{name}', skipping stopall")
+                continue
+
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console,
+            ) as progress:
+                progress.add_task(
+                    description=f"Stopping {guests} guest(s) on '{name}'...",
+                    total=None,
+                )
+                upid = await client.stopall_node(name, timeout=stopall_timeout)
+                await client.wait_for_task(
+                    name, upid, timeout=stopall_timeout + 60
+                )
+            print_success(f"All guests stopped on '{name}'")
+
+        # ── Phase 5: Shutdown/reboot nodes ────────────────────────────
+        console.print(f"\n[bold cyan]── Sending {command} to nodes ──[/bold cyan]")
+
+        # Workers first (all except connected)
+        for n in ordered:
+            name = n.get("node", "")
+            if name == connected_node:
+                continue
+            await client.node_command(name, command)
+            print_success(f"{action} command sent to '{name}'")
+            await asyncio.sleep(2)
+
+        # Connected node last
+        if connected_node:
+            console.print(
+                f"\n[bold yellow]About to {command} the connected node "
+                f"'{connected_node}'. CLI access will be lost.[/bold yellow]"
+            )
+            await client.node_command(connected_node, command)
+            print_success(f"{action} command sent to '{connected_node}'")
+        elif ordered:
+            # Could not detect connected node — send to last in order
+            last = ordered[-1].get("node", "")
+            await client.node_command(last, command)
+            print_success(f"{action} command sent to '{last}'")
+
+        # ── Post-action reminders ─────────────────────────────────────
+        console.print()
+        if command == "reboot":
+            reminders = []
+            if ceph_flags_set:
+                reminders.append(
+                    "Unset Ceph flags: "
+                    + ", ".join(f"ceph osd unset {f}" for f in _CEPH_FLAGS)
+                )
+            if ha_disabled:
+                reminders.append(
+                    "Re-enable HA resources: " + ", ".join(ha_disabled)
+                )
+            if reminders:
+                console.print(
+                    "[bold yellow]── After reboot, remember to: ──[/bold yellow]"
+                )
+                for r in reminders:
+                    console.print(f"  • {r}")
+                console.print()
+
+        print_success(f"Cluster {command} complete.")
+
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        console.print()
+        print_warning("Interrupted!")
+        if ha_disabled:
+            print_warning(f"HA resources were disabled: {', '.join(ha_disabled)}")
+            print_warning("You may need to re-enable them manually.")
+        if ceph_flags_set:
+            print_warning(f"Ceph flags were set: {', '.join(_CEPH_FLAGS)}")
+            print_warning("You may need to unset them manually.")
+        raise typer.Exit(1)
+
+
+@app.command("shutdown")
+@async_to_sync
+async def cluster_shutdown(
+    profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
+    skip_ceph: bool = typer.Option(
+        False, "--skip-ceph", help="Skip setting Ceph OSD flags"
+    ),
+    skip_ha: bool = typer.Option(
+        False, "--skip-ha", help="Skip disabling HA resources"
+    ),
+    timeout: int = typer.Option(
+        300, "--timeout", "-t", help="Timeout for stopping guests per node (seconds)"
+    ),
+) -> None:
+    """Shutdown the entire cluster (all nodes).
+
+    Orchestrates a safe cluster shutdown:
+    1. Disables HA resources (prevents migration during shutdown)
+    2. Sets Ceph maintenance flags if Ceph is detected
+    3. Stops all guests on each node
+    4. Shuts down nodes (connected node last)
+    """
+    config_manager = ConfigManager()
+
+    try:
+        profile_config = config_manager.get_profile(profile)
+
+        async with ProxmoxClient(profile_config) as client:
+            await _orchestrate_cluster_power(
+                client,
+                profile_config.host,
+                command="shutdown",
+                yes=yes,
+                skip_ceph=skip_ceph,
+                skip_ha=skip_ha,
+                stopall_timeout=timeout,
+            )
+
+    except PVECliError as e:
+        print_error(str(e))
+        raise typer.Exit(1)
+
+
+@app.command("reboot")
+@async_to_sync
+async def cluster_reboot(
+    profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
+    skip_ceph: bool = typer.Option(
+        False, "--skip-ceph", help="Skip setting Ceph OSD flags"
+    ),
+    skip_ha: bool = typer.Option(
+        False, "--skip-ha", help="Skip disabling HA resources"
+    ),
+    timeout: int = typer.Option(
+        300, "--timeout", "-t", help="Timeout for stopping guests per node (seconds)"
+    ),
+) -> None:
+    """Reboot the entire cluster (all nodes).
+
+    Orchestrates a safe cluster reboot:
+    1. Disables HA resources (prevents migration during reboot)
+    2. Sets Ceph maintenance flags if Ceph is detected
+    3. Stops all guests on each node
+    4. Reboots nodes (connected node last)
+    """
+    config_manager = ConfigManager()
+
+    try:
+        profile_config = config_manager.get_profile(profile)
+
+        async with ProxmoxClient(profile_config) as client:
+            await _orchestrate_cluster_power(
+                client,
+                profile_config.host,
+                command="reboot",
+                yes=yes,
+                skip_ceph=skip_ceph,
+                skip_ha=skip_ha,
+                stopall_timeout=timeout,
+            )
 
     except PVECliError as e:
         print_error(str(e))

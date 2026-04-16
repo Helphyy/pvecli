@@ -1057,7 +1057,7 @@ async def edit_vm(
 @app.command("start")
 @async_to_sync
 async def start_vm(
-    vmids: str = typer.Argument(None, help="VM ID(s) - single or comma-separated (e.g., 100 or 100,101,102)"),
+    vmids: str = typer.Argument(None, help="VM ID(s) - single, comma-separated, or range (e.g., 100, 100,101, 100-105)"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Start one or more VMs."""
@@ -1124,7 +1124,7 @@ async def start_vm(
 @app.command("stop")
 @async_to_sync
 async def stop_vm(
-    vmids: str = typer.Argument(None, help="VM ID(s) - single or comma-separated (e.g., 100 or 100,101,102)"),
+    vmids: str = typer.Argument(None, help="VM ID(s) - single, comma-separated, or range (e.g., 100, 100,101, 100-105)"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
     timeout: int = typer.Option(None, "--timeout", "-t", help="Timeout in seconds"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
@@ -1198,7 +1198,7 @@ async def stop_vm(
 @app.command("shutdown")
 @async_to_sync
 async def shutdown_vm(
-    vmids: str = typer.Argument(None, help="VM ID(s) - single or comma-separated (e.g., 100 or 100,101,102)"),
+    vmids: str = typer.Argument(None, help="VM ID(s) - single, comma-separated, or range (e.g., 100, 100,101, 100-105)"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
     timeout: int = typer.Option(60, "--timeout", "-t", help="Timeout before force stop"),
     force: bool = typer.Option(False, "--force", help="Force stop after timeout"),
@@ -1273,7 +1273,7 @@ async def shutdown_vm(
 @app.command("reboot")
 @async_to_sync
 async def reboot_vm(
-    vmids: str = typer.Argument(None, help="VM ID(s) - single or comma-separated (e.g., 100 or 100,101,102)"),
+    vmids: str = typer.Argument(None, help="VM ID(s) - single, comma-separated, or range (e.g., 100, 100,101, 100-105)"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
     timeout: int = typer.Option(None, "--timeout", "-t", help="Timeout in seconds"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
@@ -1347,7 +1347,7 @@ async def reboot_vm(
 @app.command("suspend")
 @async_to_sync
 async def suspend_vm(
-    vmids: str = typer.Argument(None, help="VM ID(s) - single or comma-separated (e.g., 100 or 100,101,102)"),
+    vmids: str = typer.Argument(None, help="VM ID(s) - single, comma-separated, or range (e.g., 100, 100,101, 100-105)"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ) -> None:
@@ -1419,7 +1419,7 @@ async def suspend_vm(
 @app.command("resume")
 @async_to_sync
 async def resume_vm(
-    vmids: str = typer.Argument(None, help="VM ID(s) - single or comma-separated (e.g., 100 or 100,101,102)"),
+    vmids: str = typer.Argument(None, help="VM ID(s) - single, comma-separated, or range (e.g., 100, 100,101, 100-105)"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ) -> None:
@@ -1642,7 +1642,7 @@ async def _exec_on_vm(
 @async_to_sync
 async def exec_vm_command(
     ctx: typer.Context,
-    vmids: str = typer.Argument(None, help="VM ID(s) - single or comma-separated (e.g., 100 or 100,101,102)"),
+    vmids: str = typer.Argument(None, help="VM ID(s) - single, comma-separated, or range (e.g., 100, 100,101, 100-105)"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
     timeout: int = typer.Option(30, "--timeout", "-t", help="Timeout in seconds"),
     quiet: bool = typer.Option(False, "--quiet", "-q", help="Suppress stderr output"),
@@ -1972,12 +1972,11 @@ def clone_vm(
 @app.command("remove")
 @async_to_sync
 async def delete_vm(
-    vmids: str = typer.Argument(None, help="VM ID(s) - single or comma-separated (e.g., 100 or 100,101,102)"),
+    vmids: str = typer.Argument(None, help="VM ID(s) - single, comma-separated, or range (e.g., 100, 100,101, 100-105)"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
     purge: bool = typer.Option(False, "--purge", help="Remove from backup/HA config"),
     force: bool = typer.Option(False, "--force", "-f", help="Force stop VM before deletion"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
-    wait: bool = typer.Option(False, "--wait", "-w", help="Wait for operation to complete"),
 ) -> None:
     """Delete one or more VMs."""
     config_manager = ConfigManager()
@@ -2024,12 +2023,12 @@ async def delete_vm(
                             f"Waiting for VM to stop...",
                         )
 
-                    # Delete VM
+                    # Delete VM (always wait to catch errors)
                     await run_with_spinner(
                         client, node,
                         f"Deleting VM {vmid}...",
                         client.delete_vm(node, vmid, purge=purge),
-                        f"Waiting for deletion to complete..." if wait else None,
+                        f"Waiting for deletion to complete...",
                     )
 
                     print_success(f"VM {vmid} deleted successfully")
@@ -2282,7 +2281,6 @@ async def delete_snapshot(
     name: str = typer.Argument(None, help="Snapshot name"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
-    wait: bool = typer.Option(False, "--wait", "-w", help="Wait for operation to complete"),
 ) -> None:
     """Delete a VM snapshot."""
     config_manager = ConfigManager()
@@ -2310,13 +2308,112 @@ async def delete_snapshot(
                     return
                 name = snaps[idx].get("name", "")
             await shared_delete_snapshot(
-                client, vmid, "VM", node, name, yes, wait,
+                client, vmid, "VM", node, name, yes,
                 delete_fn=lambda: client.delete_vm_snapshot(node, vmid, name),
             )
 
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)
+
+
+def _print_create_command(
+    node: str, config: dict[str, Any], vmid: int, is_windows: bool
+) -> None:
+    """Print the full pvecli vm add command to reproduce a VM creation."""
+    # Map ostype back to os-type/os-version
+    ostype = config.get("ostype", "l26")
+    ostype_map = {
+        "l26": ("linux", "6.x"), "l24": ("linux", "2.4"),
+        "win11": ("windows", "11/2022/2025"), "win10": ("windows", "10/2016/2019"),
+        "win8": ("windows", "8/2012"), "win7": ("windows", "7/2008"),
+        "wxp": ("windows", "xp/2003"), "w2k": ("windows", "2000"),
+    }
+    os_type_str, os_version_str = ostype_map.get(ostype, ("linux", "6.x"))
+
+    parts = [f"pvecli vm add {node}"]
+    parts.append(f"--vmid {vmid}")
+    if config.get("name"):
+        parts.append(f"--name {config['name']}")
+    if config.get("pool"):
+        parts.append(f"--pool {config['pool']}")
+    if config.get("onboot"):
+        parts.append("--onboot")
+    else:
+        parts.append("--no-onboot")
+
+    # ISO: extract storage and filename from ide2
+    ide2 = config.get("ide2", "")
+    if ide2:
+        # Format: "storage:iso/filename,media=cdrom" or "storage:volid,media=cdrom"
+        iso_part = ide2.replace(",media=cdrom", "")
+        if ":iso/" in iso_part:
+            iso_stor, iso_file = iso_part.split(":iso/", 1)
+            parts.append(f"--iso-storage {iso_stor}")
+            parts.append(f"--iso {iso_file}")
+
+    parts.append(f"--os-type {os_type_str}")
+    parts.append(f"--os-version '{os_version_str}'")
+
+    if not config.get("agent"):
+        parts.append("--no-agent")
+
+    parts.append(f"--sockets {config.get('sockets', 1)}")
+    parts.append(f"--cores {config.get('cores', 2)}")
+    if config.get("vcpus"):
+        parts.append(f"--vcpus {config['vcpus']}")
+    if config.get("cpu"):
+        parts.append(f"--cpu-type {config['cpu']}")
+    parts.append(f"--memory {config.get('memory', 2048)}")
+
+    # Disk
+    disk_key = "scsi0" if is_windows else "virtio0"
+    disk_val = config.get(disk_key, "")
+    if disk_val:
+        # Format: "storage:size,format=fmt"
+        disk_parts = disk_val.split(",")
+        stor_size = disk_parts[0]  # "storage:size"
+        if ":" in stor_size:
+            d_stor, d_size = stor_size.split(":", 1)
+            parts.append(f"--disk-storage {d_stor}")
+            parts.append(f"--disk-size {d_size}")
+        for dp in disk_parts[1:]:
+            if dp.startswith("format="):
+                parts.append(f"--disk-format {dp[7:]}")
+
+    # Network
+    net0 = config.get("net0", "")
+    if net0:
+        net_params = parse_kv(net0)
+        if net_params.get("bridge"):
+            parts.append(f"--bridge {net_params['bridge']}")
+        if net_params.get("tag"):
+            parts.append(f"--vlan {net_params['tag']}")
+        if net_params.get("firewall") == "1":
+            parts.append("--firewall")
+        if net_params.get("link_down") == "1":
+            parts.append("--link-down")
+
+    # Windows extras
+    if is_windows:
+        ide3 = config.get("ide3", "")
+        if ide3:
+            viso_part = ide3.replace(",media=cdrom", "")
+            if ":iso/" in viso_part:
+                viso_stor, viso_file = viso_part.split(":iso/", 1)
+                parts.append(f"--virtio-iso-storage {viso_stor}")
+                parts.append(f"--virtio-iso {viso_file}")
+        tpm = config.get("tpmstate0", "")
+        if tpm:
+            tpm_stor = tpm.split(":")[0]
+            parts.append(f"--tpm-storage {tpm_stor}")
+        efi = config.get("efidisk0", "")
+        if efi:
+            efi_stor = efi.split(":")[0]
+            parts.append(f"--efi-storage {efi_stor}")
+
+    cmd = " \\\n    ".join(parts)
+    console.print(f"\n[dim]{cmd}[/dim]\n")
 
 
 @app.command("add")
@@ -2984,6 +3081,10 @@ def create_vm(
 
         print_success(f"VM {created_vmid} created successfully!")
 
+        # Offer to print the full CLI command for reproduction
+        if Confirm.ask("\n[bold]Print the full creation command?[/bold]", default=False):
+            _print_create_command(node, config, created_vmid, is_windows)
+
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)
@@ -3302,7 +3403,7 @@ async def vm_rdp(
 @app.command("template")
 @async_to_sync
 async def convert_vm_template(
-    vmids: str = typer.Argument(None, help="VM ID(s) - single or comma-separated (e.g., 100 or 100,101,102)"),
+    vmids: str = typer.Argument(None, help="VM ID(s) - single, comma-separated, or range (e.g., 100, 100,101, 100-105)"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Convert one or more VMs to templates."""
