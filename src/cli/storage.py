@@ -532,7 +532,7 @@ async def download_content(
             if checksum:
                 console.print(f"  Checksum: {checksum} ({checksum_algorithm or 'auto'})")
 
-            if not yes and not confirm("Start download?"):
+            if not yes and not confirm("Start download?", default=True):
                 print_cancelled()
                 return
 
