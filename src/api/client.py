@@ -1622,6 +1622,41 @@ class ProxmoxClient:
         }
         return await self.post(f"/nodes/{node}/storage/{storage}/download-url", data=data)
 
+    async def download_url_to_storage(
+        self,
+        node: str,
+        storage: str,
+        url: str,
+        filename: str,
+        content_type: str,
+        checksum: str | None = None,
+        checksum_algorithm: str | None = None,
+    ) -> str:
+        """Download a file from URL directly to Proxmox storage.
+
+        Args:
+            node: Node name
+            storage: Storage ID
+            url: URL to download from
+            filename: Target filename
+            content_type: Content type (iso, vztmpl, import)
+            checksum: Expected checksum
+            checksum_algorithm: Checksum algorithm (md5, sha1, sha256, sha512)
+
+        Returns:
+            Task UPID
+        """
+        data: dict[str, Any] = {
+            "url": url,
+            "filename": filename,
+            "content": content_type,
+        }
+        if checksum:
+            data["checksum"] = checksum
+        if checksum_algorithm:
+            data["checksum-algorithm"] = checksum_algorithm
+        return await self.post(f"/nodes/{node}/storage/{storage}/download-url", data=data)
+
     async def upload_storage_content(
         self,
         node: str,

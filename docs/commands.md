@@ -146,9 +146,10 @@ pvecli ct image remove [NODE] [STORAGE] Remove an LXC image from storage
 pvecli storage list                         List all storage (--node)
 pvecli storage info [NODE] [STORAGE]        Show storage details & config
 pvecli storage config [NODE] [STORAGE]      Edit content types interactively
-pvecli storage content list [NODE] [STOR]   List content (--type filter)
-pvecli storage content add [NODE] [STOR]    Upload ISO / template / import disk
-pvecli storage content remove [NODE] [STOR] Delete content
+pvecli storage content list [NODE] [STOR]     List content (--type filter)
+pvecli storage content add [NODE] [STOR]      Upload from local file (--source-file, --type)
+pvecli storage content download [NODE] [STOR] Download from URL (--url, --filename, --type)
+pvecli storage content remove [NODE] [STOR]   Delete content
 ```
 
 ---

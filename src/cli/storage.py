@@ -446,6 +446,123 @@ async def add_content(
         raise typer.Exit(1)
 
 
+@content_app.command("download")
+@async_to_sync
+async def download_content(
+    node: str = typer.Argument(None, help="Node name"),
+    storage: str = typer.Argument(None, help="Storage ID"),
+    url: str = typer.Option(None, "--url", "-u", help="URL to download from"),
+    filename: str = typer.Option(None, "--filename", "-f", help="Target filename (default: extracted from URL)"),
+    content_type: str = typer.Option(None, "--type", "-t", help="Content type: iso or vztmpl"),
+    checksum: str = typer.Option(None, "--checksum", "-c", help="Expected checksum"),
+    checksum_algorithm: str = typer.Option(
+        None, "--checksum-algorithm", "-ca", help="Checksum algorithm (md5, sha1, sha256, sha512)"
+    ),
+    profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
+) -> None:
+    """Download content from a URL directly to Proxmox storage."""
+    from urllib.parse import unquote, urlparse
+
+    from rich.progress import Progress, SpinnerColumn, TextColumn
+
+    config_manager = ConfigManager()
+
+    try:
+        profile_config = config_manager.get_profile(profile)
+
+        async with ProxmoxClient(profile_config) as client:
+            result = await _resolve_node_storage(client, node, storage)
+            if result is None:
+                return
+            node, storage = result
+
+            if not url:
+                url = prompt("  URL")
+                if not url or not url.strip():
+                    print_error("URL cannot be empty")
+                    raise typer.Exit(1)
+                url = url.strip()
+
+            # Extract default filename from URL
+            parsed = urlparse(url)
+            url_filename = unquote(parsed.path.rsplit("/", 1)[-1]) if parsed.path else ""
+
+            if not filename:
+                if url_filename:
+                    user_input = prompt(f"  Filename [{url_filename}]")
+                    filename = user_input.strip() if user_input.strip() else url_filename
+                else:
+                    filename = prompt("  Filename")
+                    if not filename or not filename.strip():
+                        print_error("Filename cannot be empty")
+                        raise typer.Exit(1)
+                    filename = filename.strip()
+
+            # Auto-detect content type from filename
+            valid_types = ["iso", "vztmpl"]
+            if not content_type:
+                if filename.endswith((".iso", ".img")):
+                    guessed = "iso"
+                elif filename.endswith((".tar.gz", ".tar.xz", ".tar.zst")):
+                    guessed = "vztmpl"
+                else:
+                    guessed = None
+
+                if guessed:
+                    console.print(f"  [dim]Detected content type: {guessed}[/dim]")
+                    content_type = guessed
+                else:
+                    idx = select_menu(valid_types, "  Content type:")
+                    if idx is None:
+                        print_cancelled()
+                        return
+                    content_type = valid_types[idx]
+            elif content_type not in valid_types:
+                print_error(f"Invalid content type '{content_type}'. Valid: {', '.join(valid_types)}")
+                raise typer.Exit(1)
+
+            console.print(f"\n[bold]Download details:[/bold]")
+            console.print(f"  URL:      {url}")
+            console.print(f"  Filename: {filename}")
+            console.print(f"  Storage:  {storage}")
+            console.print(f"  Node:     {node}")
+            console.print(f"  Type:     {content_type}")
+            if checksum:
+                console.print(f"  Checksum: {checksum} ({checksum_algorithm or 'auto'})")
+
+            if not yes and not confirm("Start download?"):
+                print_cancelled()
+                return
+
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console,
+            ) as progress:
+                progress.add_task(description=f"Downloading {filename}...", total=None)
+                upid = await client.download_url_to_storage(
+                    node=node,
+                    storage=storage,
+                    url=url,
+                    filename=filename,
+                    content_type=content_type,
+                    checksum=checksum,
+                    checksum_algorithm=checksum_algorithm,
+                )
+                progress.update(0, description="Waiting for download to complete...")
+                await client.wait_for_task(node, upid, timeout=600)
+
+            print_success(f"'{filename}' downloaded to '{storage}'")
+
+    except KeyboardInterrupt:
+        console.print()
+        print_cancelled()
+    except PVECliError as e:
+        print_error(str(e))
+        raise typer.Exit(1)
+
+
 @content_app.command("remove")
 @async_to_sync
 async def remove_content(
