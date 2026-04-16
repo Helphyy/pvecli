@@ -490,8 +490,7 @@ async def download_content(
 
             if not filename:
                 if url_filename:
-                    user_input = prompt(f"  Filename [{url_filename}]")
-                    filename = user_input.strip() if user_input.strip() else url_filename
+                    filename = prompt("  Filename", default=url_filename)
                 else:
                     filename = prompt("  Filename")
                     if not filename or not filename.strip():
