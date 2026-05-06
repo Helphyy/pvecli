@@ -1204,6 +1204,33 @@ async def reboot_container(
         raise typer.Exit(1)
 
 
+def _print_clone_command(
+    source_ctid: int,
+    clone_cfg: dict[str, Any],
+    post_cfg: dict[str, Any],
+    new_ctid: int,
+    is_template: bool,
+    source_node: str,
+) -> None:
+    """Print the full pvecli ct clone command to reproduce a container clone."""
+    parts = [f"pvecli ct clone {source_ctid}"]
+    parts.append(f"--newid {new_ctid}")
+    if clone_cfg.get("hostname"):
+        parts.append(f"--hostname {clone_cfg['hostname']}")
+    if clone_cfg.get("pool"):
+        parts.append(f"--pool {clone_cfg['pool']}")
+    if "onboot" in post_cfg:
+        parts.append("--onboot" if post_cfg["onboot"] else "--no-onboot")
+    if is_template and clone_cfg.get("full"):
+        parts.append("--full")
+    target = clone_cfg.get("target")
+    if target and target != source_node:
+        parts.append(f"--target {target}")
+
+    cmd = " \\\n    ".join(parts)
+    console.print(f"\n[dim]{cmd}[/dim]\n")
+
+
 @app.command("clone")
 def clone_container(
     ctid: int = typer.Argument(None, help="Source container ID"),
@@ -1421,6 +1448,10 @@ def clone_container(
             return
 
         target_node = clone_cfg.pop("target", source_node)
+        clone_snapshot = dict(clone_cfg)
+        if target_node != source_node:
+            clone_snapshot["target"] = target_node
+        post_snapshot = dict(post_cfg)
 
         async def clone():
             async with ProxmoxClient(profile_config) as client:
@@ -1449,6 +1480,12 @@ def clone_container(
 
         cloned_ctid = asyncio.run(clone())
         print_success(f"Container {ctid} cloned to {cloned_ctid} successfully!")
+
+        # Offer to print the full CLI command for reproduction
+        if Confirm.ask("\n[bold]Print the full clone command?[/bold]", default=False):
+            _print_clone_command(
+                ctid, clone_snapshot, post_snapshot, cloned_ctid, is_template, source_node
+            )
 
     except PVECliError as e:
         print_error(str(e))

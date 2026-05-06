@@ -1931,6 +1931,10 @@ def clone_vm(
             return
 
         target_node = clone_cfg.pop("target", source_node)
+        clone_snapshot = dict(clone_cfg)
+        if target_node != source_node:
+            clone_snapshot["target"] = target_node
+        post_snapshot = dict(post_cfg)
 
         async def clone():
             async with ProxmoxClient(profile_config) as client:
@@ -1959,6 +1963,12 @@ def clone_vm(
 
         cloned_vmid = asyncio.run(clone())
         print_success(f"VM {vmid} cloned to {cloned_vmid} successfully!")
+
+        # Offer to print the full CLI command for reproduction
+        if Confirm.ask("\n[bold]Print the full clone command?[/bold]", default=False):
+            _print_clone_command(
+                vmid, clone_snapshot, post_snapshot, cloned_vmid, is_template, source_node
+            )
 
     except PVECliError as e:
         print_error(str(e))
@@ -2412,6 +2422,33 @@ def _print_create_command(
         if efi:
             efi_stor = efi.split(":")[0]
             parts.append(f"--efi-storage {efi_stor}")
+
+    cmd = " \\\n    ".join(parts)
+    console.print(f"\n[dim]{cmd}[/dim]\n")
+
+
+def _print_clone_command(
+    source_vmid: int,
+    clone_cfg: dict[str, Any],
+    post_cfg: dict[str, Any],
+    new_vmid: int,
+    is_template: bool,
+    source_node: str,
+) -> None:
+    """Print the full pvecli vm clone command to reproduce a VM clone."""
+    parts = [f"pvecli vm clone {source_vmid}"]
+    parts.append(f"--newid {new_vmid}")
+    if clone_cfg.get("name"):
+        parts.append(f"--name {clone_cfg['name']}")
+    if clone_cfg.get("pool"):
+        parts.append(f"--pool {clone_cfg['pool']}")
+    if "onboot" in post_cfg:
+        parts.append("--onboot" if post_cfg["onboot"] else "--no-onboot")
+    if is_template and clone_cfg.get("full"):
+        parts.append("--full")
+    target = clone_cfg.get("target")
+    if target and target != source_node:
+        parts.append(f"--target {target}")
 
     cmd = " \\\n    ".join(parts)
     console.print(f"\n[dim]{cmd}[/dim]\n")
