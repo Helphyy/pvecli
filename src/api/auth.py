@@ -32,7 +32,8 @@ class AuthHandler:
         self.user = user
         self.verify_ssl = verify_ssl
         self.timeout = timeout
-        self.base_url = f"https://{host}:{port}/api2/json"
+        from ..utils.network import format_host_for_url
+        self.base_url = f"https://{format_host_for_url(host)}:{port}/api2/json"
 
     def get_token_headers(self, token_name: str, token_value: str) -> dict[str, str]:
         """Get headers for API token authentication.

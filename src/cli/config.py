@@ -694,8 +694,9 @@ def login_web(
 
     try:
         profile_config = config_manager.get_profile(profile)
+        from ..utils.network import format_host_for_url
         host = resolve_node_host(profile_config)
-        login_url = f"https://{host}:{profile_config.port}/"
+        login_url = f"https://{format_host_for_url(host)}:{profile_config.port}/"
 
         print_success("Opening Proxmox web interface...")
         open_browser_window(login_url)

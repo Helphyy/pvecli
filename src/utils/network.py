@@ -12,13 +12,50 @@ def find_free_port() -> int:
         return s.getsockname()[1]
 
 
+def is_ipv6_literal(host: str) -> bool:
+    """Return True if host is an IPv6 address literal (with or without brackets)."""
+    if not host:
+        return False
+    raw = host.strip("[]")
+    if raw.count(":") < 2:
+        return False
+    try:
+        socket.inet_pton(socket.AF_INET6, raw)
+        return True
+    except (OSError, ValueError):
+        return False
+
+
+def format_host_for_url(host: str) -> str:
+    """Wrap IPv6 literals in brackets for use in URLs.
+
+    Leaves IPv4 / hostnames / already-bracketed IPv6 unchanged.
+    """
+    if not host:
+        return host
+    if host.startswith("[") and host.endswith("]"):
+        return host
+    if is_ipv6_literal(host):
+        return f"[{host}]"
+    return host
+
+
 def resolve_node_host(profile_config) -> str:
-    """Extract hostname from profile config."""
+    """Extract hostname from profile config (without scheme or port)."""
     host = profile_config.host
     if "://" in host:
-        host = host.split("://")[1]
+        host = host.split("://", 1)[1]
+    # Bracketed IPv6 → strip brackets, drop optional trailing port
+    if host.startswith("["):
+        end = host.find("]")
+        if end != -1:
+            return host[1:end]
+    # IPv6 literal without brackets → return as-is (no port stripping possible)
+    if is_ipv6_literal(host):
+        return host
+    # IPv4 / hostname → cut at first colon if any
     if ":" in host:
-        host = host.split(":")[0]
+        host = host.split(":", 1)[0]
     return host
 
 

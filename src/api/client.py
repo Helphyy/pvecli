@@ -27,8 +27,9 @@ class ProxmoxClient:
         Args:
             profile: Profile configuration
         """
+        from ..utils.network import format_host_for_url
         self.profile = profile
-        self.base_url = f"https://{profile.host}:{profile.port}/api2/json"
+        self.base_url = f"https://{format_host_for_url(profile.host)}:{profile.port}/api2/json"
         self.auth_handler = AuthHandler(
             host=profile.host,
             port=profile.port,
