@@ -376,6 +376,47 @@ class ProxmoxClient:
         """
         await self.put(f"/cluster/ha/resources/{sid}", data={"state": "started"})
 
+    async def get_ha_resource(self, sid: str) -> dict[str, Any]:
+        """Get a single HA resource configuration.
+
+        Args:
+            sid: Resource SID (e.g. "vm:100")
+        """
+        return await self.get(f"/cluster/ha/resources/{sid}")
+
+    async def create_ha_resource(self, sid: str, **params: Any) -> None:
+        """Create (register) an HA resource.
+
+        Args:
+            sid: Resource SID (e.g. "vm:100" or "ct:101")
+            **params: Optional fields (group, state, max_restart, max_relocate, comment, type)
+        """
+        data: dict[str, Any] = {"sid": sid}
+        data.update({k: v for k, v in params.items() if v is not None})
+        await self.post("/cluster/ha/resources", data=data)
+
+    async def update_ha_resource(self, sid: str, **params: Any) -> None:
+        """Update an existing HA resource.
+
+        Args:
+            sid: Resource SID
+            **params: Fields to update (state, group, max_restart, max_relocate, comment)
+        """
+        data = {k: v for k, v in params.items() if v is not None}
+        await self.put(f"/cluster/ha/resources/{sid}", data=data)
+
+    async def delete_ha_resource(self, sid: str) -> None:
+        """Remove an HA resource.
+
+        Args:
+            sid: Resource SID
+        """
+        await self.delete(f"/cluster/ha/resources/{sid}")
+
+    async def get_ha_groups(self) -> list[dict[str, Any]]:
+        """Get list of HA groups."""
+        return await self.get("/cluster/ha/groups")
+
     async def create_vnc_shell(self, node: str, websocket: bool = True) -> dict[str, Any]:
         """Create a VNC shell proxy to a node.
 

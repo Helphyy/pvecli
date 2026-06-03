@@ -46,6 +46,10 @@ from ._shared import (
     shared_add_tag,
     shared_create_snapshot,
     shared_delete_snapshot,
+    shared_ha_add,
+    shared_ha_remove,
+    shared_ha_set,
+    shared_ha_status,
     shared_list_snapshots,
     shared_list_tags,
     shared_remove_tag,
@@ -56,7 +60,7 @@ from ._shared import (
 _CMD_ORDER = [
     "start", "stop", "shutdown", "reboot",
     "add", "clone", "edit", "remove",
-    "tag", "snapshot", "template", "image",
+    "tag", "snapshot", "template", "image", "ha",
     "vnc", "ssh",
     "list", "show",
 ]
@@ -1672,6 +1676,182 @@ async def remove_tag(
                 update_config=lambda **kw: client.update_container_config(node, ctid, **kw),
             )
 
+    except PVECliError as e:
+        print_error(str(e))
+        raise typer.Exit(1)
+
+
+# HA subcommand group
+ha_app = typer.Typer(help="Manage container HA resources", no_args_is_help=True, cls=ordered_group(["status", "add", "set", "remove"]))
+app.add_typer(ha_app, name="ha")
+
+
+@ha_app.command("status")
+@async_to_sync
+async def ha_status(
+    ctids: str = typer.Argument(None, help="CT ID(s) - single, comma-separated, or range (empty = list all)"),
+    profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+) -> None:
+    """Show HA status for one or more containers, or list all HA-managed containers."""
+    config_manager = ConfigManager()
+
+    try:
+        profile_config = config_manager.get_profile(profile)
+        async with ProxmoxClient(profile_config) as client:
+            if ctids is None:
+                await shared_ha_status(client, "ct", None)
+                return
+            ctid_list = parse_id_list(ctids, "CT")
+            for ctid in ctid_list:
+                await shared_ha_status(client, "ct", ctid)
+    except PVECliError as e:
+        print_error(str(e))
+        raise typer.Exit(1)
+
+
+@ha_app.command("add")
+@async_to_sync
+async def ha_add(
+    ctids: str = typer.Argument(None, help="CT ID(s) - single, comma-separated, or range"),
+    profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+    group: str = typer.Option(None, "--group", "-g", help="HA group"),
+    state: str = typer.Option(None, "--state", "-s", help="Initial state: started|stopped|enabled|disabled|ignored"),
+    max_restart: int = typer.Option(None, "--max-restart", "-mr", help="Max restart attempts"),
+    max_relocate: int = typer.Option(None, "--max-relocate", "-mo", help="Max relocate attempts"),
+    comment: str = typer.Option(None, "--comment", "-c", help="Comment"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip wizard, use defaults for missing fields"),
+) -> None:
+    """Register one or more containers as HA resources."""
+    config_manager = ConfigManager()
+
+    try:
+        profile_config = config_manager.get_profile(profile)
+        async with ProxmoxClient(profile_config) as client:
+            if ctids is None:
+                ctid = await _select_ct(client)
+                if ctid is None:
+                    print_cancelled()
+                    return
+                ctid_list = [ctid]
+            else:
+                ctid_list = parse_id_list(ctids, "CT")
+
+            interactive = not yes and len(ctid_list) == 1
+            added = 0
+            failed = 0
+            for ctid in ctid_list:
+                try:
+                    await shared_ha_add(
+                        client, "ct", ctid, group, state,
+                        max_restart, max_relocate, comment, interactive,
+                    )
+                    added += 1
+                except typer.Exit:
+                    failed += 1
+                except PVECliError as e:
+                    print_error(f"CT {ctid}: {e}")
+                    failed += 1
+
+            if len(ctid_list) > 1:
+                print_info(f"\nSummary: {added} added, {failed} failed")
+            if failed > 0:
+                raise typer.Exit(1)
+    except PVECliError as e:
+        print_error(str(e))
+        raise typer.Exit(1)
+
+
+@ha_app.command("set")
+@async_to_sync
+async def ha_set(
+    ctids: str = typer.Argument(None, help="CT ID(s) - single, comma-separated, or range"),
+    profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+    state: str = typer.Option(None, "--state", "-s", help="State: started|stopped|enabled|disabled|ignored"),
+    group: str = typer.Option(None, "--group", "-g", help="HA group"),
+    max_restart: int = typer.Option(None, "--max-restart", "-mr", help="Max restart attempts"),
+    max_relocate: int = typer.Option(None, "--max-relocate", "-mo", help="Max relocate attempts"),
+    comment: str = typer.Option(None, "--comment", "-c", help="Comment"),
+) -> None:
+    """Modify HA configuration for one or more containers."""
+    config_manager = ConfigManager()
+
+    try:
+        profile_config = config_manager.get_profile(profile)
+        async with ProxmoxClient(profile_config) as client:
+            if ctids is None:
+                ctid = await _select_ct(client)
+                if ctid is None:
+                    print_cancelled()
+                    return
+                ctid_list = [ctid]
+            else:
+                ctid_list = parse_id_list(ctids, "CT")
+
+            updated = 0
+            failed = 0
+            for ctid in ctid_list:
+                try:
+                    await shared_ha_set(
+                        client, "ct", ctid, state, group,
+                        max_restart, max_relocate, comment,
+                    )
+                    updated += 1
+                except typer.Exit:
+                    failed += 1
+                except PVECliError as e:
+                    print_error(f"CT {ctid}: {e}")
+                    failed += 1
+
+            if len(ctid_list) > 1:
+                print_info(f"\nSummary: {updated} updated, {failed} failed")
+            if failed > 0:
+                raise typer.Exit(1)
+    except PVECliError as e:
+        print_error(str(e))
+        raise typer.Exit(1)
+
+
+@ha_app.command("remove")
+@async_to_sync
+async def ha_remove(
+    ctids: str = typer.Argument(None, help="CT ID(s) - single, comma-separated, or range"),
+    profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
+) -> None:
+    """Remove one or more containers from HA management."""
+    config_manager = ConfigManager()
+
+    try:
+        profile_config = config_manager.get_profile(profile)
+        async with ProxmoxClient(profile_config) as client:
+            if ctids is None:
+                ctid = await _select_ct(client)
+                if ctid is None:
+                    print_cancelled()
+                    return
+                ctid_list = [ctid]
+            else:
+                ctid_list = parse_id_list(ctids, "CT")
+
+            if not confirm_action(ctid_list, "Remove from HA", "CT", yes):
+                return
+
+            removed = 0
+            failed = 0
+            for ctid in ctid_list:
+                try:
+                    await shared_ha_remove(client, "ct", ctid, yes=True)
+                    removed += 1
+                except typer.Exit:
+                    failed += 1
+                except PVECliError as e:
+                    print_error(f"CT {ctid}: {e}")
+                    failed += 1
+
+            if len(ctid_list) > 1:
+                print_info(f"\nSummary: {removed} removed, {failed} failed")
+            if failed > 0:
+                raise typer.Exit(1)
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)

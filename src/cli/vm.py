@@ -48,6 +48,10 @@ from ._shared import (
     shared_add_tag,
     shared_create_snapshot,
     shared_delete_snapshot,
+    shared_ha_add,
+    shared_ha_remove,
+    shared_ha_set,
+    shared_ha_status,
     shared_list_snapshots,
     shared_list_tags,
     shared_remove_tag,
@@ -59,7 +63,7 @@ _CMD_ORDER = [
     "start", "stop", "shutdown", "reboot", "suspend", "resume",
     "lock", "unlock",
     "add", "clone", "edit", "remove",
-    "tag", "snapshot", "template",
+    "tag", "snapshot", "template", "ha",
     "vnc", "ssh", "rdp", "exec",
     "list", "show",
 ]
@@ -2158,6 +2162,182 @@ async def remove_tag(
                 update_config=lambda **kw: client.update_vm_config(node, vmid, **kw),
             )
 
+    except PVECliError as e:
+        print_error(str(e))
+        raise typer.Exit(1)
+
+
+# HA subcommand group
+ha_app = typer.Typer(help="Manage VM HA resources", no_args_is_help=True, cls=ordered_group(["status", "add", "set", "remove"]))
+app.add_typer(ha_app, name="ha")
+
+
+@ha_app.command("status")
+@async_to_sync
+async def ha_status(
+    vmids: str = typer.Argument(None, help="VM ID(s) - single, comma-separated, or range (empty = list all)"),
+    profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+) -> None:
+    """Show HA status for one or more VMs, or list all HA-managed VMs."""
+    config_manager = ConfigManager()
+
+    try:
+        profile_config = config_manager.get_profile(profile)
+        async with ProxmoxClient(profile_config) as client:
+            if vmids is None:
+                await shared_ha_status(client, "vm", None)
+                return
+            vmid_list = parse_id_list(vmids, "VM")
+            for vmid in vmid_list:
+                await shared_ha_status(client, "vm", vmid)
+    except PVECliError as e:
+        print_error(str(e))
+        raise typer.Exit(1)
+
+
+@ha_app.command("add")
+@async_to_sync
+async def ha_add(
+    vmids: str = typer.Argument(None, help="VM ID(s) - single, comma-separated, or range"),
+    profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+    group: str = typer.Option(None, "--group", "-g", help="HA group"),
+    state: str = typer.Option(None, "--state", "-s", help="Initial state: started|stopped|enabled|disabled|ignored"),
+    max_restart: int = typer.Option(None, "--max-restart", "-mr", help="Max restart attempts"),
+    max_relocate: int = typer.Option(None, "--max-relocate", "-mo", help="Max relocate attempts"),
+    comment: str = typer.Option(None, "--comment", "-c", help="Comment"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip wizard, use defaults for missing fields"),
+) -> None:
+    """Register one or more VMs as HA resources."""
+    config_manager = ConfigManager()
+
+    try:
+        profile_config = config_manager.get_profile(profile)
+        async with ProxmoxClient(profile_config) as client:
+            if vmids is None:
+                vmid = await _select_vm(client)
+                if vmid is None:
+                    print_cancelled()
+                    return
+                vmid_list = [vmid]
+            else:
+                vmid_list = parse_id_list(vmids, "VM")
+
+            interactive = not yes and len(vmid_list) == 1
+            added = 0
+            failed = 0
+            for vmid in vmid_list:
+                try:
+                    await shared_ha_add(
+                        client, "vm", vmid, group, state,
+                        max_restart, max_relocate, comment, interactive,
+                    )
+                    added += 1
+                except typer.Exit:
+                    failed += 1
+                except PVECliError as e:
+                    print_error(f"VM {vmid}: {e}")
+                    failed += 1
+
+            if len(vmid_list) > 1:
+                print_info(f"\nSummary: {added} added, {failed} failed")
+            if failed > 0:
+                raise typer.Exit(1)
+    except PVECliError as e:
+        print_error(str(e))
+        raise typer.Exit(1)
+
+
+@ha_app.command("set")
+@async_to_sync
+async def ha_set(
+    vmids: str = typer.Argument(None, help="VM ID(s) - single, comma-separated, or range"),
+    profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+    state: str = typer.Option(None, "--state", "-s", help="State: started|stopped|enabled|disabled|ignored"),
+    group: str = typer.Option(None, "--group", "-g", help="HA group"),
+    max_restart: int = typer.Option(None, "--max-restart", "-mr", help="Max restart attempts"),
+    max_relocate: int = typer.Option(None, "--max-relocate", "-mo", help="Max relocate attempts"),
+    comment: str = typer.Option(None, "--comment", "-c", help="Comment"),
+) -> None:
+    """Modify HA configuration for one or more VMs."""
+    config_manager = ConfigManager()
+
+    try:
+        profile_config = config_manager.get_profile(profile)
+        async with ProxmoxClient(profile_config) as client:
+            if vmids is None:
+                vmid = await _select_vm(client)
+                if vmid is None:
+                    print_cancelled()
+                    return
+                vmid_list = [vmid]
+            else:
+                vmid_list = parse_id_list(vmids, "VM")
+
+            updated = 0
+            failed = 0
+            for vmid in vmid_list:
+                try:
+                    await shared_ha_set(
+                        client, "vm", vmid, state, group,
+                        max_restart, max_relocate, comment,
+                    )
+                    updated += 1
+                except typer.Exit:
+                    failed += 1
+                except PVECliError as e:
+                    print_error(f"VM {vmid}: {e}")
+                    failed += 1
+
+            if len(vmid_list) > 1:
+                print_info(f"\nSummary: {updated} updated, {failed} failed")
+            if failed > 0:
+                raise typer.Exit(1)
+    except PVECliError as e:
+        print_error(str(e))
+        raise typer.Exit(1)
+
+
+@ha_app.command("remove")
+@async_to_sync
+async def ha_remove(
+    vmids: str = typer.Argument(None, help="VM ID(s) - single, comma-separated, or range"),
+    profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
+) -> None:
+    """Remove one or more VMs from HA management."""
+    config_manager = ConfigManager()
+
+    try:
+        profile_config = config_manager.get_profile(profile)
+        async with ProxmoxClient(profile_config) as client:
+            if vmids is None:
+                vmid = await _select_vm(client)
+                if vmid is None:
+                    print_cancelled()
+                    return
+                vmid_list = [vmid]
+            else:
+                vmid_list = parse_id_list(vmids, "VM")
+
+            if not confirm_action(vmid_list, "Remove from HA", "VM", yes):
+                return
+
+            removed = 0
+            failed = 0
+            for vmid in vmid_list:
+                try:
+                    await shared_ha_remove(client, "vm", vmid, yes=True)
+                    removed += 1
+                except typer.Exit:
+                    failed += 1
+                except PVECliError as e:
+                    print_error(f"VM {vmid}: {e}")
+                    failed += 1
+
+            if len(vmid_list) > 1:
+                print_info(f"\nSummary: {removed} removed, {failed} failed")
+            if failed > 0:
+                raise typer.Exit(1)
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)

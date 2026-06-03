@@ -796,3 +796,269 @@ async def shared_ssh(
     args = build_ssh_command(ip, ssh_user, ssh_port, ssh_key, jump=jump_host, command=command)
     console.print(f"[dim]Connecting to {ssh_user}@{ip}...[/dim]")
     exec_ssh(args)
+
+
+# ---------------------------------------------------------------------------
+# HA management (vm and ct share the same /cluster/ha/resources/{sid} endpoints)
+# ---------------------------------------------------------------------------
+
+HA_STATES = ["started", "stopped", "enabled", "disabled", "ignored"]
+
+
+def _state_style(state: str) -> str:
+    return {
+        "started": "green",
+        "enabled": "green",
+        "stopped": "yellow",
+        "disabled": "dim",
+        "ignored": "dim",
+        "error": "red",
+        "fence": "red",
+    }.get(state, "white")
+
+
+async def shared_ha_status(
+    client: ProxmoxClient,
+    kind: str,
+    resource_id: int | None,
+) -> None:
+    """Show HA status for a VM/CT, or list all HA resources of this kind.
+
+    Args:
+        client: ProxmoxClient instance.
+        kind: "vm" or "ct".
+        resource_id: VMID/CTID, or None to list all.
+    """
+    label = kind.upper()
+    resources = await client.get_ha_resources()
+    resources = [r for r in resources if r.get("sid", "").startswith(f"{kind}:")]
+
+    runtime = []
+    try:
+        runtime = await client.get_ha_status()
+    except Exception:
+        runtime = []
+    runtime_map = {e.get("id"): e for e in runtime if isinstance(e, dict) and e.get("id")}
+
+    if resource_id is not None:
+        sid = f"{kind}:{resource_id}"
+        res = next((r for r in resources if r.get("sid") == sid), None)
+        if not res:
+            print_warning(f"{label} {resource_id} is not managed by HA")
+            return
+        rt = runtime_map.get(sid, {})
+        console.print(f"\n[bold cyan]HA status for {label} {resource_id}[/bold cyan]")
+        cfg_state = res.get("state", "started")
+        console.print(f"  [bold]Configured state:[/bold] [{_state_style(cfg_state)}]{cfg_state}[/]")
+        if rt.get("state"):
+            console.print(f"  [bold]Current state:[/bold]    [{_state_style(rt['state'])}]{rt['state']}[/]")
+        if rt.get("node"):
+            console.print(f"  [bold]Node:[/bold]             {rt['node']}")
+        if res.get("group"):
+            console.print(f"  [bold]Group:[/bold]            {res['group']}")
+        if res.get("max_restart") is not None:
+            console.print(f"  [bold]Max restart:[/bold]      {res['max_restart']}")
+        if res.get("max_relocate") is not None:
+            console.print(f"  [bold]Max relocate:[/bold]     {res['max_relocate']}")
+        if res.get("comment"):
+            console.print(f"  [bold]Comment:[/bold]          {res['comment']}")
+        return
+
+    if not resources:
+        print_info(f"No HA-managed {label}s")
+        return
+
+    table = Table(title=f"HA-managed {label}s", show_lines=False)
+    table.add_column("SID", style="cyan")
+    table.add_column("Configured")
+    table.add_column("Current")
+    table.add_column("Node")
+    table.add_column("Group")
+    table.add_column("Restart")
+    table.add_column("Relocate")
+    table.add_column("Comment", overflow="fold")
+
+    for r in sorted(resources, key=lambda x: x.get("sid", "")):
+        sid = r.get("sid", "")
+        rt = runtime_map.get(sid, {})
+        cfg = r.get("state", "started")
+        cur = rt.get("state", "-")
+        table.add_row(
+            sid,
+            f"[{_state_style(cfg)}]{cfg}[/]",
+            f"[{_state_style(cur)}]{cur}[/]" if cur != "-" else "-",
+            rt.get("node", "-"),
+            r.get("group", "-") or "-",
+            str(r.get("max_restart", "-")),
+            str(r.get("max_relocate", "-")),
+            r.get("comment", "") or "",
+        )
+    console.print(table)
+
+
+async def shared_ha_add(
+    client: ProxmoxClient,
+    kind: str,
+    resource_id: int,
+    group: str | None,
+    state: str | None,
+    max_restart: int | None,
+    max_relocate: int | None,
+    comment: str | None,
+    interactive: bool,
+) -> None:
+    """Register a VM/CT as an HA resource.
+
+    Args:
+        client: ProxmoxClient instance.
+        kind: "vm" or "ct".
+        resource_id: VMID/CTID.
+        group, state, max_restart, max_relocate, comment: HA options (None to skip/wizard).
+        interactive: If True, prompt for missing values via wizard.
+    """
+    from rich.prompt import Confirm, IntPrompt, Prompt
+
+    label = kind.upper()
+    sid = f"{kind}:{resource_id}"
+
+    # Verify it's not already in HA
+    existing = await client.get_ha_resources()
+    if any(r.get("sid") == sid for r in existing):
+        print_error(f"{label} {resource_id} is already managed by HA. Use 'ha set' to modify.")
+        raise typer.Exit(1)
+
+    # Verify the resource exists in the cluster
+    cluster_resources = await client.get_cluster_resources(resource_type="vm")
+    found = next((r for r in cluster_resources if r.get("vmid") == resource_id), None)
+    if not found:
+        print_error(f"{label} {resource_id} not found in the cluster")
+        raise typer.Exit(1)
+    expected_type = "qemu" if kind == "vm" else "lxc"
+    if found.get("type") != expected_type:
+        print_error(f"{resource_id} is not a {label} (type={found.get('type')})")
+        raise typer.Exit(1)
+
+    if interactive:
+        console.print(f"\n[bold cyan]═══ HA Add Wizard ({label} {resource_id}) ═══[/bold cyan]\n")
+
+        if group is None:
+            ha_groups = await client.get_ha_groups()
+            if ha_groups:
+                group_options = ["(none)"] + [g.get("group", "") for g in ha_groups]
+                console.print("[bold]HA group:[/bold]")
+                idx = select_menu(group_options, "Select HA group:")
+                if idx and idx > 0:
+                    group = group_options[idx]
+
+        if state is None:
+            state_idx = select_menu(HA_STATES, "Initial state:")
+            state = HA_STATES[state_idx] if state_idx is not None else "started"
+
+        if max_restart is None:
+            max_restart = IntPrompt.ask("[bold]Max restart attempts[/bold]", default=1)
+
+        if max_relocate is None:
+            max_relocate = IntPrompt.ask("[bold]Max relocate attempts[/bold]", default=1)
+
+        if comment is None:
+            c = Prompt.ask("[bold]Comment[/bold] (leave empty for none)", default="")
+            comment = c.strip() or None
+
+        # Summary
+        console.print("\n[bold cyan]═══ Configuration Summary ═══[/bold cyan]\n")
+        console.print(f"[bold]Resource:[/bold]     {sid}")
+        console.print(f"[bold]State:[/bold]        {state}")
+        console.print(f"[bold]Group:[/bold]        {group or '(none)'}")
+        console.print(f"[bold]Max restart:[/bold]  {max_restart}")
+        console.print(f"[bold]Max relocate:[/bold] {max_relocate}")
+        if comment:
+            console.print(f"[bold]Comment:[/bold]      {comment}")
+        console.print()
+        if not Confirm.ask("[bold]Register HA resource with this configuration?[/bold]", default=True):
+            print_cancelled()
+            return
+    else:
+        if state is None:
+            state = "started"
+
+    params: dict[str, Any] = {
+        "type": kind,
+        "state": state,
+        "group": group,
+        "max_restart": max_restart,
+        "max_relocate": max_relocate,
+        "comment": comment,
+    }
+
+    await client.create_ha_resource(sid, **params)
+    print_success(f"HA resource {sid} registered (state={state})")
+
+
+async def shared_ha_remove(
+    client: ProxmoxClient,
+    kind: str,
+    resource_id: int,
+    yes: bool,
+) -> None:
+    """Remove a VM/CT from HA management."""
+    label = kind.upper()
+    sid = f"{kind}:{resource_id}"
+
+    existing = await client.get_ha_resources()
+    if not any(r.get("sid") == sid for r in existing):
+        print_warning(f"{label} {resource_id} is not managed by HA")
+        return
+
+    if not yes and not confirm(f"Remove HA resource {sid}?", default=False):
+        print_cancelled()
+        return
+
+    await client.delete_ha_resource(sid)
+    print_success(f"HA resource {sid} removed")
+
+
+async def shared_ha_set(
+    client: ProxmoxClient,
+    kind: str,
+    resource_id: int,
+    state: str | None,
+    group: str | None,
+    max_restart: int | None,
+    max_relocate: int | None,
+    comment: str | None,
+) -> None:
+    """Update HA settings for a VM/CT.
+
+    Pass None for a field to leave it unchanged. Use "" for comment to clear it.
+    """
+    label = kind.upper()
+    sid = f"{kind}:{resource_id}"
+
+    existing = await client.get_ha_resources()
+    if not any(r.get("sid") == sid for r in existing):
+        print_error(f"{label} {resource_id} is not managed by HA. Use 'ha add' first.")
+        raise typer.Exit(1)
+
+    if state is not None and state not in HA_STATES:
+        print_error(f"Invalid state '{state}'. Allowed: {', '.join(HA_STATES)}")
+        raise typer.Exit(1)
+
+    params: dict[str, Any] = {}
+    if state is not None:
+        params["state"] = state
+    if group is not None:
+        params["group"] = group
+    if max_restart is not None:
+        params["max_restart"] = max_restart
+    if max_relocate is not None:
+        params["max_relocate"] = max_relocate
+    if comment is not None:
+        params["comment"] = comment
+
+    if not params:
+        print_warning("Nothing to update (no fields provided)")
+        return
+
+    await client.update_ha_resource(sid, **params)
+    changes = ", ".join(f"{k}={v}" for k, v in params.items())
+    print_success(f"HA resource {sid} updated ({changes})")
