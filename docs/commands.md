@@ -93,6 +93,27 @@ pvecli vm snapshot rollback [VMID] [NAME]   Rollback to a snapshot (--reboot)
 pvecli vm snapshot remove [VMID] [NAME]     Delete a snapshot
 ```
 
+### vm ha
+
+Manage VM HA (High Availability) resources. Multi-VMID supported (single, list, range).
+
+```
+pvecli vm ha status [VMIDS]        Show HA status (no VMID = list all HA resources)
+pvecli vm ha add [VMIDS]           Register VMs as HA resources (wizard if no flags)
+pvecli vm ha set [VMIDS]           Modify HA configuration
+pvecli vm ha remove [VMIDS]        Remove VMs from HA management (--yes)
+```
+
+Common options for `add` / `set`: `--group/-g`, `--state/-s` (started|stopped|enabled|disabled|ignored), `--max-restart/-mr`, `--max-relocate/-mo`, `--comment/-c`.
+
+```bash
+pvecli vm ha add 100-105 --group prod --state started
+pvecli vm ha set 100,101 --state stopped
+pvecli vm ha remove 100 --yes
+```
+
+Without flags, `vm ha add` opens an interactive wizard prompting for the HA group, initial state, restart/relocate limits and comment.
+
 ---
 
 ## ct (LXC containers)
@@ -128,6 +149,17 @@ pvecli ct snapshot list [CTID]              List snapshots
 pvecli ct snapshot add [CTID] [NAME]        Create a snapshot
 pvecli ct snapshot rollback [CTID] [NAME]   Rollback to a snapshot (--reboot)
 pvecli ct snapshot remove [CTID] [NAME]     Delete a snapshot
+```
+
+### ct ha
+
+Same interface as `vm ha`, applied to LXC containers.
+
+```
+pvecli ct ha status [CTIDS]        Show HA status (no CTID = list all HA resources)
+pvecli ct ha add [CTIDS]           Register containers as HA resources (wizard if no flags)
+pvecli ct ha set [CTIDS]           Modify HA configuration
+pvecli ct ha remove [CTIDS]        Remove containers from HA management (--yes)
 ```
 
 ### ct image (LXC image files)
