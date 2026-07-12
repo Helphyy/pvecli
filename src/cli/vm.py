@@ -811,6 +811,7 @@ async def edit_vm(
                 ("name", "Name", str, ""),
                 ("cores", "CPU Cores", int, 1),
                 ("sockets", "CPU Sockets", int, 1),
+                ("vcpus", "vCPUs", int, 0),
                 ("memory", "Memory (MB)", int, 512),
                 ("balloon", "Min Memory (MB)", int, 0),
                 ("onboot", "Start on boot", bool, False),
@@ -830,12 +831,16 @@ async def edit_vm(
                 for key, label, ftype, default in fields:
                     raw = config.get(key, default)
                     current = changes.get(key, bool(raw) if ftype is bool else raw)
+                    if key == "vcpus" and key in deletes:
+                        current = 0
                     if ftype is bool:
                         display = "Yes" if current else "No"
+                    elif key == "vcpus" and not int(current or 0):
+                        display = "(all)"
                     else:
                         s = str(current)
                         display = s[:50] + "..." if len(s) > 50 else s
-                    prefix = "* " if key in changes else "  "
+                    prefix = "* " if key in changes or (key == "vcpus" and key in deletes) else "  "
                     options.append(f"{prefix}{label.ljust(max_label)}  {display}")
 
                 # Pool
@@ -960,6 +965,31 @@ async def edit_vm(
                     original = bool(raw) if ftype is bool else raw
                     current = changes.get(key, original)
 
+                    if key == "vcpus":
+                        max_vcpus = int(changes.get("sockets", config.get("sockets", 1))) * int(
+                            changes.get("cores", config.get("cores", 1))
+                        )
+                        if key in deletes:
+                            current = 0
+                        raw_input = Prompt.ask(f"  {label} (1-{max_vcpus}, 0 = all cores)", default=str(current))
+                        try:
+                            new_val = int(raw_input)
+                        except ValueError:
+                            print_error("Invalid number")
+                            continue
+                        if new_val < 0 or new_val > max_vcpus:
+                            print_error(f"vCPUs must be between 0 and sockets x cores ({max_vcpus})")
+                            continue
+                        changes.pop(key, None)
+                        deletes.discard(key)
+                        if new_val == int(original or 0):
+                            pass
+                        elif new_val == 0:
+                            deletes.add(key)
+                        else:
+                            changes[key] = new_val
+                        continue
+
                     if ftype is bool:
                         si = select_menu(["Yes", "No"], f"  {label}:")
                         if si is not None:
@@ -989,7 +1019,9 @@ async def edit_vm(
             console.print("\n[bold]Changes:[/bold]")
 
             for key, label, ftype, default in fields:
-                if key in changes:
+                if key == "vcpus" and key in deletes:
+                    console.print(f"  {label}: {config.get(key, default)} -> (all)")
+                elif key in changes:
                     raw = config.get(key, default)
                     if ftype is bool:
                         console.print(f"  {label}: {'Yes' if raw else 'No'} -> {'Yes' if changes[key] else 'No'}")
@@ -1023,7 +1055,8 @@ async def edit_vm(
                     console.print(f"  {nk}: add")
 
             for key in sorted(deletes):
-                console.print(f"  {key}: remove")
+                if key != "vcpus":
+                    console.print(f"  {key}: remove")
 
             if not confirm("Apply these changes?"):
                 print_cancelled()
