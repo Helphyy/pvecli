@@ -257,7 +257,8 @@ async def config_storage(
             config = await client.get_storage_config(storage)
             storage_type = config.get('type', 'unknown')
 
-            console.print(f"\n[bold cyan]Node:[/bold cyan]    {node}")
+            console.print("\n[bold cyan]═══ Edit Storage ═══[/bold cyan]\n")
+            console.print(f"[bold cyan]Node:[/bold cyan]    {node}")
             console.print(f"[bold cyan]Storage:[/bold cyan] {storage}")
             console.print(f"[bold cyan]Type:[/bold cyan]    {storage_type}\n")
 

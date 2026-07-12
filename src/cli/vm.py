@@ -800,6 +800,8 @@ async def edit_vm(
             node, _ = await _get_vm_node(client, vmid)
             config = await client.get_vm_config(node, vmid)
 
+            console.print("\n[bold cyan]═══ Edit VM ═══[/bold cyan]")
+
             # Pool info comes from cluster resources, not config
             resources = await client.get_cluster_resources(resource_type="vm")
             current_pool = next(

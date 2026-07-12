@@ -598,6 +598,8 @@ async def edit_container(
 
             config = await client.get_container_config(node, vmid=ctid)
 
+            console.print("\n[bold cyan]═══ Edit Container ═══[/bold cyan]")
+
             # Get current pool from cluster resources
             resources = await client.get_cluster_resources(resource_type="vm")
             ct_resource = next(
