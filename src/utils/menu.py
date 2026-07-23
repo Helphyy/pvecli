@@ -6,25 +6,14 @@ based on simple_term_menu, matching the pvecli UX conventions.
 
 from simple_term_menu import TerminalMenu
 
-# ANSI SGR codes for styling menu entries and titles.
-# simple_term_menu strips all escape codes except SGR styling, so these
-# render correctly inside menus (Rich markup does not).
-ANSI_CYAN = "\x1b[36m"
-ANSI_YELLOW = "\x1b[33m"
-ANSI_GREEN = "\x1b[32m"
-ANSI_DIM = "\x1b[2m"
-ANSI_BOLD_CYAN = "\x1b[1;36m"
-ANSI_RESET = "\x1b[0m"
-
-
 def menu_row(modified: bool, label: str, value: str, width: int) -> str:
-    """Build a styled edit-menu row: yellow star when modified, cyan value.
+    """Build an edit-menu row with a star marker on modified fields.
 
-    Placeholder values like (none) or (default) are dimmed instead.
+    Entries must stay plain text: simple_term_menu truncates entries with
+    raw slicing, so any ANSI escape code breaks the menu layout.
     """
-    star = f"{ANSI_YELLOW}*{ANSI_RESET} " if modified else "  "
-    style = ANSI_DIM if value.startswith("(") else ANSI_CYAN
-    return f"{star}{label.ljust(width)}  {style}{value}{ANSI_RESET}"
+    star = "* " if modified else "  "
+    return f"{star}{label.ljust(width)}  {value}"
 
 
 def select_menu(items: list[str], title: str) -> int | None:
@@ -34,6 +23,7 @@ def select_menu(items: list[str], title: str) -> int | None:
         title=title,
         menu_cursor="> ",
         menu_cursor_style=("fg_cyan", "bold"),
+        menu_highlight_style=("bg_cyan", "fg_black"),
     )
     return menu.show()
 
@@ -49,6 +39,7 @@ def reorder_menu(items: list[str], title: str) -> tuple[int | None, str | None]:
         accept_keys=("enter", "u", "d", "r"),
         menu_cursor="> ",
         menu_cursor_style=("fg_cyan", "bold"),
+        menu_highlight_style=("bg_cyan", "fg_black"),
     )
     idx = menu.show()
     return idx, menu.chosen_accept_key
@@ -72,6 +63,7 @@ def multi_select_menu(
         multi_select_select_on_accept=False,
         menu_cursor="> ",
         menu_cursor_style=("fg_cyan", "bold"),
+        menu_highlight_style=("bg_cyan", "fg_black"),
         **kwargs,
     )
     sel = menu.show()

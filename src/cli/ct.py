@@ -35,7 +35,7 @@ from ..utils import (
     usage_bar,
 )
 from ..utils.helpers import async_to_sync, ordered_group
-from ..utils.menu import ANSI_BOLD_CYAN, ANSI_DIM, ANSI_GREEN, ANSI_RESET, menu_row
+from ..utils.menu import menu_row
 from ..utils.network import resolve_node_host
 from .tag import _parse_color_map
 from ._shared import (
@@ -675,7 +675,7 @@ async def edit_container(
                 tags_menu_idx = len(options) - 1
 
                 # Separator + sub-menus
-                options.append(f"  {ANSI_DIM}{'─' * (max_label + 20)}{ANSI_RESET}")
+                options.append("  " + "─" * (max_label + 20))
 
                 disk_keys = sorted(
                     k for k in set(list(config) + list(changes))
@@ -696,17 +696,17 @@ async def edit_container(
                 net_menu_idx = len(options) - 1
 
                 # Apply / Cancel
-                options.append(f"  {ANSI_DIM}{'─' * (max_label + 20)}{ANSI_RESET}")
+                options.append("  " + "─" * (max_label + 20))
                 total = len(changes) + len(resizes) + len(deletes) + (1 if pool_change else 0)
                 if total:
-                    options.append(f"  {ANSI_GREEN}Apply {total} change(s){ANSI_RESET}")
+                    options.append(f"  Apply {total} change(s)")
                 else:
-                    options.append(f"  {ANSI_DIM}(no changes){ANSI_RESET}")
+                    options.append("  (no changes)")
                 options.append("  Cancel")
 
                 selected = select_menu(
                     options,
-                    f"\n  {ANSI_BOLD_CYAN}CT {ctid}: {config.get('hostname', '')}{ANSI_RESET}",
+                    f"\n  CT {ctid}: {config.get('hostname', '')}",
                 )
 
                 if selected is None or selected == len(options) - 1:
