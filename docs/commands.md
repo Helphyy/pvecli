@@ -39,7 +39,7 @@ pvecli config login                Open Proxmox web UI in browser
 ```
 pvecli node shutdown [NODE]        Shutdown a node (stops all guests, then powers off)
 pvecli node reboot [NODE]          Reboot a node (stops all guests, then reboots)
-pvecli node vnc [NODE]             Open VNC shell to a node (--no-background)
+pvecli node vnc [NODES]            Open VNC shell(s) as browser tabs (--split for windows)
 pvecli node ssh [NODE]             SSH into a node (--user, --port, --key, --command)
 pvecli node list                   List all cluster nodes
 pvecli node info [NODE]            Show node details (--all for all)
@@ -65,7 +65,7 @@ pvecli vm clone [VMID]             Clone a VM
 pvecli vm edit [VMID]              Edit VM configuration interactively
 pvecli vm remove [VMIDS]           Delete VMs (--purge, --force)
 pvecli vm template [VMIDS]         Convert VMs to templates
-pvecli vm vnc [VMID]               Open VNC console (--no-background)
+pvecli vm vnc [VMIDS]              Open VNC console(s) as browser tabs (--split for windows)
 pvecli vm ssh [VMID]               SSH into VM (--jump for jump host)
 pvecli vm rdp [VMID]               Open RDP session
 pvecli vm exec [VMIDS] -- CMD      Execute command via QEMU Guest Agent
@@ -139,7 +139,7 @@ pvecli ct clone [CTID]             Clone a container
 pvecli ct edit [CTID]              Edit container configuration
 pvecli ct remove [CTIDS]           Delete containers (--purge, --force)
 pvecli ct template [CTIDS]         Convert containers to templates
-pvecli ct vnc [CTID]               Open VNC console (--no-background)
+pvecli ct vnc [CTIDS]              Open VNC console(s) as browser tabs (--split for windows)
 pvecli ct ssh [CTID]               SSH into container (--jump)
 pvecli ct list                     List all containers (--node, --status)
 pvecli ct info [CTID]              Show detailed container info
@@ -242,7 +242,7 @@ Requires double confirmation (type `SHUTDOWN` or `REBOOT`) unless `--yes` is pas
 ```
 pvecli tag list                    List all tags across the cluster
 pvecli tag add [TAG]               Add / update a tag color (--color)
-pvecli tag edit [TAG]              Change the color of an existing tag
+pvecli tag edit [TAG]              Rename a tag and/or change its color (--name, --color)
 pvecli tag remove [TAGS]           Remove tag(s) from all VMs and CTs
 pvecli tag export                  Export tags and colors to JSON (--output)
 pvecli tag import                  Import tags and colors from JSON (--input)

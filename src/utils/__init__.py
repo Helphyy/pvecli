@@ -12,6 +12,7 @@ from .menu import (
 )
 from .output import (
     build_ordered_table,
+    clear_lines,
     confirm,
     console,
     create_table,
@@ -37,6 +38,7 @@ from .tags import (
 __all__ = [
     "async_to_sync",
     "build_ordered_table",
+    "clear_lines",
     "confirm",
     "console",
     "create_table",

@@ -311,11 +311,12 @@ def _render_node_panel(node: str, status: dict, version: dict, node_status: str 
 @app.command("vnc")
 @async_to_sync
 async def node_vnc(
-    node: str = typer.Argument(None, help="Node name"),
-    no_background: bool = typer.Option(False, "--no-background", "-b", is_flag=True, help="Run VNC server in foreground (blocking)"),
+    node: str = typer.Argument(None, help="Node name(s) - single or comma-separated"),
+    no_background: bool = typer.Option(False, "--no-background", "-b", is_flag=True, help="Run VNC server in foreground (blocking, single node only)"),
+    split: bool = typer.Option(False, "--split", "-S", is_flag=True, help="Open each shell in a separate browser window instead of tabs"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
-    """Open an authenticated VNC shell for a node."""
+    """Open authenticated VNC shell(s) for one or more nodes."""
     from ..utils import open_browser_window, print_success
     from ..utils.network import find_free_port
     from ..vnc.server import VNCProxyServer
@@ -334,44 +335,55 @@ async def node_vnc(
 
         async with ProxmoxClient(profile_config) as client:
             if not node:
-                node = await pick_node(client)
-                if node is None:
+                picked = await pick_node(client)
+                if picked is None:
                     return
+                node_list = [picked]
+            else:
+                node_list = [n.strip() for n in node.split(",") if n.strip()]
+
+            if no_background and len(node_list) > 1:
+                print_warning("--no-background only supports a single node, running in background")
+                no_background = False
 
             nodes = await client.get_nodes()
-            node_info = next((n for n in nodes if n.get("node") == node), None)
-
-            if not node_info:
-                print_error(f"Node '{node}' not found")
-                raise typer.Exit(1)
-
-            node_status = node_info.get("status", "unknown")
-            if node_status != "online":
-                print_error(f"Node '{node}' is not online (status: {node_status})")
-                raise typer.Exit(1)
-
-            vnc_data = await client.create_vnc_shell(node, websocket=True)
-
             host = resolve_node_host(profile_config)
 
-            server_config = {
-                "proxmox_host": host,
-                "proxmox_port": profile_config.port,
-                "ws_path": f"/api2/json/nodes/{node}/vncwebsocket",
-                "vncticket": vnc_data["ticket"],
-                "pve_port": int(vnc_data["port"]),
-                "auth_headers": dict(client._headers),
-                "local_port": find_free_port(),
-                "verify_ssl": profile_config.verify_ssl,
-                "vnc_password": vnc_data["ticket"],
-            }
+            consoles = []
+            for node_name in node_list:
+                node_info = next((n for n in nodes if n.get("node") == node_name), None)
 
-        server = VNCProxyServer(**server_config)
-        url = server.get_browser_url()
-        open_browser_window(url)
+                if not node_info:
+                    print_error(f"Node '{node_name}' not found")
+                    continue
+
+                node_status = node_info.get("status", "unknown")
+                if node_status != "online":
+                    print_error(f"Node '{node_name}' is not online (status: {node_status})")
+                    continue
+
+                vnc_data = await client.create_vnc_shell(node_name, websocket=True)
+
+                consoles.append((node_name, {
+                    "proxmox_host": host,
+                    "proxmox_port": profile_config.port,
+                    "ws_path": f"/api2/json/nodes/{node_name}/vncwebsocket",
+                    "vncticket": vnc_data["ticket"],
+                    "pve_port": int(vnc_data["port"]),
+                    "auth_headers": dict(client._headers),
+                    "local_port": find_free_port(),
+                    "verify_ssl": profile_config.verify_ssl,
+                    "vnc_password": vnc_data["ticket"],
+                }))
+
+        if not consoles:
+            raise typer.Exit(1)
 
         if no_background:
-            print_success(f"Opening VNC shell for node '{node}'...")
+            node_name, server_config = consoles[0]
+            server = VNCProxyServer(**server_config)
+            open_browser_window(server.get_browser_url(), new_window=split)
+            print_success(f"Opening VNC shell for node '{node_name}'...")
             console.print("[dim]Press Enter to stop the server[/dim]")
             await server.run()
         else:
@@ -379,14 +391,17 @@ async def node_vnc(
             import subprocess
             import sys
 
-            proc = subprocess.Popen(
-                [sys.executable, "-m", "src.vnc", json.dumps(server_config)],
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                start_new_session=True,
-            )
-            print_success(f"VNC shell for node '{node}' running in background (PID: {proc.pid})")
+            for node_name, server_config in consoles:
+                server = VNCProxyServer(**server_config)
+                proc = subprocess.Popen(
+                    [sys.executable, "-m", "src.vnc", json.dumps(server_config)],
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    start_new_session=True,
+                )
+                open_browser_window(server.get_browser_url(), new_window=split)
+                print_success(f"VNC shell for node '{node_name}' running in background (PID: {proc.pid})")
 
     except PVECliError as e:
         print_error(str(e))

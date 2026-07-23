@@ -14,6 +14,7 @@ from ..api.exceptions import PVECliError
 from ..config import ConfigManager
 from ..utils import (
     build_ordered_table,
+    clear_lines,
     confirm,
     console,
     create_table,
@@ -34,6 +35,7 @@ from ..utils import (
     usage_bar,
 )
 from ..utils.helpers import async_to_sync, ordered_group
+from ..utils.menu import ANSI_BOLD_CYAN, ANSI_DIM, ANSI_GREEN, ANSI_RESET, menu_row
 from ..utils.network import resolve_node_host
 from .tag import _parse_color_map
 from ._shared import (
@@ -652,40 +654,36 @@ async def edit_container(
                     else:
                         s = str(current)
                         display = s[:50] + "..." if len(s) > 50 else s
-                    prefix = "* " if key in changes else "  "
-                    options.append(f"{prefix}{label.ljust(max_label)}  {display}")
+                    options.append(menu_row(key in changes, label, display, max_label))
 
                     # Password right after Hostname
                     if key == "hostname":
-                        pw_prefix = "* " if "password" in changes else "  "
                         pw_display = "(set)" if "password" in changes else "(unchanged)"
-                        options.append(f"{pw_prefix}{'Password'.ljust(max_label)}  {pw_display}")
+                        options.append(menu_row("password" in changes, "Password", pw_display, max_label))
                         pw_menu_idx = len(options) - 1
 
                 # Pool
                 pool_display = pool_change[1] if pool_change else current_pool
-                pool_prefix = "* " if pool_change else "  "
-                options.append(f"{pool_prefix}{'Pool'.ljust(max_label)}  {pool_display or '(none)'}")
+                options.append(menu_row(bool(pool_change), "Pool", pool_display or "(none)", max_label))
                 pool_menu_idx = len(options) - 1
 
                 # Tags
                 orig_tags = config.get("tags", "")
                 current_tags_str = changes.get("tags", orig_tags)
-                tags_prefix = "* " if "tags" in changes else "  "
                 tags_display = current_tags_str if current_tags_str else "(none)"
-                options.append(f"{tags_prefix}{'Tags'.ljust(max_label)}  {tags_display}")
+                options.append(menu_row("tags" in changes, "Tags", tags_display, max_label))
                 tags_menu_idx = len(options) - 1
 
                 # Separator + sub-menus
-                options.append("  " + "─" * (max_label + 20))
+                options.append(f"  {ANSI_DIM}{'─' * (max_label + 20)}{ANSI_RESET}")
 
                 disk_keys = sorted(
                     k for k in set(list(config) + list(changes))
                     if _CT_DISK_RE.match(k) and k not in deletes
                 )
                 disk_mod = len(resizes) + len([k for k in changes if _CT_DISK_RE.match(k)]) + len([k for k in deletes if _CT_DISK_RE.match(k)])
-                disk_label = f"Disks         [{', '.join(disk_keys)}]" if disk_keys else "Disks         (none)"
-                options.append(f"{'* ' if disk_mod else '  '}{disk_label}")
+                disk_display = f"[{', '.join(disk_keys)}]" if disk_keys else "(none)"
+                options.append(menu_row(bool(disk_mod), "Disks", disk_display, max_label))
                 disks_menu_idx = len(options) - 1
 
                 net_keys = sorted(
@@ -693,17 +691,23 @@ async def edit_container(
                     if _CT_NET_RE.match(k) and k not in deletes
                 )
                 net_mod = len([k for k in changes if _CT_NET_RE.match(k)]) + len([k for k in deletes if _CT_NET_RE.match(k)])
-                net_label = f"Network       [{', '.join(net_keys)}]" if net_keys else "Network       (none)"
-                options.append(f"{'* ' if net_mod else '  '}{net_label}")
+                net_display = f"[{', '.join(net_keys)}]" if net_keys else "(none)"
+                options.append(menu_row(bool(net_mod), "Network", net_display, max_label))
                 net_menu_idx = len(options) - 1
 
                 # Apply / Cancel
-                options.append("  " + "─" * (max_label + 20))
+                options.append(f"  {ANSI_DIM}{'─' * (max_label + 20)}{ANSI_RESET}")
                 total = len(changes) + len(resizes) + len(deletes) + (1 if pool_change else 0)
-                options.append(f"  Apply {total} change(s)" if total else "  (no changes)")
+                if total:
+                    options.append(f"  {ANSI_GREEN}Apply {total} change(s){ANSI_RESET}")
+                else:
+                    options.append(f"  {ANSI_DIM}(no changes){ANSI_RESET}")
                 options.append("  Cancel")
 
-                selected = select_menu(options, f"\n  CT {ctid}: {config.get('hostname', '')}")
+                selected = select_menu(
+                    options,
+                    f"\n  {ANSI_BOLD_CYAN}CT {ctid}: {config.get('hostname', '')}{ANSI_RESET}",
+                )
 
                 if selected is None or selected == len(options) - 1:
                     print_cancelled()
@@ -747,6 +751,7 @@ async def edit_container(
                         result_tags = [t for t in chosen if t != "+ Add custom tag"]
                         if "+ Add custom tag" in chosen:
                             custom = Prompt.ask("  Custom tag name")
+                            clear_lines(1)
                             if custom and custom.strip():
                                 result_tags.append(custom.strip())
                         new_tags = ";".join(sorted(result_tags))
@@ -798,6 +803,7 @@ async def edit_container(
                                 del changes[key]
                     elif ftype is int:
                         raw_input = Prompt.ask(f"  {label}", default=str(current))
+                        clear_lines(1)
                         try:
                             new_val = int(raw_input)
                             if new_val != original:
@@ -808,6 +814,7 @@ async def edit_container(
                             print_error("Invalid number")
                     else:
                         new_val = Prompt.ask(f"  {label}", default=str(current) if current else "")
+                        clear_lines(1)
                         if new_val != str(original):
                             changes[key] = new_val
                         elif key in changes:
@@ -851,7 +858,7 @@ async def edit_container(
             for key in sorted(deletes):
                 console.print(f"  {key}: remove")
 
-            if not confirm("Apply these changes?"):
+            if not confirm("Apply these changes?", default=True):
                 print_cancelled()
                 return
 
@@ -1502,7 +1509,7 @@ def clone_container(
         print_success(f"Container {ctid} cloned to {cloned_ctid} successfully!")
 
         # Offer to print the full CLI command for reproduction
-        if Confirm.ask("\n[bold]Print the full clone command?[/bold]", default=False):
+        if Confirm.ask("\n[bold]Print the full clone command?[/bold]", default=True):
             _print_clone_command(
                 ctid, clone_snapshot, post_snapshot, cloned_ctid, is_template, source_node
             )
@@ -2707,7 +2714,7 @@ def create_container(
         print_success(f"Container {created_ctid} created successfully!")
 
         # Offer to print the full CLI command for reproduction
-        if Confirm.ask("\n[bold]Print the full creation command?[/bold]", default=False):
+        if Confirm.ask("\n[bold]Print the full creation command?[/bold]", default=True):
             _print_ct_create_command(node, config, created_ctid)
 
     except PVECliError as e:
@@ -3038,11 +3045,12 @@ async def remove_template(
 @app.command("vnc")
 @async_to_sync
 async def ct_vnc(
-    ctid: int = typer.Argument(None, help="Container ID"),
-    no_background: bool = typer.Option(False, "--no-background", "-b", is_flag=True, help="Run VNC server in foreground (blocking)"),
+    ctids: str = typer.Argument(None, help="Container ID(s) - single, comma-separated, or range (e.g., 200, 200,201, 200-205)"),
+    no_background: bool = typer.Option(False, "--no-background", "-b", is_flag=True, help="Run VNC server in foreground (blocking, single CT only)"),
+    split: bool = typer.Option(False, "--split", "-S", is_flag=True, help="Open each console in a separate browser window instead of tabs"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
-    """Open an authenticated VNC console for a container."""
+    """Open authenticated VNC console(s) for one or more containers."""
     from ..utils import open_browser_window
     from ..utils.network import find_free_port
     from ..vnc.server import VNCProxyServer
@@ -3053,58 +3061,71 @@ async def ct_vnc(
         profile_config = config_manager.get_profile(profile)
 
         async with ProxmoxClient(profile_config) as client:
-            if ctid is None:
-                ctid = await _select_ct(client)
-                if ctid is None:
+            if ctids is None:
+                ctid_list = await _select_cts(client)
+                if not ctid_list:
                     print_cancelled()
                     return
+            else:
+                ctid_list = parse_id_list(ctids, "CT")
+
+            if no_background and len(ctid_list) > 1:
+                print_warning("--no-background only supports a single container, running in background")
+                no_background = False
+
             cts = await client.get_containers()
-            ct = next((c for c in cts if c.get("vmid") == ctid), None)
-
-            if not ct:
-                print_error(f"Container {ctid} not found")
-                raise typer.Exit(1)
-
-            node = ct.get("node")
-            ct_name = ct.get("name", "").strip()
-            ct_status = ct.get("status", "unknown")
-
-            if ct_status != "running":
-                print_error(
-                    f"Container {ctid} ({ct_name}) is not running (status: {ct_status}). "
-                    "Start the container before opening a VNC console."
-                )
-                raise typer.Exit(1)
-
-            vnc_data = await client.create_ct_vncproxy(node, ctid, websocket=True)
-
             host = resolve_node_host(profile_config)
 
-            server_config = {
-                "proxmox_host": host,
-                "proxmox_port": profile_config.port,
-                "ws_path": f"/api2/json/nodes/{node}/lxc/{ctid}/vncwebsocket",
-                "vncticket": vnc_data["ticket"],
-                "pve_port": int(vnc_data["port"]),
-                "auth_headers": dict(client._headers),
-                "local_port": find_free_port(),
-                "verify_ssl": profile_config.verify_ssl,
-                "vnc_password": vnc_data["ticket"],
-            }
+            consoles = []
+            for ctid in ctid_list:
+                ct = next((c for c in cts if c.get("vmid") == ctid), None)
+                if not ct:
+                    print_error(f"Container {ctid} not found")
+                    continue
 
-        server = VNCProxyServer(**server_config)
-        url = server.get_browser_url()
-        open_browser_window(url)
+                node = ct.get("node")
+                ct_name = ct.get("name", "").strip()
+                ct_status = ct.get("status", "unknown")
+
+                if ct_status != "running":
+                    print_error(
+                        f"Container {ctid} ({ct_name}) is not running (status: {ct_status}). "
+                        "Start the container before opening a VNC console."
+                    )
+                    continue
+
+                vnc_data = await client.create_ct_vncproxy(node, ctid, websocket=True)
+
+                consoles.append((ctid, ct_name, {
+                    "proxmox_host": host,
+                    "proxmox_port": profile_config.port,
+                    "ws_path": f"/api2/json/nodes/{node}/lxc/{ctid}/vncwebsocket",
+                    "vncticket": vnc_data["ticket"],
+                    "pve_port": int(vnc_data["port"]),
+                    "auth_headers": dict(client._headers),
+                    "local_port": find_free_port(),
+                    "verify_ssl": profile_config.verify_ssl,
+                    "vnc_password": vnc_data["ticket"],
+                }))
+
+        if not consoles:
+            raise typer.Exit(1)
 
         if no_background:
+            ctid, ct_name, server_config = consoles[0]
+            server = VNCProxyServer(**server_config)
+            open_browser_window(server.get_browser_url(), new_window=split)
             print_success(f"Opening VNC console for CT {ctid} ({ct_name})...")
             console.print("[dim]Press Enter to stop the server[/dim]")
             await server.run()
-        else:
-            import json
-            import subprocess
-            import sys
+            return
 
+        import json
+        import subprocess
+        import sys
+
+        for ctid, ct_name, server_config in consoles:
+            server = VNCProxyServer(**server_config)
             proc = subprocess.Popen(
                 [sys.executable, "-m", "src.vnc", json.dumps(server_config)],
                 stdin=subprocess.DEVNULL,
@@ -3112,6 +3133,7 @@ async def ct_vnc(
                 stderr=subprocess.DEVNULL,
                 start_new_session=True,
             )
+            open_browser_window(server.get_browser_url(), new_window=split)
             print_success(f"VNC console for CT {ctid} ({ct_name}) running in background (PID: {proc.pid})")
 
     except PVECliError as e:

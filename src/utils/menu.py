@@ -6,6 +6,26 @@ based on simple_term_menu, matching the pvecli UX conventions.
 
 from simple_term_menu import TerminalMenu
 
+# ANSI SGR codes for styling menu entries and titles.
+# simple_term_menu strips all escape codes except SGR styling, so these
+# render correctly inside menus (Rich markup does not).
+ANSI_CYAN = "\x1b[36m"
+ANSI_YELLOW = "\x1b[33m"
+ANSI_GREEN = "\x1b[32m"
+ANSI_DIM = "\x1b[2m"
+ANSI_BOLD_CYAN = "\x1b[1;36m"
+ANSI_RESET = "\x1b[0m"
+
+
+def menu_row(modified: bool, label: str, value: str, width: int) -> str:
+    """Build a styled edit-menu row: yellow star when modified, cyan value.
+
+    Placeholder values like (none) or (default) are dimmed instead.
+    """
+    star = f"{ANSI_YELLOW}*{ANSI_RESET} " if modified else "  "
+    style = ANSI_DIM if value.startswith("(") else ANSI_CYAN
+    return f"{star}{label.ljust(width)}  {style}{value}{ANSI_RESET}"
+
 
 def select_menu(items: list[str], title: str) -> int | None:
     """Show a single-select menu. Returns selected index or None if cancelled."""

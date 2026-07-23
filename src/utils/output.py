@@ -1,5 +1,6 @@
 """Output formatting utilities using Rich."""
 
+import sys
 from typing import Any
 
 from rich.console import Console
@@ -82,6 +83,16 @@ def create_table(
             table.add_row(*row)
 
     return table
+
+
+def clear_lines(count: int = 1) -> None:
+    """Erase the previous count terminal lines.
+
+    Used to clean up inline prompts once their value has been read, so
+    interactive menus do not accumulate residual prompt lines above them.
+    """
+    sys.stdout.write("\x1b[1A\x1b[2K" * count)
+    sys.stdout.flush()
 
 
 def _order_sort_key(value: Any) -> tuple:

@@ -280,7 +280,7 @@ async def config_storage(
             if not new_content:
                 print_warning("No content types selected!")
 
-            if not confirm("Apply these changes?"):
+            if not confirm("Apply these changes?", default=True):
                 print_cancelled()
                 return
 
@@ -408,7 +408,7 @@ async def add_content(
             console.print(f"  Node:    {node}")
             console.print(f"  Type:    {content_type}")
 
-            if not yes and not confirm("Proceed with upload?"):
+            if not yes and not confirm("Proceed with upload?", default=True):
                 print_cancelled()
                 return
 

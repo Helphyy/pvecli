@@ -332,10 +332,11 @@ async def add_tag(
 @async_to_sync
 async def edit_tag(
     tag: str = typer.Argument(None, help="Tag name to edit"),
+    name: str = typer.Option(None, "--name", "-n", help="New tag name (rename)"),
     color: str = typer.Option(None, "--color", "-c", help="New hex color (e.g. ff4444)"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
-    """Change the color of an existing tag."""
+    """Rename a tag and/or change its color."""
     config_manager = ConfigManager()
 
     try:
@@ -354,6 +355,8 @@ async def edit_tag(
                 print_warning("No tags found in the cluster")
                 return
 
+            interactive = not name and not color
+
             if not tag:
                 idx = select_menu(all_tags, "  Select tag to edit:")
                 if idx is None:
@@ -361,17 +364,61 @@ async def edit_tag(
                     return
                 tag = all_tags[idx]
 
-            if not color:
-                color = _pick_color(tag)
-                if color is None:
+            # New name: --name flag, or prompt prefilled with the current name
+            new_name = name
+            if interactive:
+                new_name = prompt("  New tag name", default=tag)
+            new_name = (new_name or tag).strip()
+            if any(c in new_name for c in ";, ") or not new_name:
+                print_error("Invalid tag name (no spaces, commas or semicolons)")
+                raise typer.Exit(1)
+
+            rename = new_name != tag
+            if rename and new_name in all_tags:
+                if not confirm(f"Tag '{new_name}' already exists. Merge '{tag}' into it?"):
+                    print_cancelled()
                     return
 
-            color = color.lstrip("#")
-            color_map[tag] = color
-            new_style = _build_tag_style(color_map, existing_style)
-            await client.update_cluster_options(**{"tag-style": new_style})
+            # Color: --color flag, or interactive picker (Esc keeps current)
+            if not color and interactive:
+                color = _pick_color(new_name)
+                if color is None and not rename:
+                    return
 
-        print_success(f"Tag '{tag}' color updated to #{color}")
+            if not rename and not color:
+                print_cancelled()
+                return
+
+            # Apply rename on every VM/CT carrying the tag
+            renamed_count = 0
+            if rename:
+                for r in resources:
+                    tags_str = r.get("tags", "")
+                    tags = [x.strip() for x in tags_str.split(";") if x.strip()]
+                    if tag not in tags:
+                        continue
+                    new_tags = ";".join(dict.fromkeys(new_name if x == tag else x for x in tags))
+                    if r.get("type") == "qemu":
+                        await client.update_vm_config(r.get("node", ""), r.get("vmid"), tags=new_tags)
+                    else:
+                        await client.update_container_config(r.get("node", ""), r.get("vmid"), tags=new_tags)
+                    renamed_count += 1
+
+            # Update the color map: move the key on rename, set the new color
+            old_color = color_map.pop(tag, None)
+            if color:
+                color_map[new_name] = color.lstrip("#")
+            elif old_color and new_name not in color_map:
+                color_map[new_name] = old_color
+
+            new_style = _build_tag_style(color_map, existing_style)
+            if new_style != existing_style:
+                await client.update_cluster_options(**{"tag-style": new_style})
+
+        if rename:
+            print_success(f"Tag '{tag}' renamed to '{new_name}' on {renamed_count} resource(s)")
+        if color:
+            print_success(f"Tag '{new_name}' color updated to #{color.lstrip('#')}")
 
     except KeyboardInterrupt:
         console.print()
@@ -597,7 +644,7 @@ async def import_tags(
                         skipped += 1
                         continue
                     print_warning(f"Tag '{name}' already exists (color: #{color_map[name].split(':')[0]})")
-                    if not confirm(f"  Overwrite tag '{name}'?"):
+                    if not confirm(f"  Overwrite tag '{name}'?", default=True):
                         skipped += 1
                         continue
 
@@ -636,7 +683,7 @@ def color_init(
 ) -> None:
     """Initialize the color palette file with default colors."""
     if _COLOR_FILE.exists() and not force:
-        if not confirm(f"  {_COLOR_FILE} already exists. Overwrite?"):
+        if not confirm(f"  {_COLOR_FILE} already exists. Overwrite?", default=True):
             print_cancelled()
             return
 

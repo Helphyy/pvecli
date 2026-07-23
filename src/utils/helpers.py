@@ -29,33 +29,37 @@ def ordered_group(order: list[str]) -> type[TyperGroup]:
     return _OrderedGroup
 
 
-def open_browser_window(url: str) -> None:
-    """Open URL in a new browser window (not tab).
+def open_browser_window(url: str, new_window: bool = True) -> None:
+    """Open URL in the browser.
 
     Args:
         url: URL to open
+        new_window: Open a dedicated browser window. When False, the URL
+            opens as a tab in the already-running browser instance.
     """
     import subprocess
     import shutil
     import webbrowser
 
-    # Try Firefox with --new-window flag
+    flag = ["--new-window"] if new_window else []
+
+    # Try Firefox
     firefox_path = shutil.which("firefox")
     if firefox_path:
         try:
-            subprocess.Popen([firefox_path, "--new-window", url],
+            subprocess.Popen([firefox_path, *flag, url],
                            stdout=subprocess.DEVNULL,
                            stderr=subprocess.DEVNULL)
             return
         except (FileNotFoundError, PermissionError, OSError):
             pass
 
-    # Try Chrome/Chromium with --new-window flag
+    # Try Chrome/Chromium
     for browser in ["google-chrome", "chromium", "chromium-browser"]:
         browser_path = shutil.which(browser)
         if browser_path:
             try:
-                subprocess.Popen([browser_path, "--new-window", url],
+                subprocess.Popen([browser_path, *flag, url],
                                stdout=subprocess.DEVNULL,
                                stderr=subprocess.DEVNULL)
                 return
@@ -63,4 +67,7 @@ def open_browser_window(url: str) -> None:
                 pass
 
     # Fallback to default browser
-    webbrowser.open_new(url)
+    if new_window:
+        webbrowser.open_new(url)
+    else:
+        webbrowser.open_new_tab(url)

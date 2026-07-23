@@ -16,6 +16,7 @@ from ..api.exceptions import PVECliError, PermissionError as PVEPermissionError
 from ..config import ConfigManager
 from ..utils import (
     build_ordered_table,
+    clear_lines,
     confirm,
     console,
     format_bytes,
@@ -36,6 +37,7 @@ from ..utils import (
     usage_bar,
 )
 from ..utils.helpers import async_to_sync, ordered_group
+from ..utils.menu import ANSI_BOLD_CYAN, ANSI_DIM, ANSI_GREEN, ANSI_RESET, menu_row
 from ..utils.network import resolve_node_host
 from .tag import _parse_color_map
 from ._shared import (
@@ -856,21 +858,19 @@ async def edit_vm(
                     else:
                         s = str(current)
                         display = s[:50] + "..." if len(s) > 50 else s
-                    prefix = "* " if key in changes or (key == "vcpus" and key in deletes) else "  "
-                    options.append(f"{prefix}{label.ljust(max_label)}  {display}")
+                    modified = key in changes or (key == "vcpus" and key in deletes)
+                    options.append(menu_row(modified, label, display, max_label))
 
                 # Pool
                 pool_display = pool_change[1] if pool_change else current_pool
-                pool_prefix = "* " if pool_change else "  "
-                options.append(f"{pool_prefix}{'Pool'.ljust(max_label)}  {pool_display or '(none)'}")
+                options.append(menu_row(bool(pool_change), "Pool", pool_display or "(none)", max_label))
                 pool_menu_idx = len(options) - 1
 
                 # Tags
                 orig_tags = config.get("tags", "")
                 current_tags_str = changes.get("tags", orig_tags)
-                tags_prefix = "* " if "tags" in changes else "  "
                 tags_display = current_tags_str if current_tags_str else "(none)"
-                options.append(f"{tags_prefix}{'Tags'.ljust(max_label)}  {tags_display}")
+                options.append(menu_row("tags" in changes, "Tags", tags_display, max_label))
                 tags_menu_idx = len(options) - 1
 
                 # Boot Order
@@ -878,20 +878,19 @@ async def edit_vm(
                 current_boot = changes.get("boot", orig_boot)
                 boot_order = _parse_boot_order(current_boot)
                 boot_display = " → ".join(boot_order) if boot_order else "(default)"
-                boot_prefix = "* " if "boot" in changes else "  "
-                options.append(f"{boot_prefix}{'Boot Order'.ljust(max_label)}  {boot_display}")
+                options.append(menu_row("boot" in changes, "Boot Order", boot_display, max_label))
                 boot_menu_idx = len(options) - 1
 
                 # Separator + sub-menus
-                options.append("  " + "─" * (max_label + 20))
+                options.append(f"  {ANSI_DIM}{'─' * (max_label + 20)}{ANSI_RESET}")
 
                 disk_keys = sorted(
                     k for k in set(list(config) + list(changes))
                     if _VM_DISK_RE.match(k) and k not in deletes
                 )
                 disk_mod = len(resizes) + len([k for k in changes if _VM_DISK_RE.match(k)]) + len([k for k in deletes if _VM_DISK_RE.match(k)])
-                disk_label = f"Disks         [{', '.join(disk_keys)}]" if disk_keys else "Disks         (none)"
-                options.append(f"{'* ' if disk_mod else '  '}{disk_label}")
+                disk_display = f"[{', '.join(disk_keys)}]" if disk_keys else "(none)"
+                options.append(menu_row(bool(disk_mod), "Disks", disk_display, max_label))
                 disks_menu_idx = len(options) - 1
 
                 net_keys = sorted(
@@ -899,17 +898,23 @@ async def edit_vm(
                     if _VM_NET_RE.match(k) and k not in deletes
                 )
                 net_mod = len([k for k in changes if _VM_NET_RE.match(k)]) + len([k for k in deletes if _VM_NET_RE.match(k)])
-                net_label = f"Network       [{', '.join(net_keys)}]" if net_keys else "Network       (none)"
-                options.append(f"{'* ' if net_mod else '  '}{net_label}")
+                net_display = f"[{', '.join(net_keys)}]" if net_keys else "(none)"
+                options.append(menu_row(bool(net_mod), "Network", net_display, max_label))
                 net_menu_idx = len(options) - 1
 
                 # Apply / Cancel
-                options.append("  " + "─" * (max_label + 20))
+                options.append(f"  {ANSI_DIM}{'─' * (max_label + 20)}{ANSI_RESET}")
                 total = len(changes) + len(resizes) + len(deletes) + (1 if pool_change else 0)
-                options.append(f"  Apply {total} change(s)" if total else "  (no changes)")
+                if total:
+                    options.append(f"  {ANSI_GREEN}Apply {total} change(s){ANSI_RESET}")
+                else:
+                    options.append(f"  {ANSI_DIM}(no changes){ANSI_RESET}")
                 options.append("  Cancel")
 
-                selected = select_menu(options, f"\n  VM {vmid}: {config.get('name', '')}")
+                selected = select_menu(
+                    options,
+                    f"\n  {ANSI_BOLD_CYAN}VM {vmid}: {config.get('name', '')}{ANSI_RESET}",
+                )
 
                 if selected is None or selected == len(options) - 1:
                     print_cancelled()
@@ -953,6 +958,7 @@ async def edit_vm(
                         result_tags = [t for t in chosen if t != "+ Add custom tag"]
                         if "+ Add custom tag" in chosen:
                             custom = Prompt.ask("  Custom tag name")
+                            clear_lines(1)
                             if custom and custom.strip():
                                 result_tags.append(custom.strip())
                         new_tags = ";".join(sorted(result_tags))
@@ -988,6 +994,7 @@ async def edit_vm(
                         if key in deletes:
                             current = 0
                         raw_input = Prompt.ask(f"  {label} (1-{max_vcpus}, 0 = all cores)", default=str(current))
+                        clear_lines(1)
                         try:
                             new_val = int(raw_input)
                         except ValueError:
@@ -1016,6 +1023,7 @@ async def edit_vm(
                                 del changes[key]
                     elif ftype is int:
                         raw_input = Prompt.ask(f"  {label}", default=str(current))
+                        clear_lines(1)
                         try:
                             new_val = int(raw_input)
                             if new_val != original:
@@ -1026,6 +1034,7 @@ async def edit_vm(
                             print_error("Invalid number")
                     else:
                         new_val = Prompt.ask(f"  {label}", default=str(current) if current else "")
+                        clear_lines(1)
                         if new_val != str(original):
                             changes[key] = new_val
                         elif key in changes:
@@ -1074,7 +1083,7 @@ async def edit_vm(
                 if key != "vcpus":
                     console.print(f"  {key}: remove")
 
-            if not confirm("Apply these changes?"):
+            if not confirm("Apply these changes?", default=True):
                 print_cancelled()
                 return
 
@@ -2018,7 +2027,7 @@ def clone_vm(
         print_success(f"VM {vmid} cloned to {cloned_vmid} successfully!")
 
         # Offer to print the full CLI command for reproduction
-        if Confirm.ask("\n[bold]Print the full clone command?[/bold]", default=False):
+        if Confirm.ask("\n[bold]Print the full clone command?[/bold]", default=True):
             _print_clone_command(
                 vmid, clone_snapshot, post_snapshot, cloned_vmid, is_template, source_node
             )
@@ -3354,7 +3363,7 @@ def create_vm(
         print_success(f"VM {created_vmid} created successfully!")
 
         # Offer to print the full CLI command for reproduction
-        if Confirm.ask("\n[bold]Print the full creation command?[/bold]", default=False):
+        if Confirm.ask("\n[bold]Print the full creation command?[/bold]", default=True):
             _print_create_command(node, config, created_vmid, is_windows)
 
     except PVECliError as e:
@@ -3369,11 +3378,12 @@ def create_vm(
 @app.command("vnc")
 @async_to_sync
 async def vm_vnc(
-    vmid: int = typer.Argument(None, help="VM ID"),
-    no_background: bool = typer.Option(False, "--no-background", "-b", is_flag=True, help="Run VNC server in foreground (blocking)"),
+    vmids: str = typer.Argument(None, help="VM ID(s) - single, comma-separated, or range (e.g., 100, 100,101, 100-105)"),
+    no_background: bool = typer.Option(False, "--no-background", "-b", is_flag=True, help="Run VNC server in foreground (blocking, single VM only)"),
+    split: bool = typer.Option(False, "--split", "-S", is_flag=True, help="Open each console in a separate browser window instead of tabs"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
-    """Open an authenticated VNC console for a VM."""
+    """Open authenticated VNC console(s) for one or more VMs."""
     from ..utils import open_browser_window
     from ..utils.network import find_free_port
     from ..vnc.server import VNCProxyServer
@@ -3384,52 +3394,62 @@ async def vm_vnc(
         profile_config = config_manager.get_profile(profile)
 
         async with ProxmoxClient(profile_config) as client:
-            if vmid is None:
-                vmid = await _select_vm(client)
-                if vmid is None:
+            if vmids is None:
+                vmid_list = await _select_vms(client)
+                if not vmid_list:
                     print_cancelled()
                     return
+            else:
+                vmid_list = parse_id_list(vmids, "VM")
+
+            if no_background and len(vmid_list) > 1:
+                print_warning("--no-background only supports a single VM, running in background")
+                no_background = False
+
             vms = await client.get_vms()
-            vm = next((v for v in vms if v.get("vmid") == vmid), None)
-
-            if not vm:
-                print_error(f"VM {vmid} not found")
-                raise typer.Exit(1)
-
-            node = vm.get("node")
-            vm_name = vm.get("name", "").strip()
-            vm_status = vm.get("status", "unknown")
-
-            if vm_status != "running":
-                print_error(
-                    f"VM {vmid} ({vm_name}) is not running (status: {vm_status}). "
-                    "Start the VM before opening a VNC console."
-                )
-                raise typer.Exit(1)
-
-            vnc_data = await client.create_vm_vncproxy(
-                node, vmid, websocket=True, generate_password=True
-            )
-
             host = resolve_node_host(profile_config)
 
-            server_config = {
-                "proxmox_host": host,
-                "proxmox_port": profile_config.port,
-                "ws_path": f"/api2/json/nodes/{node}/qemu/{vmid}/vncwebsocket",
-                "vncticket": vnc_data["ticket"],
-                "pve_port": int(vnc_data["port"]),
-                "auth_headers": dict(client._headers),
-                "local_port": find_free_port(),
-                "verify_ssl": profile_config.verify_ssl,
-                "vnc_password": vnc_data.get("password"),
-            }
+            consoles = []
+            for vmid in vmid_list:
+                vm = next((v for v in vms if v.get("vmid") == vmid), None)
+                if not vm:
+                    print_error(f"VM {vmid} not found")
+                    continue
 
-        server = VNCProxyServer(**server_config)
-        url = server.get_browser_url()
-        open_browser_window(url)
+                node = vm.get("node")
+                vm_name = vm.get("name", "").strip()
+                vm_status = vm.get("status", "unknown")
+
+                if vm_status != "running":
+                    print_error(
+                        f"VM {vmid} ({vm_name}) is not running (status: {vm_status}). "
+                        "Start the VM before opening a VNC console."
+                    )
+                    continue
+
+                vnc_data = await client.create_vm_vncproxy(
+                    node, vmid, websocket=True, generate_password=True
+                )
+
+                consoles.append((vmid, vm_name, {
+                    "proxmox_host": host,
+                    "proxmox_port": profile_config.port,
+                    "ws_path": f"/api2/json/nodes/{node}/qemu/{vmid}/vncwebsocket",
+                    "vncticket": vnc_data["ticket"],
+                    "pve_port": int(vnc_data["port"]),
+                    "auth_headers": dict(client._headers),
+                    "local_port": find_free_port(),
+                    "verify_ssl": profile_config.verify_ssl,
+                    "vnc_password": vnc_data.get("password"),
+                }))
+
+        if not consoles:
+            raise typer.Exit(1)
 
         if no_background:
+            vmid, vm_name, server_config = consoles[0]
+            server = VNCProxyServer(**server_config)
+            open_browser_window(server.get_browser_url(), new_window=split)
             print_success(f"Opening VNC console for VM {vmid} ({vm_name})...")
             console.print("[dim]Press Enter to stop the server[/dim]")
             await server.run()
@@ -3438,14 +3458,17 @@ async def vm_vnc(
             import subprocess
             import sys
 
-            proc = subprocess.Popen(
-                [sys.executable, "-m", "src.vnc", json.dumps(server_config)],
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                start_new_session=True,
-            )
-            print_success(f"VNC console for VM {vmid} ({vm_name}) running in background (PID: {proc.pid})")
+            for vmid, vm_name, server_config in consoles:
+                server = VNCProxyServer(**server_config)
+                proc = subprocess.Popen(
+                    [sys.executable, "-m", "src.vnc", json.dumps(server_config)],
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    start_new_session=True,
+                )
+                open_browser_window(server.get_browser_url(), new_window=split)
+                print_success(f"VNC console for VM {vmid} ({vm_name}) running in background (PID: {proc.pid})")
 
     except PVECliError as e:
         print_error(str(e))

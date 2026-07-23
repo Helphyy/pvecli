@@ -500,7 +500,7 @@ def edit_profile(
         if "token_value" in changes:
             console.print(f"  Token value: (will be changed)")
 
-        if not confirm("Apply these changes?"):
+        if not confirm("Apply these changes?", default=True):
             print_cancelled()
             return
 
