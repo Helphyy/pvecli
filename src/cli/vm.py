@@ -10,12 +10,12 @@ import click
 import typer
 from rich.panel import Panel
 from rich.prompt import Confirm, IntPrompt, Prompt
-from rich.table import Table
 
 from ..api.client import ProxmoxClient
 from ..api.exceptions import PVECliError, PermissionError as PVEPermissionError
 from ..config import ConfigManager
 from ..utils import (
+    build_ordered_table,
     confirm,
     console,
     format_bytes,
@@ -127,6 +127,7 @@ async def list_vms(
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
     node: str = typer.Option(None, "--node", "-n", help="Filter by node"),
     status: str = typer.Option(None, "--status", "-s", help="Filter by status (running, stopped)"),
+    order: str = typer.Option(None, "--order", "-o", help="Sort by column (moved to first position), e.g. name, node, pool, cpu, memory"),
 ) -> None:
     """List all VMs."""
     config_manager = ConfigManager()
@@ -135,7 +136,10 @@ async def list_vms(
         profile_config = config_manager.get_profile(profile)
 
         async with ProxmoxClient(profile_config) as client:
-            vms = await client.get_vms(node=node)
+            # Always use cluster resources: the per-node endpoint has no pool info
+            vms = await client.get_vms()
+            if node:
+                vms = [vm for vm in vms if vm.get("node") == node]
 
             if not vms:
                 print_info("No VMs found")
@@ -154,25 +158,29 @@ async def list_vms(
             cluster_opts = await client.get_cluster_options()
             color_map = _parse_color_map(cluster_opts.get("tag-style", ""))
 
-            # Sort by vmid
+            # Sort by vmid (default order)
             vms = sorted(vms, key=lambda x: x.get("vmid", 0))
 
-            table = Table(title="Virtual Machines", show_header=True, header_style="bold cyan")
-            table.add_column("VMID", style="cyan", justify="right")
-            table.add_column("Name")
-            table.add_column("Node")
-            table.add_column("Status")
-            table.add_column("CPU")
-            table.add_column("Memory")
-            table.add_column("Disk")
-            table.add_column("Uptime")
-            table.add_column("Tags")
+            columns = [
+                ("VMID", {"style": "cyan", "justify": "right"}),
+                ("Name", {}),
+                ("Node", {}),
+                ("Pool", {}),
+                ("Status", {}),
+                ("CPU", {}),
+                ("Memory", {}),
+                ("Disk", {}),
+                ("Uptime", {}),
+                ("Tags", {}),
+            ]
 
+            rows = []
             for vm in vms:
-                vmid = str(vm.get("vmid", "-"))
+                vmid = vm.get("vmid", 0)
                 name = vm.get("name", "-")
                 tags = vm.get("tags", "")
                 node_name = vm.get("node", "-")
+                pool = vm.get("pool", "")
                 vm_status = vm.get("status", "unknown")
                 vm_lock = vm.get("lock", "")
                 status_color = get_status_color(vm_status)
@@ -199,6 +207,8 @@ async def list_vms(
                     uptime = vm.get("uptime", 0)
                     uptime_str = format_uptime(uptime) if uptime else "-"
                 else:
+                    cpu_usage = mem_percent = disk_percent = -1.0
+                    uptime = 0
                     maxcpu = vm.get("maxcpu", vm.get("cpus", 0))
                     cpu_str = f"[dim]- ({maxcpu}c)[/dim]" if maxcpu else "-"
                     maxmem = vm.get("maxmem", 0)
@@ -207,18 +217,22 @@ async def list_vms(
                     disk_str = f"[dim]- {format_bytes(maxdisk)}[/dim]" if maxdisk else "-"
                     uptime_str = "-"
 
-                table.add_row(
-                    vmid,
-                    name,
-                    node_name,
-                    status_str,
-                    cpu_str,
-                    mem_str,
-                    disk_str,
-                    uptime_str,
-                    format_tags_colored(tags, color_map),
-                )
+                rows.append({
+                    "VMID": (vmid, str(vmid)),
+                    "Name": (name, name),
+                    "Node": (node_name, node_name),
+                    "Pool": (pool, pool or "-"),
+                    "Status": (vm_status, status_str),
+                    "CPU": (cpu_usage, cpu_str),
+                    "Memory": (mem_percent, mem_str),
+                    "Disk": (disk_percent, disk_str),
+                    "Uptime": (uptime, uptime_str),
+                    "Tags": (tags, format_tags_colored(tags, color_map)),
+                })
 
+            table = build_ordered_table("Virtual Machines", columns, rows, order)
+            if table is None:
+                raise typer.Exit(1)
             console.print(table)
 
     except PVECliError as e:

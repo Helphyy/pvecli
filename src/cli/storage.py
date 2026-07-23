@@ -9,7 +9,7 @@ from rich.table import Table
 from ..api.client import ProxmoxClient
 from ..api.exceptions import PVECliError
 from ..config import ConfigManager
-from ..utils import confirm, console, format_bytes, format_percentage, print_cancelled, print_error, print_info, print_success, print_warning, prompt
+from ..utils import build_ordered_table, confirm, console, format_bytes, format_percentage, print_cancelled, print_error, print_info, print_success, print_warning, prompt
 from ..utils.helpers import async_to_sync, ordered_group
 from ..utils.menu import multi_select_menu, select_menu
 from ._shared import pick_node
@@ -54,6 +54,7 @@ async def _resolve_node_storage(client: ProxmoxClient, node: str | None, storage
 async def list_storage(
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
     node: str = typer.Option(None, "--node", "-n", help="Show storage for specific node"),
+    order: str = typer.Option(None, "--order", "-o", help="Sort by column (moved to first position), e.g. storage, type, usage"),
 ) -> None:
     """List all storage."""
     config_manager = ConfigManager()
@@ -79,56 +80,53 @@ async def list_storage(
                 print_info("No storage found")
                 return
 
-            table = Table(title=title, show_header=True, header_style="bold cyan")
+            columns = []
             if not node:
-                table.add_column("Node", style="cyan")
-            table.add_column("Storage", style="cyan")
-            table.add_column("Type")
-            table.add_column("Content")
-            table.add_column("Status")
-            table.add_column("Total", justify="right")
-            table.add_column("Used", justify="right")
-            table.add_column("Available", justify="right")
-            table.add_column("Usage %", justify="right")
+                columns.append(("Node", {"style": "cyan"}))
+            columns.extend([
+                ("Storage", {"style": "cyan"}),
+                ("Type", {}),
+                ("Content", {}),
+                ("Status", {}),
+                ("Total", {"justify": "right"}),
+                ("Used", {"justify": "right"}),
+                ("Available", {"justify": "right"}),
+                ("Usage %", {"justify": "right"}),
+            ])
 
+            rows = []
             for storage in storage_list:
-                row = []
-                if not node:
-                    row.append(storage.get("_node", "-"))
-
                 active = storage.get("active", False)
                 enabled = storage.get("enabled", True)
                 if active and enabled:
-                    status = "[green]active[/green]"
+                    status_val, status = "active", "[green]active[/green]"
                 elif enabled:
-                    status = "[yellow]inactive[/yellow]"
+                    status_val, status = "inactive", "[yellow]inactive[/yellow]"
                 else:
-                    status = "[red]disabled[/red]"
-
-                row.extend([
-                    storage.get("storage", "-"),
-                    storage.get("type", "-"),
-                    storage.get("content", "-"),
-                    status,
-                ])
+                    status_val, status = "disabled", "[red]disabled[/red]"
 
                 total = storage.get("total", 0)
                 used = storage.get("used", 0)
                 avail = storage.get("avail", 0)
+                used_pct = (used / total * 100) if total else -1.0
 
-                if total:
-                    used_pct = (used / total * 100) if total else 0
-                    row.extend([
-                        format_bytes(total),
-                        format_bytes(used),
-                        format_bytes(avail),
-                        format_percentage(used_pct),
-                    ])
-                else:
-                    row.extend(["-", "-", "-", "-"])
+                row = {
+                    "Storage": (storage.get("storage", "-"), storage.get("storage", "-")),
+                    "Type": (storage.get("type", "-"), storage.get("type", "-")),
+                    "Content": (storage.get("content", "-"), storage.get("content", "-")),
+                    "Status": (status_val, status),
+                    "Total": (total, format_bytes(total) if total else "-"),
+                    "Used": (used, format_bytes(used) if total else "-"),
+                    "Available": (avail, format_bytes(avail) if total else "-"),
+                    "Usage %": (used_pct, format_percentage(used_pct) if total else "-"),
+                }
+                if not node:
+                    row["Node"] = (storage.get("_node", "-"), storage.get("_node", "-"))
+                rows.append(row)
 
-                table.add_row(*row)
-
+            table = build_ordered_table(title, columns, rows, order)
+            if table is None:
+                raise typer.Exit(1)
             console.print(table)
 
     except PVECliError as e:

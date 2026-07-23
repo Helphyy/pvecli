@@ -9,7 +9,7 @@ from rich.table import Table
 from ..api.client import ProxmoxClient
 from ..api.exceptions import PVECliError
 from ..config import ConfigManager
-from ..utils import confirm, console, print_cancelled, print_error, print_success, print_warning, prompt
+from ..utils import build_ordered_table, confirm, console, print_cancelled, print_error, print_success, print_warning, prompt
 from ..utils.helpers import async_to_sync, ordered_group
 from ..utils.menu import multi_select_menu, select_menu
 
@@ -224,6 +224,7 @@ async def _collect_all_tags(client: ProxmoxClient) -> dict[str, dict]:
 @async_to_sync
 async def list_tags(
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+    order: str = typer.Option(None, "--order", "-o", help="Sort by column (moved to first position), e.g. tag, vms, cts, total"),
 ) -> None:
     """List all tags in the cluster."""
     config_manager = ConfigManager()
@@ -243,13 +244,15 @@ async def list_tags(
                 console.print("No tags found")
                 return
 
-            table = Table(title="Cluster Tags", show_header=True, header_style="bold cyan")
-            table.add_column("Tag", style="cyan")
-            table.add_column("Color")
-            table.add_column("VMs", justify="right")
-            table.add_column("CTs", justify="right")
-            table.add_column("Total", justify="right")
+            columns = [
+                ("Tag", {"style": "cyan"}),
+                ("Color", {}),
+                ("VMs", {"justify": "right"}),
+                ("CTs", {"justify": "right"}),
+                ("Total", {"justify": "right"}),
+            ]
 
+            rows = []
             for tag in sorted(all_tags):
                 counts = tag_counts.get(tag, {"vms": 0, "cts": 0})
                 color = color_map.get(tag, "")
@@ -261,14 +264,17 @@ async def list_tags(
                 else:
                     color_display = "-"
                 total = counts["vms"] + counts["cts"]
-                table.add_row(
-                    tag,
-                    color_display,
-                    str(counts["vms"]),
-                    str(counts["cts"]),
-                    str(total),
-                )
+                rows.append({
+                    "Tag": (tag, tag),
+                    "Color": (color or "", color_display),
+                    "VMs": (counts["vms"], str(counts["vms"])),
+                    "CTs": (counts["cts"], str(counts["cts"])),
+                    "Total": (total, str(total)),
+                })
 
+            table = build_ordered_table("Cluster Tags", columns, rows, order)
+            if table is None:
+                raise typer.Exit(1)
             console.print(table)
 
     except PVECliError as e:

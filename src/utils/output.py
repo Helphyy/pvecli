@@ -84,6 +84,55 @@ def create_table(
     return table
 
 
+def _order_sort_key(value: Any) -> tuple:
+    """Build a type-safe sort key: numbers first, then strings, then missing."""
+    if value is None:
+        return (2, 0)
+    if isinstance(value, bool):
+        return (0, int(value))
+    if isinstance(value, (int, float)):
+        return (0, value)
+    return (1, str(value).lower())
+
+
+def build_ordered_table(
+    title: str,
+    columns: list[tuple[str, dict]],
+    rows: list[dict[str, tuple[Any, str]]],
+    order: str | None = None,
+) -> Table | None:
+    """Build a Rich table with optional column ordering.
+
+    Args:
+        title: Table title.
+        columns: List of (name, add_column kwargs) tuples, in default order.
+        rows: List of dicts mapping column name to (sort_value, rendered_cell).
+        order: Optional column to sort by (case-insensitive, prefix match).
+            The matched column is moved to the first position.
+
+    Returns:
+        The table, or None if the order column does not exist (error printed).
+    """
+    if order:
+        names = [c[0] for c in columns]
+        matches = [n for n in names if n.lower() == order.lower()] or [
+            n for n in names if n.lower().startswith(order.lower())
+        ]
+        if not matches:
+            print_error(f"Unknown column '{order}'. Available: {', '.join(names)}")
+            return None
+        key = matches[0]
+        rows = sorted(rows, key=lambda r: _order_sort_key(r.get(key, (None, ""))[0]))
+        columns = [c for c in columns if c[0] == key] + [c for c in columns if c[0] != key]
+
+    table = Table(title=title, show_header=True, header_style="bold cyan")
+    for name, kwargs in columns:
+        table.add_column(name, **kwargs)
+    for row in rows:
+        table.add_row(*(row.get(name, (None, "-"))[1] for name, _ in columns))
+    return table
+
+
 def confirm(message: str, default: bool = False) -> bool:
     """Prompt user for confirmation.
 

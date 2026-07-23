@@ -11,6 +11,7 @@ from .menu import (
     select_menu,
 )
 from .output import (
+    build_ordered_table,
     confirm,
     console,
     create_table,
@@ -35,6 +36,7 @@ from .tags import (
 
 __all__ = [
     "async_to_sync",
+    "build_ordered_table",
     "confirm",
     "console",
     "create_table",

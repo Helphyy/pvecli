@@ -6,6 +6,17 @@ Most commands work **interactively** when called without arguments.
 Multi-target commands accept single IDs, comma-separated lists, or ranges:
 `100`, `100,101,102`, `100-105`, `100-103,200,300-302`
 
+List commands (`vm`, `ct`, `node`, `storage`, `pool`, `tag`) accept `--order/-o COLUMN` to sort by a column (case-insensitive, prefix match). The sorted column is moved to the first position:
+
+```bash
+pvecli vm list -o pool         # Sort VMs by pool, Pool column first
+pvecli vm list -o mem          # Prefix match: sorts by Memory usage
+pvecli node list -o cpu
+pvecli storage list -o usage
+```
+
+`vm list` and `ct list` also display a **Pool** column.
+
 ---
 
 ## config

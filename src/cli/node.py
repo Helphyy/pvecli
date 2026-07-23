@@ -2,12 +2,12 @@
 
 import typer
 from rich.panel import Panel
-from rich.table import Table
 
 from ..api.client import ProxmoxClient
 from ..api.exceptions import PVECliError
 from ..config import ConfigManager
 from ..utils import (
+    build_ordered_table,
     confirm,
     console,
     format_bytes,
@@ -145,6 +145,7 @@ async def reboot_node(
 @async_to_sync
 async def list_nodes(
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+    order: str = typer.Option(None, "--order", "-o", help="Sort by column (moved to first position), e.g. node, cpu, memory, uptime"),
 ) -> None:
     """List all cluster nodes."""
     config_manager = ConfigManager()
@@ -159,14 +160,16 @@ async def list_nodes(
                 console.print("No nodes found")
                 return
 
-            table = Table(title="Cluster Nodes", show_header=True, header_style="bold cyan")
-            table.add_column("Node", style="cyan")
-            table.add_column("Status", style="green")
-            table.add_column("CPU", justify="right")
-            table.add_column("Memory", justify="right")
-            table.add_column("Disk", justify="right")
-            table.add_column("Uptime")
+            columns = [
+                ("Node", {"style": "cyan"}),
+                ("Status", {"style": "green"}),
+                ("CPU", {"justify": "right"}),
+                ("Memory", {"justify": "right"}),
+                ("Disk", {"justify": "right"}),
+                ("Uptime", {}),
+            ]
 
+            rows = []
             for node in nodes:
                 status = node.get("status", "unknown")
                 status_color = "green" if status == "online" else "red"
@@ -185,17 +188,20 @@ async def list_nodes(
                 uptime = node.get("uptime", 0)
                 uptime_str = f"{uptime // 86400}d {(uptime % 86400) // 3600}h"
 
-                table.add_row(
-                    node.get("node", "unknown"),
-                    f"[{status_color}]{status}[/{status_color}]",
-                    f"{format_percentage(cpu_usage)} ({maxcpu} cores)",
-                    f"{format_bytes(mem_used)} / {format_bytes(mem_total)} "
-                    f"({format_percentage(mem_percent)})",
-                    f"{format_bytes(disk_used)} / {format_bytes(disk_total)} "
-                    f"({format_percentage(disk_percent)})",
-                    uptime_str if uptime > 0 else "-",
-                )
+                rows.append({
+                    "Node": (node.get("node", "unknown"), node.get("node", "unknown")),
+                    "Status": (status, f"[{status_color}]{status}[/{status_color}]"),
+                    "CPU": (cpu_usage, f"{format_percentage(cpu_usage)} ({maxcpu} cores)"),
+                    "Memory": (mem_percent, f"{format_bytes(mem_used)} / {format_bytes(mem_total)} "
+                               f"({format_percentage(mem_percent)})"),
+                    "Disk": (disk_percent, f"{format_bytes(disk_used)} / {format_bytes(disk_total)} "
+                             f"({format_percentage(disk_percent)})"),
+                    "Uptime": (uptime, uptime_str if uptime > 0 else "-"),
+                })
 
+            table = build_ordered_table("Cluster Nodes", columns, rows, order)
+            if table is None:
+                raise typer.Exit(1)
             console.print(table)
 
     except PVECliError as e:

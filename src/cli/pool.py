@@ -6,12 +6,12 @@ from pathlib import Path
 import typer
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
-from rich.table import Table
 
 from ..api.client import ProxmoxClient
 from ..api.exceptions import PVECliError
 from ..config import ConfigManager
 from ..utils import (
+    build_ordered_table,
     confirm,
     console,
     print_cancelled,
@@ -33,6 +33,7 @@ app.add_typer(content_app, name="content")
 @async_to_sync
 async def list_pools(
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+    order: str = typer.Option(None, "--order", "-o", help="Sort by column (moved to first position), e.g. pool, comment"),
 ) -> None:
     """List all resource pools."""
     config_manager = ConfigManager()
@@ -53,18 +54,24 @@ async def list_pools(
                 print_info("No pools found")
                 return
 
-            # Sort by poolid
+            # Sort by poolid (default order)
             pools = sorted(pools, key=lambda x: x.get("poolid", ""))
 
-            table = Table(title="Resource Pools", show_header=True, header_style="bold cyan")
-            table.add_column("Pool ID", style="cyan")
-            table.add_column("Comment")
+            columns = [
+                ("Pool ID", {"style": "cyan"}),
+                ("Comment", {}),
+            ]
+            rows = [
+                {
+                    "Pool ID": (pool.get("poolid", "-"), pool.get("poolid", "-")),
+                    "Comment": (pool.get("comment", ""), pool.get("comment", "")),
+                }
+                for pool in pools
+            ]
 
-            for pool in pools:
-                poolid = pool.get("poolid", "-")
-                comment = pool.get("comment", "")
-                table.add_row(poolid, comment)
-
+            table = build_ordered_table("Resource Pools", columns, rows, order)
+            if table is None:
+                raise typer.Exit(1)
             console.print(table)
 
     except PVECliError as e:

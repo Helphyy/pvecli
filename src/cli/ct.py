@@ -8,12 +8,12 @@ import typer
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.prompt import Confirm, IntPrompt, Prompt
-from rich.table import Table
 
 from ..api.client import ProxmoxClient
 from ..api.exceptions import PVECliError
 from ..config import ConfigManager
 from ..utils import (
+    build_ordered_table,
     confirm,
     console,
     create_table,
@@ -75,6 +75,7 @@ async def list_containers(
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
     node: str = typer.Option(None, "--node", "-n", help="Filter by node"),
     status: str = typer.Option(None, "--status", "-s", help="Filter by status (running, stopped)"),
+    order: str = typer.Option(None, "--order", "-o", help="Sort by column (moved to first position), e.g. name, node, pool, cpu, memory"),
 ) -> None:
     """List all containers."""
     config_manager = ConfigManager()
@@ -83,7 +84,10 @@ async def list_containers(
         profile_config = config_manager.get_profile(profile)
 
         async with ProxmoxClient(profile_config) as client:
-            containers = await client.get_containers(node=node)
+            # Always use cluster resources: the per-node endpoint has no pool info
+            containers = await client.get_containers()
+            if node:
+                containers = [ct for ct in containers if ct.get("node") == node]
 
             if not containers:
                 print_info("No containers found")
@@ -104,25 +108,29 @@ async def list_containers(
             cluster_opts = await client.get_cluster_options()
             color_map = _parse_color_map(cluster_opts.get("tag-style", ""))
 
-            # Sort by ctid
+            # Sort by ctid (default order)
             containers = sorted(containers, key=lambda x: x.get("vmid", 0))
 
-            table = Table(title="Containers (LXC)", show_header=True, header_style="bold cyan")
-            table.add_column("CTID", style="cyan", justify="right")
-            table.add_column("Name")
-            table.add_column("Node")
-            table.add_column("Status")
-            table.add_column("CPU")
-            table.add_column("Memory")
-            table.add_column("Disk")
-            table.add_column("Uptime")
-            table.add_column("Tags")
+            columns = [
+                ("CTID", {"style": "cyan", "justify": "right"}),
+                ("Name", {}),
+                ("Node", {}),
+                ("Pool", {}),
+                ("Status", {}),
+                ("CPU", {}),
+                ("Memory", {}),
+                ("Disk", {}),
+                ("Uptime", {}),
+                ("Tags", {}),
+            ]
 
+            rows = []
             for ct in containers:
-                ctid = str(ct.get("vmid", "-"))
+                ctid = ct.get("vmid", 0)
                 name = ct.get("name", "-")
                 tags = ct.get("tags", "")
                 node_name = ct.get("node", "-")
+                pool = ct.get("pool", "")
                 ct_status = ct.get("status", "unknown")
                 ct_lock = ct.get("lock", "")
                 status_color = get_status_color(ct_status)
@@ -149,6 +157,8 @@ async def list_containers(
                     uptime = ct.get("uptime", 0)
                     uptime_str = format_uptime(uptime) if uptime else "-"
                 else:
+                    cpu_usage = mem_percent = disk_percent = -1.0
+                    uptime = 0
                     maxcpu = ct.get("maxcpu", ct.get("cpus", 0))
                     cpu_str = f"[dim]- ({maxcpu}c)[/dim]" if maxcpu else "-"
                     maxmem = ct.get("maxmem", 0)
@@ -157,18 +167,22 @@ async def list_containers(
                     disk_str = f"[dim]- {format_bytes(maxdisk)}[/dim]" if maxdisk else "-"
                     uptime_str = "-"
 
-                table.add_row(
-                    ctid,
-                    name,
-                    node_name,
-                    status_str,
-                    cpu_str,
-                    mem_str,
-                    disk_str,
-                    uptime_str,
-                    format_tags_colored(tags, color_map),
-                )
+                rows.append({
+                    "CTID": (ctid, str(ctid)),
+                    "Name": (name, name),
+                    "Node": (node_name, node_name),
+                    "Pool": (pool, pool or "-"),
+                    "Status": (ct_status, status_str),
+                    "CPU": (cpu_usage, cpu_str),
+                    "Memory": (mem_percent, mem_str),
+                    "Disk": (disk_percent, disk_str),
+                    "Uptime": (uptime, uptime_str),
+                    "Tags": (tags, format_tags_colored(tags, color_map)),
+                })
 
+            table = build_ordered_table("Containers (LXC)", columns, rows, order)
+            if table is None:
+                raise typer.Exit(1)
             console.print(table)
 
     except PVECliError as e:
