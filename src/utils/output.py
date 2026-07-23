@@ -95,6 +95,25 @@ def clear_lines(count: int = 1) -> None:
     sys.stdout.flush()
 
 
+def menu_prompt(message: str, default: str | None = None) -> str:
+    """Prompt inside a menu redraw loop, then erase the prompt line(s).
+
+    Accounts for terminal wrapping: a long prompt or answer spanning
+    several physical lines is fully erased, leaving no residue above
+    the redrawn menu.
+    """
+    import math
+
+    value = prompt(message, default=default)
+    shown = message
+    if default is not None:
+        shown += f" ({default})"
+    shown += ": " + str(value)
+    width = console.width or 80
+    clear_lines(max(1, math.ceil((len(shown) + 2) / width)))
+    return value
+
+
 def _order_sort_key(value: Any) -> tuple:
     """Build a type-safe sort key: numbers first, then strings, then missing."""
     if value is None:

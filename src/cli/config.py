@@ -15,6 +15,7 @@ from ..utils import (
     console,
     print_cancelled,
     print_error,
+    menu_prompt,
     print_info,
     print_success,
     prompt,
@@ -413,7 +414,7 @@ def edit_profile(
             apply_idx = len(options) - 1
             options.append("  Cancel")
 
-            selected = select_menu(options, f"\n  Profile: {changes.get('name', name)}")
+            selected = select_menu(options, f"  Profile: {changes.get('name', name)}")
 
             if selected is None or selected == len(options) - 1:
                 print_cancelled()
@@ -435,8 +436,7 @@ def edit_profile(
                 continue
 
             if selected == token_name_idx:
-                val = prompt("  Token name", default=changes.get("token_name", current.auth.token_name or ""))
-                clear_lines(1)
+                val = menu_prompt("  Token name", default=changes.get("token_name", current.auth.token_name or ""))
                 if val != (current.auth.token_name or ""):
                     changes["token_name"] = val
                 elif "token_name" in changes:
@@ -444,8 +444,7 @@ def edit_profile(
                 continue
 
             if selected == token_value_idx:
-                val = prompt("  Token value", default=changes.get("token_value", current.auth.token_value or ""))
-                clear_lines(1)
+                val = menu_prompt("  Token value", default=changes.get("token_value", current.auth.token_value or ""))
                 if val != (current.auth.token_value or ""):
                     changes["token_value"] = val
                 elif "token_value" in changes:
@@ -473,8 +472,7 @@ def edit_profile(
                         elif key in changes:
                             del changes[key]
                 elif isinstance(original, int):
-                    raw = prompt(f"  {label}", default=str(changes.get(key, original)))
-                    clear_lines(1)
+                    raw = menu_prompt(f"  {label}", default=str(changes.get(key, original)))
                     try:
                         new_val = int(raw)
                         if new_val != original:
@@ -484,8 +482,7 @@ def edit_profile(
                     except ValueError:
                         print_error("Invalid number")
                 else:
-                    new_val = prompt(f"  {label}", default=str(changes.get(key, original)))
-                    clear_lines(1)
+                    new_val = menu_prompt(f"  {label}", default=str(changes.get(key, original)))
                     if new_val != str(original):
                         changes[key] = new_val
                     elif key in changes:

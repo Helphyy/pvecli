@@ -24,6 +24,7 @@ from ..utils import (
     format_tags_colored,
     format_uptime,
     get_status_color,
+    menu_prompt,
     multi_select_menu,
     print_cancelled,
     print_error,
@@ -472,7 +473,7 @@ async def _edit_vm_boot_order(config: dict, changes: dict, deletes: set) -> None
         items.append("  Back")
         back_idx = len(items) - 1
 
-        idx, key = reorder_menu(items, "\n  Boot Order  [u: move up  d: move down  r: remove  Enter: add/back]:")
+        idx, key = reorder_menu(items, "  Boot Order  [u: move up  d: move down  r: remove  Enter: add/back]:")
 
         if idx is None or (key == "enter" and idx == back_idx):
             return
@@ -546,7 +547,7 @@ async def _edit_vm_disks(config, changes, resizes, deletes, client, node):
             options.append("  Remove disk")
         options.append("  Back")
 
-        idx = select_menu(options, "\n  Disks:")
+        idx = select_menu(options, "  Disks:")
 
         if idx is None or options[idx].strip() == "Back":
             return
@@ -713,7 +714,7 @@ async def _edit_vm_network(config, changes, deletes, client, node):
             options.append("  Remove NIC")
         options.append("  Back")
 
-        idx = select_menu(options, "\n  Network:")
+        idx = select_menu(options, "  Network:")
 
         if idx is None or options[idx].strip() == "Back":
             return
@@ -820,7 +821,7 @@ async def edit_vm(
             node, _ = await _get_vm_node(client, vmid)
             config = await client.get_vm_config(node, vmid)
 
-            console.print("\n[bold cyan]═══ Edit VM ═══[/bold cyan]")
+            console.print("\n[bold cyan]═══ Edit VM ═══[/bold cyan]\n")
 
             # Pool info comes from cluster resources, not config
             resources = await client.get_cluster_resources(resource_type="vm")
@@ -915,10 +916,7 @@ async def edit_vm(
                     options.append("  (no changes)")
                 options.append("  Cancel")
 
-                selected = select_menu(
-                    options,
-                    f"\n  VM {vmid}: {config.get('name', '')}",
-                )
+                selected = select_menu(options, f"  VM {vmid}: {config.get('name', '')}")
 
                 if selected is None or selected == len(options) - 1:
                     print_cancelled()
@@ -961,8 +959,7 @@ async def edit_vm(
                         # Handle custom tag
                         result_tags = [t for t in chosen if t != "+ Add custom tag"]
                         if "+ Add custom tag" in chosen:
-                            custom = Prompt.ask("  Custom tag name")
-                            clear_lines(1)
+                            custom = menu_prompt("  Custom tag name")
                             if custom and custom.strip():
                                 result_tags.append(custom.strip())
                         new_tags = ";".join(sorted(result_tags))
@@ -997,8 +994,7 @@ async def edit_vm(
                         )
                         if key in deletes:
                             current = 0
-                        raw_input = Prompt.ask(f"  {label} (1-{max_vcpus}, 0 = all cores)", default=str(current))
-                        clear_lines(1)
+                        raw_input = menu_prompt(f"  {label} (1-{max_vcpus}, 0 = all cores)", default=str(current))
                         try:
                             new_val = int(raw_input)
                         except ValueError:
@@ -1026,8 +1022,7 @@ async def edit_vm(
                             elif key in changes:
                                 del changes[key]
                     elif ftype is int:
-                        raw_input = Prompt.ask(f"  {label}", default=str(current))
-                        clear_lines(1)
+                        raw_input = menu_prompt(f"  {label}", default=str(current))
                         try:
                             new_val = int(raw_input)
                             if new_val != original:
@@ -1037,8 +1032,7 @@ async def edit_vm(
                         except ValueError:
                             print_error("Invalid number")
                     else:
-                        new_val = Prompt.ask(f"  {label}", default=str(current) if current else "")
-                        clear_lines(1)
+                        new_val = menu_prompt(f"  {label}", default=str(current) if current else "")
                         if new_val != str(original):
                             changes[key] = new_val
                         elif key in changes:

@@ -23,6 +23,7 @@ from ..utils import (
     format_tags_colored,
     format_uptime,
     get_status_color,
+    menu_prompt,
     multi_select_menu,
     print_cancelled,
     print_error,
@@ -389,7 +390,7 @@ async def _edit_ct_disks(config, changes, resizes, deletes, client, node):
             options.append("  Remove mountpoint")
         options.append("  Back")
 
-        idx = select_menu(options, "\n  Disks:")
+        idx = select_menu(options, "  Disks:")
 
         if idx is None or options[idx].strip() == "Back":
             return
@@ -413,8 +414,8 @@ async def _edit_ct_disks(config, changes, resizes, deletes, client, node):
             storage = storage_names[st_idx]
 
             size = IntPrompt.ask("  Size (GB)", default=8)
-            mount_path = Prompt.ask("  Mount path", default=f"/mnt/{mp_name}")
-            clear_lines(2)
+            clear_lines(1)
+            mount_path = menu_prompt("  Mount path", default=f"/mnt/{mp_name}")
 
             changes[mp_name] = f"{storage}:{size},mp={mount_path}"
             continue
@@ -473,7 +474,7 @@ async def _edit_ct_network(config, changes, deletes, client, node):
             options.append("  Remove NIC")
         options.append("  Back")
 
-        idx = select_menu(options, "\n  Network:")
+        idx = select_menu(options, "  Network:")
 
         if idx is None or options[idx].strip() == "Back":
             return
@@ -503,12 +504,10 @@ async def _edit_ct_network(config, changes, deletes, client, node):
             if ip_idx == 0:
                 net_config += ",ip=dhcp"
             elif ip_idx == 1:
-                ip_addr = Prompt.ask("  IPv4 CIDR (e.g. 10.0.0.5/24)")
-                clear_lines(1)
+                ip_addr = menu_prompt("  IPv4 CIDR (e.g. 10.0.0.5/24)")
                 if ip_addr:
                     net_config += f",ip={ip_addr}"
-                    gw = Prompt.ask("  Gateway (empty for none)", default="")
-                    clear_lines(1)
+                    gw = menu_prompt("  Gateway (empty for none)", default="")
                     if gw:
                         net_config += f",gw={gw}"
 
@@ -558,13 +557,11 @@ async def _edit_ct_network(config, changes, deletes, client, node):
                 params["ip"] = "dhcp"
                 params.pop("gw", None)
             elif ip_idx == 1:
-                ip_addr = Prompt.ask("  IPv4 CIDR", default=current_ip if current_ip and current_ip != "dhcp" else "")
-                clear_lines(1)
+                ip_addr = menu_prompt("  IPv4 CIDR", default=current_ip if current_ip and current_ip != "dhcp" else "")
                 if ip_addr:
                     params["ip"] = ip_addr
                     current_gw = params.get("gw", "")
-                    gw = Prompt.ask("  Gateway", default=current_gw if current_gw else "")
-                    clear_lines(1)
+                    gw = menu_prompt("  Gateway", default=current_gw if current_gw else "")
                     if gw:
                         params["gw"] = gw
                     elif "gw" in params:
@@ -622,7 +619,7 @@ async def edit_container(
 
             config = await client.get_container_config(node, vmid=ctid)
 
-            console.print("\n[bold cyan]═══ Edit Container ═══[/bold cyan]")
+            console.print("\n[bold cyan]═══ Edit Container ═══[/bold cyan]\n")
 
             # Get current pool from cluster resources
             resources = await client.get_cluster_resources(resource_type="vm")
@@ -712,10 +709,7 @@ async def edit_container(
                     options.append("  (no changes)")
                 options.append("  Cancel")
 
-                selected = select_menu(
-                    options,
-                    f"\n  CT {ctid}: {config.get('hostname', '')}",
-                )
+                selected = select_menu(options, f"  CT {ctid}: {config.get('hostname', '')}")
 
                 if selected is None or selected == len(options) - 1:
                     print_cancelled()
@@ -758,8 +752,7 @@ async def edit_container(
                         # Handle custom tag
                         result_tags = [t for t in chosen if t != "+ Add custom tag"]
                         if "+ Add custom tag" in chosen:
-                            custom = Prompt.ask("  Custom tag name")
-                            clear_lines(1)
+                            custom = menu_prompt("  Custom tag name")
                             if custom and custom.strip():
                                 result_tags.append(custom.strip())
                         new_tags = ";".join(sorted(result_tags))
@@ -812,8 +805,7 @@ async def edit_container(
                             elif key in changes:
                                 del changes[key]
                     elif ftype is int:
-                        raw_input = Prompt.ask(f"  {label}", default=str(current))
-                        clear_lines(1)
+                        raw_input = menu_prompt(f"  {label}", default=str(current))
                         try:
                             new_val = int(raw_input)
                             if new_val != original:
@@ -823,8 +815,7 @@ async def edit_container(
                         except ValueError:
                             print_error("Invalid number")
                     else:
-                        new_val = Prompt.ask(f"  {label}", default=str(current) if current else "")
-                        clear_lines(1)
+                        new_val = menu_prompt(f"  {label}", default=str(current) if current else "")
                         if new_val != str(original):
                             changes[key] = new_val
                         elif key in changes:
