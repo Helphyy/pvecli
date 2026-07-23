@@ -1,5 +1,7 @@
 """Main CLI application."""
 
+import sys
+
 import typer
 from rich.console import Console
 
@@ -60,5 +62,37 @@ def main(
     pass
 
 
+def _pad_order_option(args: list[str]) -> list[str]:
+    """Allow --order/-o without a value on list commands.
+
+    The option parser rejects a valueless -o with a generic "requires
+    an argument" error. Instead, insert an empty value so the command
+    itself can respond with the list of available columns. Only applies
+    after a `list` token, so `pool export -o FILE` is untouched.
+    """
+    out: list[str] = []
+    seen_list = False
+    skip_value = False
+    for i, arg in enumerate(args):
+        out.append(arg)
+        if skip_value:
+            skip_value = False
+            continue
+        if arg == "list":
+            seen_list = True
+        elif seen_list and arg in ("-o", "--order"):
+            nxt = args[i + 1] if i + 1 < len(args) else None
+            if nxt is None or (nxt.startswith("-") and len(nxt) > 1):
+                out.append("")
+            else:
+                skip_value = True
+    return out
+
+
+def run() -> None:
+    """Console entry point."""
+    app(args=_pad_order_option(sys.argv[1:]))
+
+
 if __name__ == "__main__":
-    app()
+    run()

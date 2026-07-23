@@ -113,8 +113,11 @@ def build_ordered_table(
     Returns:
         The table, or None if the order column does not exist (error printed).
     """
-    if order:
+    if order is not None:
         names = [c[0] for c in columns]
+        if not order:
+            print_error(f"--order requires a column. Available: {', '.join(names)}")
+            return None
         matches = [n for n in names if n.lower() == order.lower()] or [
             n for n in names if n.lower().startswith(order.lower())
         ]
