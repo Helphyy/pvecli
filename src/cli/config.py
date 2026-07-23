@@ -10,6 +10,7 @@ from ..api.client import ProxmoxClient
 from ..api.exceptions import PVECliError
 from ..config import AuthConfig, ConfigManager, ProfileConfig
 from ..utils import (
+    clear_lines,
     confirm,
     console,
     print_cancelled,
@@ -423,6 +424,7 @@ def edit_profile(
 
             if selected == pw_menu_idx:
                 pw = getpass("New password: ")
+                clear_lines(1)
                 if pw:
                     changes["password"] = pw
                     # Switching to password auth
@@ -434,6 +436,7 @@ def edit_profile(
 
             if selected == token_name_idx:
                 val = prompt("  Token name", default=changes.get("token_name", current.auth.token_name or ""))
+                clear_lines(1)
                 if val != (current.auth.token_name or ""):
                     changes["token_name"] = val
                 elif "token_name" in changes:
@@ -442,6 +445,7 @@ def edit_profile(
 
             if selected == token_value_idx:
                 val = prompt("  Token value", default=changes.get("token_value", current.auth.token_value or ""))
+                clear_lines(1)
                 if val != (current.auth.token_value or ""):
                     changes["token_value"] = val
                 elif "token_value" in changes:
@@ -470,6 +474,7 @@ def edit_profile(
                             del changes[key]
                 elif isinstance(original, int):
                     raw = prompt(f"  {label}", default=str(changes.get(key, original)))
+                    clear_lines(1)
                     try:
                         new_val = int(raw)
                         if new_val != original:
@@ -480,6 +485,7 @@ def edit_profile(
                         print_error("Invalid number")
                 else:
                     new_val = prompt(f"  {label}", default=str(changes.get(key, original)))
+                    clear_lines(1)
                     if new_val != str(original):
                         changes[key] = new_val
                     elif key in changes:

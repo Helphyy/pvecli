@@ -617,6 +617,7 @@ async def _edit_vm_disks(config, changes, resizes, deletes, client, node):
             storage = storage_names[st_idx]
 
             size = IntPrompt.ask("  Size (GB)", default=32)
+            clear_lines(1)
 
             formats = ["qcow2", "raw", "vmdk"]
             fmt_idx = select_menu(formats, "  Format:")
@@ -678,6 +679,7 @@ async def _edit_vm_disks(config, changes, resizes, deletes, client, node):
 
             console.print(f"\n  Current size: {current_size}")
             new_size = Prompt.ask("  New size in GB (empty to cancel)", default="")
+            clear_lines(3)
             if new_size:
                 try:
                     int(new_size)
@@ -730,6 +732,7 @@ async def _edit_vm_network(config, changes, deletes, client, node):
             net_config = f"virtio,bridge={bridges[br_idx]}"
 
             vlan = prompt_vlan("  VLAN tag (empty for none)")
+            clear_lines(1)
             if vlan:
                 net_config += f",tag={vlan}"
 
@@ -773,6 +776,7 @@ async def _edit_vm_network(config, changes, deletes, client, node):
 
             current_vlan = params.get("tag", "")
             new_vlan = prompt_vlan("  VLAN tag", default=current_vlan if current_vlan else "")
+            clear_lines(1)
             if new_vlan:
                 params["tag"] = new_vlan
             elif "tag" in params:

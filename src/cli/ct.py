@@ -414,6 +414,7 @@ async def _edit_ct_disks(config, changes, resizes, deletes, client, node):
 
             size = IntPrompt.ask("  Size (GB)", default=8)
             mount_path = Prompt.ask("  Mount path", default=f"/mnt/{mp_name}")
+            clear_lines(2)
 
             changes[mp_name] = f"{storage}:{size},mp={mount_path}"
             continue
@@ -438,6 +439,7 @@ async def _edit_ct_disks(config, changes, resizes, deletes, client, node):
 
             console.print(f"\n  Current size: {current_size}")
             new_size = Prompt.ask("  New size in GB (empty to cancel)", default="")
+            clear_lines(3)
             if new_size:
                 try:
                     int(new_size)
@@ -502,13 +504,16 @@ async def _edit_ct_network(config, changes, deletes, client, node):
                 net_config += ",ip=dhcp"
             elif ip_idx == 1:
                 ip_addr = Prompt.ask("  IPv4 CIDR (e.g. 10.0.0.5/24)")
+                clear_lines(1)
                 if ip_addr:
                     net_config += f",ip={ip_addr}"
                     gw = Prompt.ask("  Gateway (empty for none)", default="")
+                    clear_lines(1)
                     if gw:
                         net_config += f",gw={gw}"
 
             vlan = prompt_vlan("  VLAN tag (empty for none)")
+            clear_lines(1)
             if vlan:
                 net_config += f",tag={vlan}"
 
@@ -554,10 +559,12 @@ async def _edit_ct_network(config, changes, deletes, client, node):
                 params.pop("gw", None)
             elif ip_idx == 1:
                 ip_addr = Prompt.ask("  IPv4 CIDR", default=current_ip if current_ip and current_ip != "dhcp" else "")
+                clear_lines(1)
                 if ip_addr:
                     params["ip"] = ip_addr
                     current_gw = params.get("gw", "")
                     gw = Prompt.ask("  Gateway", default=current_gw if current_gw else "")
+                    clear_lines(1)
                     if gw:
                         params["gw"] = gw
                     elif "gw" in params:
@@ -569,6 +576,7 @@ async def _edit_ct_network(config, changes, deletes, client, node):
             # VLAN
             current_vlan = params.get("tag", "")
             new_vlan = prompt_vlan("  VLAN tag", default=current_vlan if current_vlan else "")
+            clear_lines(1)
             if new_vlan:
                 params["tag"] = new_vlan
             elif "tag" in params:
@@ -764,6 +772,7 @@ async def edit_container(
                 if selected == pw_menu_idx:
                     import getpass
                     pw = getpass.getpass("  New password: ")
+                    clear_lines(1)
                     if not pw:
                         changes.pop("password", None)
                         continue
@@ -771,6 +780,7 @@ async def edit_container(
                         print_error("Password must be at least 5 characters")
                         continue
                     pw_confirm = getpass.getpass("  Confirm password: ")
+                    clear_lines(1)
                     if pw == pw_confirm:
                         changes["password"] = pw
                     else:
