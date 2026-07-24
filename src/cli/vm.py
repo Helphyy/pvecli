@@ -3378,7 +3378,7 @@ def create_vm(
 async def vm_vnc(
     vmids: str = typer.Argument(None, help="VM ID(s) - single, comma-separated, or range (e.g., 100, 100,101, 100-105)"),
     no_background: bool = typer.Option(False, "--no-background", "-b", is_flag=True, help="Run VNC server in foreground (blocking, single VM only)"),
-    split: bool = typer.Option(False, "--split", "-S", is_flag=True, help="Open each console in a separate browser window instead of tabs"),
+    split: bool = typer.Option(False, "--split", "-s", is_flag=True, help="Open each console in a separate browser window instead of tabs"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Open authenticated VNC console(s) for one or more VMs."""

@@ -313,7 +313,7 @@ def _render_node_panel(node: str, status: dict, version: dict, node_status: str 
 async def node_vnc(
     node: str = typer.Argument(None, help="Node name(s) - single or comma-separated"),
     no_background: bool = typer.Option(False, "--no-background", "-b", is_flag=True, help="Run VNC server in foreground (blocking, single node only)"),
-    split: bool = typer.Option(False, "--split", "-S", is_flag=True, help="Open each shell in a separate browser window instead of tabs"),
+    split: bool = typer.Option(False, "--split", "-s", is_flag=True, help="Open each shell in a separate browser window instead of tabs"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Open authenticated VNC shell(s) for one or more nodes."""

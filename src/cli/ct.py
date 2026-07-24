@@ -3048,7 +3048,7 @@ async def remove_template(
 async def ct_vnc(
     ctids: str = typer.Argument(None, help="Container ID(s) - single, comma-separated, or range (e.g., 200, 200,201, 200-205)"),
     no_background: bool = typer.Option(False, "--no-background", "-b", is_flag=True, help="Run VNC server in foreground (blocking, single CT only)"),
-    split: bool = typer.Option(False, "--split", "-S", is_flag=True, help="Open each console in a separate browser window instead of tabs"),
+    split: bool = typer.Option(False, "--split", "-s", is_flag=True, help="Open each console in a separate browser window instead of tabs"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Open authenticated VNC console(s) for one or more containers."""
