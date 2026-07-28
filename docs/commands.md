@@ -17,6 +17,10 @@ pvecli storage list -o usage
 
 `vm list` and `ct list` also display a **Pool** column.
 
+`cluster usage`, `cluster resources`, `pool usage`, `pool list`, `pool info`, `node list` and `storage list` accept `--json` for machine-readable output: raw byte values, no colors, no tables, errors on stderr.
+
+Sizes are displayed in **base 1000** (KB, MB, GB, TB), the same units as the Proxmox web interface, so a value shown by pvecli always matches the one shown by the GUI.
+
 ---
 
 ## config
@@ -207,6 +211,7 @@ pvecli pool content remove [POOLID] [VMIDS] Remove VMs / CTs from a pool
 pvecli pool export                          Export all pools to JSON (--output)
 pvecli pool import                          Import pools from JSON (--input)
 pvecli pool list                            List all resource pools
+pvecli pool usage [POOLID]                  Show aggregated CPU / memory / disk usage for a pool
 pvecli pool info [POOLID]                   Show pool details
 ```
 
@@ -217,10 +222,62 @@ pvecli pool info [POOLID]                   Show pool details
 ```
 pvecli cluster status              Show cluster status
 pvecli cluster resources           Show resources (--type vm/ct/node/storage)
+pvecli cluster usage               Show node load, guest workload, overhead, pools, storage
 pvecli cluster tasks               Show task log (--running, --limit)
 pvecli cluster shutdown            Shutdown the entire cluster (orchestrated)
 pvecli cluster reboot              Reboot the entire cluster (orchestrated)
 ```
+
+### cluster usage / pool usage
+
+Aggregates the cluster in two calls, `/cluster/resources` and `/storage` (the
+storage configuration, read for the Ceph monitor addresses), plus one content
+listing per shared storage holding guest disks, or one per node for a local
+one, since each node then holds a capacity of its own. `pool usage` adds one call for the pool
+itself. Measured on a Ceph backed cluster, authentication aside: 3 API calls for
+`cluster usage`, 2 with `--no-storage`, 4 for `pool usage POOL`, 3 with
+`--no-storage`.
+
+```bash
+pvecli cluster usage                  # Nodes, guests, overhead, pools, storage
+pvecli cluster usage --no-storage     # Two API calls, no provisioned disk
+pvecli pool usage PROD            # One pool, guest by guest
+pvecli pool usage                     # Interactive pool selection menu
+pvecli pool usage --json              # Refused: --json needs an explicit pool ID
+pvecli pool usage PROD --json     # Raw bytes, no colors, stdout only
+```
+
+Options: `--no-storage`, `--storage NAME`, `--json`, `--profile/-p`
+
+`pool usage` also reports the share of the pool against three denominators: the
+capacity installed in the nodes, what the hypervisors really consume right now,
+and the whole guest workload. A pool can be 3% of the installed memory, 20% of
+the memory actually in use and 40% of the guest workload: any single figure
+would hide the other two.
+
+Reported figures and their traps:
+
+- **Hypervisor load** is what the nodes really consume, **guest workload** is the
+  sum of the guests. The gap is the **overhead**: Ceph OSDs, PVE services, cache.
+- CPU is expressed in **cores**, never in raw added percentages: the PVE `cpu`
+  field is a 0..1 fraction of each object's own `maxcpu`.
+- Provisioned disk comes from the storage volume listings, never from the guest
+  `maxdisk` field, which ignores secondary disks and reads 0 for QEMU guests.
+- A shared storage is reported once per node by the API and is merged here, so
+  its capacity is counted once.
+- PBS datastores are excluded from capacity: they report 0 and hold backups.
+- Two RADOS pools count as one capacity only when they agree on both signals:
+  the same Ceph monitors, so they belong to one cluster, and the same free
+  space, so they rest on one set of disks. Such a group is reported on its
+  largest pool as the sum of the used space of its pools plus that common free
+  space, and the others are listed with the reason why. Pools of one cluster on
+  different device classes (NVMe and HDD) publish different free spaces because
+  they use disjoint disks: they keep their own capacity and both are counted.
+  When the storage configuration cannot be read, the monitors are unknown, the
+  pools are recognised on their free space alone and a warning says so.
+- Templates are excluded from every total and reported separately.
+- `diskread`, `diskwrite`, `netin` and `netout` are cumulative counters since
+  boot, not rates, so they are deliberately not reported.
 
 ### cluster shutdown / reboot
 

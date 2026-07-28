@@ -11,11 +11,13 @@ from .menu import (
     select_menu,
 )
 from .output import (
+    JSON_OPTION,
     build_ordered_table,
     clear_lines,
     confirm,
     console,
     create_table,
+    emit_json,
     format_bytes,
     format_percentage,
     format_uptime,
@@ -37,12 +39,14 @@ from .tags import (
 )
 
 __all__ = [
+    "JSON_OPTION",
     "async_to_sync",
     "build_ordered_table",
     "clear_lines",
     "confirm",
     "console",
     "create_table",
+    "emit_json",
     "format_bytes",
     "format_tags_colored",
     "format_percentage",

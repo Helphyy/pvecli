@@ -291,6 +291,25 @@ class ProxmoxClient:
         """
         return await self.get(f"/nodes/{node}/status")
 
+    async def get_node_rrddata(
+        self, node: str, timeframe: str = "day", cf: str = "AVERAGE"
+    ) -> list[dict[str, Any]]:
+        """Get RRD metrics history for a node.
+
+        Note: netin and netout are rates in bytes/s here, unlike the cumulative
+        counters returned by /cluster/resources.
+
+        Args:
+            node: Node name
+            timeframe: Time window (hour, day, week, month, year)
+            cf: Consolidation function (AVERAGE or MAX)
+
+        Returns:
+            List of RRD samples
+        """
+        params = {"timeframe": timeframe, "cf": cf}
+        return await self.get(f"/nodes/{node}/rrddata", params=params)
+
     # Node power management
 
     async def node_command(self, node: str, command: str) -> None:
@@ -1532,6 +1551,27 @@ class ProxmoxClient:
         """
         return await self.get("/pools")
 
+    async def get_pool(self, poolid: str) -> dict[str, Any]:
+        """Get a resource pool with its members.
+
+        Args:
+            poolid: Pool ID
+
+        Returns:
+            Pool information including the members list
+
+        Raises:
+            ResourceNotFoundError: If the pool does not exist
+        """
+        try:
+            return await self.get(f"/pools/{poolid}")
+        except APIError as e:
+            # PVE answers HTTP 500 with an empty body on an unknown pool, so the
+            # generic 404 mapping of _request never fires for this endpoint.
+            if e.status_code == 500:
+                raise ResourceNotFoundError("pool", poolid) from e
+            raise
+
     async def get_network_interfaces(self, node: str) -> list[dict[str, Any]]:
         """Get network interfaces/bridges on a node.
 
@@ -1542,6 +1582,18 @@ class ProxmoxClient:
             List of network interfaces
         """
         return await self.get(f"/nodes/{node}/network")
+
+    async def get_storage_configs(self) -> list[dict[str, Any]]:
+        """Get the storage configuration of every storage of the cluster.
+
+        Cluster wide endpoint, one call whatever the number of nodes. Carries
+        the backend fields that no per-node status exposes, such as "monhost"
+        which identifies the Ceph cluster a storage is a pool of.
+
+        Returns:
+            List of storage configurations
+        """
+        return await self.get("/storage")
 
     async def get_storage_config(self, storage: str) -> dict[str, Any]:
         """Get storage configuration.

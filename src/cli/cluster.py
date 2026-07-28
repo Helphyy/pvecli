@@ -11,8 +11,10 @@ from ..api.client import ProxmoxClient
 from ..api.exceptions import PVECliError
 from ..config import ConfigManager
 from ..utils import (
+    JSON_OPTION,
     confirm,
     console,
+    emit_json,
     format_bytes,
     format_percentage,
     get_status_color,
@@ -23,7 +25,7 @@ from ..utils import (
     print_warning,
 )
 from ..utils.helpers import async_to_sync
-from ._shared import detect_connected_node
+from ._shared import detect_connected_node, shared_usage
 
 app = typer.Typer(help="Manage cluster", no_args_is_help=True)
 
@@ -91,15 +93,28 @@ async def cluster_resources(
     resource_type: str = typer.Option(
         None, "--type", "-t", help="Filter by type (vm, ct, node, storage)"
     ),
+    json_output: bool = JSON_OPTION,
 ) -> None:
     """Show cluster resources."""
     config_manager = ConfigManager()
 
     try:
         profile_config = config_manager.get_profile(profile)
+        profile_name = profile or config_manager.get().default_profile
 
         async with ProxmoxClient(profile_config) as client:
             resources = await client.get_cluster_resources(resource_type)
+
+            # JSON first: raw API entries, empty list included, no Rich output
+            if json_output:
+                emit_json(
+                    {
+                        "profile": profile_name,
+                        "type": resource_type,
+                        "resources": resources,
+                    }
+                )
+                return
 
             if not resources:
                 print_info("No resources found")
@@ -250,6 +265,36 @@ def _print_resources_table(resources: list[dict], title: str) -> None:
             table.add_row(rid, rtype, status)
 
     console.print(table)
+
+
+@app.command("usage")
+@async_to_sync
+async def cluster_usage(
+    profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+    no_storage: bool = typer.Option(False, "--no-storage", help="Skip the storage scan (faster)"),
+    storage: str = typer.Option(None, "--storage", help="Only scan this storage for guest disks"),
+    json_output: bool = JSON_OPTION,
+) -> None:
+    """Show cluster usage: node load, guest workload, overhead, pools, storage."""
+    config_manager = ConfigManager()
+
+    try:
+        profile_config = config_manager.get_profile(profile)
+        profile_name = profile or config_manager.get().default_profile
+
+        async with ProxmoxClient(profile_config) as client:
+            await shared_usage(
+                client,
+                poolid=None,
+                include_storage=not no_storage,
+                storage_filter=storage,
+                as_json=json_output,
+                profile_name=profile_name,
+            )
+
+    except PVECliError as e:
+        print_error(str(e))
+        raise typer.Exit(1)
 
 
 @app.command("tasks")
@@ -515,7 +560,7 @@ async def _orchestrate_cluster_power(
             await client.node_command(connected_node, command)
             print_success(f"{action} command sent to '{connected_node}'")
         elif ordered:
-            # Could not detect connected node — send to last in order
+            # Could not detect connected node: send to last in order
             last = ordered[-1].get("node", "")
             await client.node_command(last, command)
             print_success(f"{action} command sent to '{last}'")

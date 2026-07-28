@@ -1,22 +1,33 @@
 """Output formatting utilities using Rich."""
 
+import json
 import sys
 from typing import Any
 
+import typer
 from rich.console import Console
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
 
 console = Console()
+err_console = Console(stderr=True)
+
+JSON_OPTION = typer.Option(
+    False,
+    "--json",
+    help="Output raw JSON to stdout (no colors, no tables)",
+)
 
 
 def print_error(msg: str) -> None:
-    """Print an error message to the console.
+    """Print an error message to stderr.
+
+    Errors go to stderr so a --json stdout stream stays machine readable.
 
     Args:
         msg: The error message to display.
     """
-    console.print(f"[bold red]Error:[/bold red] {msg}")
+    err_console.print(f"[bold red]Error:[/bold red] {msg}")
 
 
 def print_success(msg: str) -> None:
@@ -166,6 +177,21 @@ def build_ordered_table(
     return table
 
 
+def emit_json(payload: Any) -> None:
+    """Write a JSON document to stdout, bypassing Rich entirely.
+
+    Rich wraps long lines to the console width and interprets square bracket
+    markup, both of which would corrupt a machine readable stream, so this
+    writes straight to sys.stdout. Keys are sorted so two runs of the same
+    command produce a diffable document.
+
+    Args:
+        payload: Any JSON serialisable object.
+    """
+    sys.stdout.write(json.dumps(payload, indent=2, sort_keys=True, default=str) + "\n")
+    sys.stdout.flush()
+
+
 def confirm(message: str, default: bool = False) -> bool:
     """Prompt user for confirmation.
 
@@ -209,20 +235,27 @@ def prompt_vlan(label: str = "VLAN tag", default: str = "") -> str:
         print_error("VLAN tag must be a number between 1 and 4094")
 
 
-def format_bytes(bytes_value: int) -> str:
-    """Format bytes to human-readable string.
+def format_bytes(bytes_value: float, binary: bool = False) -> str:
+    """Format a byte count as a human-readable string.
 
     Args:
         bytes_value: The number of bytes.
+        binary: Use powers of 1024 with IEC labels (KiB, MiB, GiB, TiB, PiB).
+            The default uses powers of 1000 with SI labels (KB, MB, GB, TB, PB),
+            which is what the Proxmox web interface displays.
 
     Returns:
-        Formatted string (e.g., '1.5 GB').
+        Formatted string (e.g., '18.1 TB', or '16.5 TiB' with binary=True).
     """
-    for unit in ["B", "KB", "MB", "GB", "TB"]:
-        if bytes_value < 1024.0:
-            return f"{bytes_value:.1f} {unit}"
-        bytes_value /= 1024.0
-    return f"{bytes_value:.1f} PB"
+    step = 1024.0 if binary else 1000.0
+    units = ["B", "KiB", "MiB", "GiB", "TiB"] if binary else ["B", "KB", "MB", "GB", "TB"]
+    last = "PiB" if binary else "PB"
+    value = float(bytes_value)
+    for unit in units:
+        if abs(value) < step:
+            return f"{value:.1f} {unit}"
+        value /= step
+    return f"{value:.1f} {last}"
 
 
 def format_uptime(seconds: int) -> str:

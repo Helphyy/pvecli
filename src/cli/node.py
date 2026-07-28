@@ -7,9 +7,11 @@ from ..api.client import ProxmoxClient
 from ..api.exceptions import PVECliError
 from ..config import ConfigManager
 from ..utils import (
+    JSON_OPTION,
     build_ordered_table,
     confirm,
     console,
+    emit_json,
     format_bytes,
     format_percentage,
     format_uptime,
@@ -146,15 +148,37 @@ async def reboot_node(
 async def list_nodes(
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
     order: str = typer.Option(None, "--order", "-o", help="Sort by column (moved to first position), e.g. node, cpu, memory, uptime"),
+    json_output: bool = JSON_OPTION,
 ) -> None:
     """List all cluster nodes."""
     config_manager = ConfigManager()
 
     try:
         profile_config = config_manager.get_profile(profile)
+        profile_name = profile or config_manager.get().default_profile
 
         async with ProxmoxClient(profile_config) as client:
             nodes = await client.get_nodes()
+
+            if json_output:
+                # Raw /nodes entries plus the percentages the table would compute:
+                # bytes stay integers, "cpu" stays a 0..1 fraction of maxcpu.
+                payload = []
+                for node in nodes:
+                    mem_used = node.get("mem") or 0
+                    mem_total = node.get("maxmem") or 0
+                    disk_used = node.get("disk") or 0
+                    disk_total = node.get("maxdisk") or 0
+                    payload.append(
+                        {
+                            **node,
+                            "cpu_percent": (node.get("cpu") or 0.0) * 100,
+                            "mem_percent": (mem_used / mem_total * 100) if mem_total else 0.0,
+                            "disk_percent": (disk_used / disk_total * 100) if disk_total else 0.0,
+                        }
+                    )
+                emit_json({"profile": profile_name, "nodes": payload})
+                return
 
             if not nodes:
                 console.print("No nodes found")

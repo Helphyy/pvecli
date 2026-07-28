@@ -1,33 +1,62 @@
-"""Shared command implementations for VM and CT modules.
+"""Shared command implementations across CLI modules.
 
 This module provides parameterized implementations for commands that
-are nearly identical between VM and CT (tags, snapshots, VNC, SSH, list).
+are nearly identical between VM and CT (tags, snapshots, VNC, SSH, list),
+plus implementations shared between the cluster and pool modules (usage).
 Each function takes callbacks/labels so it works for both resource types.
 """
 
 import asyncio
 import time
-from typing import Any, Callable, Coroutine
+from collections.abc import Callable, Coroutine
+from typing import Any
 
 import typer
+from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
 from ..api.client import ProxmoxClient
+from ..api.exceptions import (
+    APIError,
+    NetworkError,
+    PVECliError,
+    ResourceNotFoundError,
+    TimeoutError,
+)
+from ..models.usage import (
+    CEPH_PLUGINTYPES,
+    ClusterUsage,
+    PoolShare,
+    PoolUsage,
+    StorageProbe,
+    build_storage_usage,
+    compute_cluster_usage,
+    compute_pool_share,
+    compute_pool_usage,
+    storage_probe_plan,
+    sum_volumes_by_vmid,
+)
 from ..utils import (
     confirm,
     console,
+    emit_json,
+    format_bytes,
+    format_percentage,
+    format_uptime,
+    get_status_color,
     print_cancelled,
     print_error,
     print_info,
     print_success,
     print_warning,
     prompt,
+    usage_bar,
 )
 from ..utils.menu import multi_select_menu, select_menu
 from ..utils.network import resolve_node_host
+from ..utils.output import err_console
 from .tag import _parse_color_map
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -127,7 +156,7 @@ def parse_id_list(raw: str, label: str = "VM") -> list[int]:
                 start, end = int(bounds[0].strip()), int(bounds[1].strip())
             except ValueError:
                 print_error(f"Invalid {label} range: '{part}'")
-                raise typer.Exit(1)
+                raise typer.Exit(1) from None
             if start > end:
                 print_error(f"Invalid {label} range: '{part}' (start > end)")
                 raise typer.Exit(1)
@@ -137,7 +166,7 @@ def parse_id_list(raw: str, label: str = "VM") -> list[int]:
                 result.append(int(part))
             except ValueError:
                 print_error(f"Invalid {label} ID: '{part}'")
-                raise typer.Exit(1)
+                raise typer.Exit(1) from None
     if not result:
         print_error(f"No valid {label} IDs provided")
         raise typer.Exit(1)
@@ -309,7 +338,7 @@ async def shared_add_tag(
 
     if tags_arg is None:
         # Interactive mode: show menu with existing cluster tags
-    
+
 
         all_resources = await client.get_cluster_resources(resource_type="vm")
         known_tags: set[str] = set()
@@ -640,7 +669,7 @@ async def shared_rollback_snapshot(
             await client.stop_task(node, upid)
         print_cancelled()
         print_info("Check Proxmox to verify task status")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
 
 
 async def shared_delete_snapshot(
@@ -1062,3 +1091,554 @@ async def shared_ha_set(
     await client.update_ha_resource(sid, **params)
     changes = ", ".join(f"{k}={v}" for k, v in params.items())
     print_success(f"HA resource {sid} updated ({changes})")
+
+
+# ---------------------------------------------------------------------------
+# Usage reporting (cluster and pool)
+# ---------------------------------------------------------------------------
+
+SHARE_HINT = "[dim]Each line reads: pool figure of cluster figure, then the ratio.[/dim]"
+OVERHEAD_NEGATIVE_NOTE = (
+    "[dim]A negative overhead is not an error: the node and guest samples are "
+    "taken a fraction of a second apart, so the guests can momentarily add up "
+    "to more than their nodes report.[/dim]"
+)
+
+
+async def _probe_storage(client: ProxmoxClient, probe: StorageProbe) -> list[dict[str, Any]]:
+    """List the content of one storage, node after node until one answers.
+
+    A shared storage returns the same content from every node, so a single node
+    rebooting must not cost the whole scan and every provisioned disk with it.
+
+    Args:
+        client: Connected ProxmoxClient.
+        probe: Storage to list and the nodes able to answer, in order.
+
+    Returns:
+        Raw content items of the storage.
+
+    Raises:
+        PVECliError: When no node of the probe answered.
+    """
+    error: PVECliError | None = None
+    for node in probe.nodes:
+        try:
+            return await client.get_storage_content(node, probe.storage)
+        except (APIError, NetworkError, TimeoutError) as exc:
+            # NetworkError and TimeoutError are siblings of APIError under
+            # PVECliError, not subclasses of it. A node being fenced answers
+            # with exactly those, and catching APIError alone would abort the
+            # scan on the first unreachable node instead of trying the next.
+            error = exc
+    raise error or APIError(f"no node available for storage '{probe.storage}'")
+
+
+def _plural(count: int, word: str) -> str:
+    """Return "<count> <word>", the word pluralised unless the count is one."""
+    return f"{count} {word}" if count == 1 else f"{count} {word}s"
+
+
+# One share line before formatting: label, pool figure, cluster figure, ratio.
+ShareRow = tuple[str, str, str, float]
+
+
+def _share_widths(rows: list[ShareRow]) -> tuple[int, int, int]:
+    """Return the column widths that fit every row of a share panel.
+
+    Widths are computed over all the rows of the panel, not per block: a single
+    long denominator would otherwise push its own percentage out of the column
+    the other lines align on.
+
+    Args:
+        rows: Every share row of the panel, both blocks together.
+
+    Returns:
+        Widths of the label, pool figure and cluster figure columns.
+    """
+    return (
+        max(len(r[0]) for r in rows),
+        max(len(r[1]) for r in rows),
+        max(len(r[2]) for r in rows),
+    )
+
+
+def _share_line(row: ShareRow, widths: tuple[int, int, int]) -> str:
+    """Format one share line as "<pool figure> of <cluster figure>  <ratio>".
+
+    Both operands are spelled out so the reader never has to guess which figure
+    is divided by which, and the denominator carries what it is made of.
+
+    Args:
+        row: Label, pool figure, cluster figure and their ratio.
+        widths: Column widths from _share_widths.
+
+    Returns:
+        A padded line, percentage right aligned.
+    """
+    label, part, whole, percent = row
+    label_width, part_width, whole_width = widths
+    return (
+        f"  {label:<{label_width}} {part:>{part_width}} of {whole:<{whole_width}} "
+        f"{format_percentage(percent):>6}"
+    )
+
+
+async def shared_usage(
+    client: ProxmoxClient,
+    poolid: str | None,
+    include_storage: bool,
+    storage_filter: str | None,
+    as_json: bool,
+    profile_name: str | None = None,
+) -> None:
+    """Report resource usage for the whole cluster, or for a single pool.
+
+    Nominal cost, authentication aside, is /cluster/resources and GET /storage,
+    plus one call for the pool when poolid is given, plus one content call per
+    shared storage holding guest disks, or one per node for a local one, since
+    each node then holds a capacity of its own (one call on Ceph), those issued
+    concurrently. --no-storage drops the content calls and the provisioned disk
+    figures with them. Measured on a Ceph backed cluster: 3 calls for the
+    cluster, 2 with --no-storage, 4 for a pool, 3 with --no-storage.
+
+    Every figure is computed by src/models/usage.py: this function only fetches
+    and renders, it never aggregates anything itself.
+
+    Args:
+        client: Connected ProxmoxClient.
+        poolid: Pool to report on, or None for the whole cluster.
+        include_storage: Scan storage content to get the exact provisioned size.
+        storage_filter: Restrict the scan to this storage id.
+        as_json: Emit a JSON document on stdout instead of Rich output.
+        profile_name: Profile name echoed in the JSON envelope.
+
+    Raises:
+        ResourceNotFoundError: When storage_filter names a storage the cluster
+            does not expose, rather than silently reporting an empty scan.
+    """
+    resources = await client.get_cluster_resources()
+    # One cluster wide call. It carries "monhost", the only field that tells
+    # two RADOS pools of one Ceph cluster from two distinct clusters. Losing it
+    # must not lose the report: the model then falls back on free space alone.
+    storage_configs: list[dict[str, Any]] | None
+    try:
+        storage_configs = await client.get_storage_configs()
+    except PVECliError:
+        storage_configs = None
+    # Built once and reused for the probe plan, the reference storage and the
+    # totals: build_storage_usage is pure, calling it twice was just wasteful.
+    storages = build_storage_usage(resources, storage_configs)
+    if storage_configs is None:
+        # Same population as the grouping in the model, which only ever sees
+        # available shared Ceph storages holding guest disks: a backup or empty
+        # one is dropped before it, so warning on those announces a fallback
+        # that cannot change a single figure. Testing s.counted here would go
+        # too far the other way: build_storage_usage has already cleared it on
+        # the pools it folded, so the warning would fall silent in exactly the
+        # case that needs it, the one where the fallback did merge two pools.
+        ceph = [
+            s
+            for s in storages
+            if s.shared
+            and s.plugintype in CEPH_PLUGINTYPES
+            and s.guest_disks
+            and s.status == "available"
+            and s.total > 0
+        ]
+        # Only worth saying when the fallback can actually merge two storages.
+        if len(ceph) > 1:
+            err_console.print(
+                "[bold yellow]Warning:[/bold yellow] the storage configuration could not "
+                "be read, Ceph pools of one cluster are recognised on their free space "
+                "alone, which is approximate"
+            )
+    if storage_filter and not any(s.storage == storage_filter for s in storages):
+        raise ResourceNotFoundError("storage", storage_filter)
+
+    comment = None
+    if poolid is not None:
+        # Validates existence: PVE answers 500 on an unknown pool, get_pool maps
+        # that to ResourceNotFoundError, handled by the calling command.
+        pool_data = await client.get_pool(poolid)
+        comment = pool_data.get("comment") or None
+
+    volumes: list[dict[str, Any]] = []
+    failed: list[str] = []
+    plan = storage_probe_plan(storages, storage_filter) if include_storage else []
+    if plan:
+        results = await asyncio.gather(
+            *(_probe_storage(client, p) for p in plan), return_exceptions=True
+        )
+        for probe, result in zip(plan, results, strict=True):
+            if isinstance(result, BaseException):
+                failed.append(probe.storage)
+            else:
+                volumes.extend(result)
+    # Two distinct questions, and a --storage scan answers them differently.
+    # disk_listed: figures were computed, so they can be displayed.
+    # disk_exact: they cover every storage holding guest disks, so they are the
+    # provisioned disk of the pool and not just its share on one storage. An
+    # automated consumer reads disk_exact plus storage_scanned and knows both
+    # what it got and what it was measured on, instead of taking a truncated
+    # figure for a complete one.
+    disk_listed = bool(plan) and not failed
+    disk_exact = disk_listed and storage_filter is None
+    storage_scanned = sorted({p.storage for p in plan})
+    volumes_by_vmid = sum_volumes_by_vmid(volumes)
+
+    if failed:
+        listing = ", ".join(sorted(set(failed)))
+        # stderr in both modes: a --json consumer must not take a partial
+        # disk_provisioned for a complete one just because stdout stayed clean.
+        err_console.print(
+            f"[bold yellow]Warning:[/bold yellow] storage listing failed on {listing}, "
+            "the provisioned disk figures are incomplete"
+        )
+
+    cluster = compute_cluster_usage(
+        resources, volumes_by_vmid, storage_filter, disk_exact, storages=storages
+    )
+
+    if poolid is not None:
+        pool_usage = compute_pool_usage(resources, poolid, volumes_by_vmid, comment)
+        share = compute_pool_share(pool_usage, cluster)
+        if as_json:
+            emit_json(
+                {
+                    "profile": profile_name,
+                    "scope": "pool",
+                    "storage_included": include_storage,
+                    "disk_exact": disk_exact,
+                    "storage_scanned": storage_scanned,
+                    "storage_failed": sorted(set(failed)),
+                    "share": share.model_dump(),
+                    **pool_usage.model_dump(),
+                }
+            )
+            return
+        _render_pool_usage(pool_usage, cluster, share, disk_listed)
+        return
+
+    if as_json:
+        emit_json(
+            {
+                "profile": profile_name,
+                "scope": "cluster",
+                "storage_included": include_storage,
+                "storage_scanned": storage_scanned,
+                "storage_failed": sorted(set(failed)),
+                **cluster.model_dump(),
+            }
+        )
+        return
+    _render_cluster_usage(cluster, disk_listed)
+
+
+def _render_cluster_usage(
+    usage: ClusterUsage,
+    disk_listed: bool,
+) -> None:
+    """Print the cluster usage panel and its three tables.
+
+    Args:
+        usage: Cluster usage report.
+        disk_listed: True when the storage content listings produced provisioned
+            disk figures. Not usage.disk_exact: a --storage scan is narrow but
+            its figures are real and the user asked for them.
+    """
+    nt = usage.node_totals
+    gt = usage.guest_totals
+    ov = usage.overhead
+    st = usage.storage_totals
+
+    lines = [
+        f"[bold]Nodes:[/bold]  {nt.online} online / {nt.nodes}",
+        f"[bold]Guests:[/bold] {gt.guests} ({gt.running} running, {gt.stopped} stopped"
+        + (f", {gt.templates} templates" if gt.templates else "")
+        + ")",
+        "",
+        "[bold]Hypervisor load[/bold] (what the nodes really consume, instantaneous)",
+        f"  CPU     {usage_bar(nt.cpu_percent)}  "
+        f"{nt.cpu_used:.1f} cores used of {nt.cpu_allocated} installed",
+        f"  Memory  {usage_bar(nt.mem_percent)}  "
+        f"{format_bytes(nt.mem_used)} used of {format_bytes(nt.mem_allocated)} installed",
+        "",
+        "[bold]Guest workload[/bold] (sum of the guests, templates excluded)",
+        f"  CPU     {gt.cpu_used:.1f} cores used, {gt.cpu_allocated} vCPU allocated "
+        f"({usage.cpu_overcommit:.2f}x the installed cores)",
+        f"  Memory  {format_bytes(gt.mem_used)} used, "
+        f"{format_bytes(gt.mem_allocated)} allocated "
+        f"({usage.mem_overcommit:.2f}x the installed memory)",
+        "",
+        "[bold]Overhead[/bold] (node load no guest accounts for: Ceph, PVE, cache)",
+        f"  CPU     {ov.cpu_used:.1f} cores of the {nt.cpu_used:.1f} used by the nodes "
+        f"({format_percentage(ov.cpu_percent)})",
+        f"  Memory  {format_bytes(ov.mem_used)} of the {format_bytes(nt.mem_used)} "
+        f"used by the nodes ({format_percentage(ov.mem_percent)})",
+    ]
+    if ov.cpu_used < 0 or ov.mem_used < 0:
+        lines.append(OVERHEAD_NEGATIVE_NOTE)
+    if st.storages:
+        lines += [
+            "",
+            f"[bold]Guest storage capacity[/bold] ({_plural(st.storages, 'storage')} counted)",
+            f"  Used    {usage_bar(st.used_percent)}  "
+            f"{format_bytes(st.used)} written of {format_bytes(st.total)} capacity",
+        ]
+        if disk_listed:
+            lines.append(
+                f"  Provisioned      {format_bytes(gt.disk_provisioned)} allocated to the guests"
+            )
+    console.print(Panel("\n".join(lines), title="Cluster usage", border_style="blue"))
+
+    table = Table(title="Nodes", show_header=True, header_style="bold cyan")
+    table.add_column("Node", style="cyan")
+    table.add_column("Status")
+    table.add_column("CPU", justify="right")
+    table.add_column("Memory", justify="right")
+    table.add_column("Root FS", justify="right")
+    table.add_column("Uptime", justify="right")
+    for n in usage.nodes:
+        color = get_status_color(n.status)
+        table.add_row(
+            n.node,
+            f"[{color}]{n.status}[/{color}]",
+            f"{n.cpu_used:.1f} / {n.cpu_allocated} ({format_percentage(n.cpu_percent)})",
+            f"{format_bytes(n.mem_used)} / {format_bytes(n.mem_allocated)} "
+            f"({format_percentage(n.mem_percent)})",
+            f"{format_bytes(n.disk_used)} / {format_bytes(n.disk_total)}",
+            format_uptime(n.uptime) if n.uptime else "-",
+        )
+    console.print(table)
+
+    table = Table(title="Pools", show_header=True, header_style="bold cyan")
+    table.add_column("Pool", style="cyan")
+    table.add_column("Guests", justify="right")
+    table.add_column("Running", justify="right")
+    table.add_column("vCPU", justify="right")
+    table.add_column("CPU used", justify="right")
+    table.add_column("Memory used", justify="right")
+    table.add_column("Memory alloc", justify="right")
+    if disk_listed:
+        table.add_column("Provisioned", justify="right")
+    for p in usage.pools:
+        row = [
+            p.poolid,
+            str(p.guests),
+            str(p.running),
+            str(p.cpu_allocated),
+            f"{p.cpu_used:.1f}",
+            format_bytes(p.mem_used),
+            format_bytes(p.mem_allocated),
+        ]
+        if disk_listed:
+            row.append(format_bytes(p.disk_provisioned))
+        table.add_row(*row)
+    console.print(table)
+
+    table = Table(title="Storage", show_header=True, header_style="bold cyan")
+    table.add_column("Storage", style="cyan")
+    table.add_column("Type")
+    table.add_column("Nodes", justify="right")
+    table.add_column("Shared")
+    table.add_column("Used", justify="right")
+    table.add_column("Total", justify="right")
+    table.add_column("Usage", justify="right")
+    table.add_column("Counted")
+    for s in usage.storages:
+        counted = "[green]yes[/green]" if s.counted else f"[dim]no ({s.reason})[/dim]"
+        table.add_row(
+            s.storage,
+            s.plugintype or "-",
+            str(len(s.nodes)),
+            "yes" if s.shared else "no",
+            format_bytes(s.used) if s.total else "-",
+            format_bytes(s.total) if s.total else "-",
+            usage_bar(s.used_percent) if s.total else "-",
+            counted,
+        )
+    console.print(table)
+
+
+def _render_pool_usage(
+    usage: PoolUsage,
+    cluster: ClusterUsage,
+    share: PoolShare,
+    disk_listed: bool,
+) -> None:
+    """Print the pool usage panel, its share of the cluster and its members.
+
+    Args:
+        usage: Usage of the pool.
+        cluster: Usage of the whole cluster, the denominators of the shares.
+        share: Share of the pool, computed by compute_pool_share.
+        disk_listed: True when the storage content listings produced provisioned
+            disk figures, whatever the scope they cover.
+    """
+    nt = cluster.node_totals
+    gt = cluster.guest_totals
+    st = cluster.storage_totals
+
+    lines = [f"[bold]Pool ID:[/bold]  {usage.poolid}"]
+    if usage.comment:
+        lines.append(f"[bold]Comment:[/bold]  {usage.comment}")
+    lines += [
+        f"[bold]Guests:[/bold]   {usage.guests} "
+        f"({usage.running} running, {usage.stopped} stopped"
+        + (f", {usage.templates} templates" if usage.templates else "")
+        + ")",
+        "",
+        # Both lines read "<used> of <allocated> (ratio of those two)". The
+        # percentage is against the pool allocation, never against the cluster:
+        # the block below carries the cluster ratios, on named denominators.
+        f"[bold]vCPU:[/bold]     {usage.cpu_used:.2f} cores used of "
+        f"{usage.cpu_allocated} vCPU allocated to the pool "
+        f"({format_percentage(usage.cpu_percent)})",
+        f"[bold]Memory:[/bold]   {format_bytes(usage.mem_used)} used of "
+        f"{format_bytes(usage.mem_allocated)} allocated to the pool "
+        f"({format_percentage(usage.mem_percent)})",
+    ]
+    if disk_listed:
+        lines.append(f"[bold]Disk:[/bold]     {format_bytes(usage.disk_provisioned)} provisioned")
+        if usage.templates_disk_provisioned:
+            lines.append(
+                f"[dim]          + {format_bytes(usage.templates_disk_provisioned)} "
+                f"in templates[/dim]"
+            )
+
+    hardware_rows: list[ShareRow] = [
+        (
+            "CPU used",
+            f"{usage.cpu_used:.2f}",
+            f"{nt.cpu_allocated} cores installed",
+            share.cpu_used_percent_of_physical,
+        ),
+        (
+            "CPU used",
+            f"{usage.cpu_used:.2f}",
+            f"{nt.cpu_used:.2f} cores used by the nodes",
+            share.cpu_used_percent_of_nodes,
+        ),
+        (
+            "vCPU allocated",
+            str(usage.cpu_allocated),
+            f"{nt.cpu_allocated} cores installed",
+            share.cpu_allocated_percent_of_physical,
+        ),
+        (
+            "Memory used",
+            format_bytes(usage.mem_used),
+            f"{format_bytes(nt.mem_allocated)} installed",
+            share.mem_used_percent_of_physical,
+        ),
+        (
+            "Memory used",
+            format_bytes(usage.mem_used),
+            f"{format_bytes(nt.mem_used)} used by the nodes",
+            share.mem_used_percent_of_nodes,
+        ),
+        (
+            "Memory allocated",
+            format_bytes(usage.mem_allocated),
+            f"{format_bytes(nt.mem_allocated)} installed",
+            share.mem_allocated_percent_of_physical,
+        ),
+    ]
+    if disk_listed and st.total:
+        hardware_rows.append(
+            (
+                "Disk provisioned",
+                format_bytes(usage.disk_provisioned),
+                f"{format_bytes(st.total)} guest capacity",
+                share.disk_percent_of_capacity,
+            )
+        )
+
+    guest_rows: list[ShareRow] = [
+        (
+            "CPU used",
+            f"{usage.cpu_used:.2f}",
+            f"{gt.cpu_used:.2f} cores used by guests",
+            share.cpu_used_percent_of_guests,
+        ),
+        (
+            "vCPU allocated",
+            str(usage.cpu_allocated),
+            f"{gt.cpu_allocated} vCPU allocated to guests",
+            share.cpu_allocated_percent_of_guests,
+        ),
+        (
+            "Memory used",
+            format_bytes(usage.mem_used),
+            f"{format_bytes(gt.mem_used)} used by guests",
+            share.mem_used_percent_of_guests,
+        ),
+        (
+            "Memory allocated",
+            format_bytes(usage.mem_allocated),
+            f"{format_bytes(gt.mem_allocated)} allocated to guests",
+            share.mem_allocated_percent_of_guests,
+        ),
+    ]
+    if disk_listed:
+        guest_rows.append(
+            (
+                "Disk provisioned",
+                format_bytes(usage.disk_provisioned),
+                f"{format_bytes(gt.disk_provisioned)} provisioned to guests",
+                share.disk_percent_of_guests,
+            )
+        )
+
+    # One set of widths for the whole panel: the percentages of both blocks
+    # then line up in a single column, whatever the longest denominator is.
+    widths = _share_widths(hardware_rows + guest_rows)
+    lines += [
+        "",
+        f"[bold]Share of the cluster hardware[/bold] ({_plural(nt.nodes, 'node')})",
+        SHARE_HINT,
+    ]
+    lines += [_share_line(row, widths) for row in hardware_rows]
+    lines += [
+        "",
+        f"[bold]Share of all guests[/bold] "
+        f"({_plural(gt.guests, 'guest')}, templates excluded)",
+    ]
+    lines += [_share_line(row, widths) for row in guest_rows]
+
+    title = f"Pool usage: {usage.poolid}"
+    console.print(Panel("\n".join(lines), title=title, border_style="blue"))
+
+    if not usage.members:
+        print_info("No guests in this pool")
+        return
+
+    table = Table(title=f"Guests in {usage.poolid}", show_header=True, header_style="bold cyan")
+    table.add_column("ID", style="cyan", justify="right")
+    table.add_column("Name")
+    table.add_column("Node")
+    table.add_column("Type")
+    table.add_column("Status")
+    table.add_column("CPU", justify="right")
+    table.add_column("Memory", justify="right")
+    if disk_listed:
+        table.add_column("Disk", justify="right")
+    for g in usage.members:
+        color = get_status_color(g.status)
+        status = f"[{color}]{g.status}[/{color}]"
+        if g.template:
+            status = "[dim]template[/dim]"
+        row = [
+            str(g.vmid),
+            g.name,
+            g.node,
+            g.type,
+            status,
+            f"{g.cpu_used:.2f} / {g.cpu_allocated}",
+            f"{format_bytes(g.mem_used)} / {format_bytes(g.mem_allocated)}",
+        ]
+        if disk_listed:
+            row.append(format_bytes(g.disk_provisioned))
+        table.add_row(*row)
+    console.print(table)

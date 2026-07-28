@@ -11,9 +11,11 @@ from ..api.client import ProxmoxClient
 from ..api.exceptions import PVECliError
 from ..config import ConfigManager
 from ..utils import (
+    JSON_OPTION,
     build_ordered_table,
     confirm,
     console,
+    emit_json,
     print_cancelled,
     print_error,
     print_info,
@@ -23,8 +25,9 @@ from ..utils import (
 )
 from ..utils.helpers import async_to_sync, ordered_group
 from ..utils.menu import multi_select_menu, select_menu
+from ._shared import shared_usage
 
-app = typer.Typer(help="Manage resource pools", no_args_is_help=True, cls=ordered_group(["add", "remove", "content", "export", "import", "list", "show"]))
+app = typer.Typer(help="Manage resource pools", no_args_is_help=True, cls=ordered_group(["add", "remove", "content", "export", "import", "list", "usage", "info"]))
 content_app = typer.Typer(help="Manage pool members (VMs/CTs)", no_args_is_help=True)
 app.add_typer(content_app, name="content")
 
@@ -34,12 +37,14 @@ app.add_typer(content_app, name="content")
 async def list_pools(
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
     order: str = typer.Option(None, "--order", "-o", help="Sort by column (moved to first position), e.g. pool, comment"),
+    json_output: bool = JSON_OPTION,
 ) -> None:
     """List all resource pools."""
     config_manager = ConfigManager()
 
     try:
         profile_config = config_manager.get_profile(profile)
+        profile_name = profile or config_manager.get().default_profile
 
         async with ProxmoxClient(profile_config) as client:
             pools = await client.get("/pools")
@@ -50,12 +55,17 @@ async def list_pools(
             elif not isinstance(pools, list):
                 pools = []
 
+            # Sort by poolid (default order)
+            pools = sorted(pools, key=lambda x: x.get("poolid", ""))
+
+            # JSON first: raw API entries, empty list included, no Rich output
+            if json_output:
+                emit_json({"profile": profile_name, "pools": pools})
+                return
+
             if not pools:
                 print_info("No pools found")
                 return
-
-            # Sort by poolid (default order)
-            pools = sorted(pools, key=lambda x: x.get("poolid", ""))
 
             columns = [
                 ("Pool ID", {"style": "cyan"}),
@@ -84,15 +94,20 @@ async def list_pools(
 async def show_pool(
     poolid: str = typer.Argument(None, help="Pool ID"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+    json_output: bool = JSON_OPTION,
 ) -> None:
     """Show detailed information about a pool."""
     config_manager = ConfigManager()
 
     try:
         profile_config = config_manager.get_profile(profile)
+        profile_name = profile or config_manager.get().default_profile
 
         async with ProxmoxClient(profile_config) as client:
             if poolid is None:
+                if json_output:
+                    print_error("--json requires a pool ID (no interactive menu in JSON mode)")
+                    raise typer.Exit(1)
                 pools = await client.get_pools()
                 if not pools:
                     print_info("No pools found")
@@ -104,14 +119,21 @@ async def show_pool(
                     return
                 poolid = pool_ids[idx]
 
-            pool_data = await client.get(f"/pools/{poolid}")
-
-            # Handle response format
-            if isinstance(pool_data, dict) and "data" in pool_data:
-                pool_data = pool_data.get("data", {})
+            pool_data = await client.get_pool(poolid)
 
             comment = pool_data.get("comment", "")
             members = pool_data.get("members", [])
+
+            if json_output:
+                emit_json(
+                    {
+                        "profile": profile_name,
+                        "poolid": poolid,
+                        "comment": comment or None,
+                        "members": members,
+                    }
+                )
+                return
 
             lines = []
             lines.append(f"[bold]Pool ID:[/bold]     {poolid}")
@@ -169,6 +191,55 @@ async def show_pool(
             )
             console.print(panel)
 
+    except PVECliError as e:
+        print_error(str(e))
+        raise typer.Exit(1)
+
+
+@app.command("usage")
+@async_to_sync
+async def pool_usage(
+    poolid: str = typer.Argument(None, help="Pool ID"),
+    profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+    no_storage: bool = typer.Option(False, "--no-storage", help="Skip the storage scan (faster)"),
+    storage: str = typer.Option(None, "--storage", help="Only scan this storage for guest disks"),
+    json_output: bool = JSON_OPTION,
+) -> None:
+    """Show aggregated CPU, memory and provisioned disk usage for a pool."""
+    config_manager = ConfigManager()
+
+    try:
+        profile_config = config_manager.get_profile(profile)
+        profile_name = profile or config_manager.get().default_profile
+
+        async with ProxmoxClient(profile_config) as client:
+            if poolid is None:
+                if json_output:
+                    print_error("--json requires a pool ID (no interactive menu in JSON mode)")
+                    raise typer.Exit(1)
+                pools = await client.get_pools()
+                if not pools:
+                    print_info("No pools found")
+                    return
+                pool_ids = sorted(p.get("poolid", "") for p in pools if p.get("poolid"))
+                idx = select_menu(pool_ids, "  Select pool:")
+                if idx is None:
+                    print_cancelled()
+                    return
+                poolid = pool_ids[idx]
+
+            await shared_usage(
+                client,
+                poolid=poolid,
+                include_storage=not no_storage,
+                storage_filter=storage,
+                as_json=json_output,
+                profile_name=profile_name,
+            )
+
+    except KeyboardInterrupt:
+        console.print()
+        print_cancelled()
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)

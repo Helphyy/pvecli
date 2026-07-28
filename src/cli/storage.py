@@ -9,7 +9,7 @@ from rich.table import Table
 from ..api.client import ProxmoxClient
 from ..api.exceptions import PVECliError
 from ..config import ConfigManager
-from ..utils import build_ordered_table, confirm, console, format_bytes, format_percentage, print_cancelled, print_error, print_info, print_success, print_warning, prompt
+from ..utils import JSON_OPTION, build_ordered_table, confirm, console, emit_json, format_bytes, format_percentage, print_cancelled, print_error, print_info, print_success, print_warning, prompt
 from ..utils.helpers import async_to_sync, ordered_group
 from ..utils.menu import multi_select_menu, select_menu
 from ._shared import pick_node
@@ -55,12 +55,14 @@ async def list_storage(
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
     node: str = typer.Option(None, "--node", "-n", help="Show storage for specific node"),
     order: str = typer.Option(None, "--order", "-o", help="Sort by column (moved to first position), e.g. storage, type, usage"),
+    json_output: bool = JSON_OPTION,
 ) -> None:
     """List all storage."""
     config_manager = ConfigManager()
 
     try:
         profile_config = config_manager.get_profile(profile)
+        profile_name = profile or config_manager.get().default_profile
 
         async with ProxmoxClient(profile_config) as client:
             if node:
@@ -75,6 +77,20 @@ async def list_storage(
                         s["_node"] = n.get("node")
                     storage_list.extend(node_storage)
                 title = "Cluster Storage"
+
+            if json_output:
+                # Raw /storage entries, the internal "_node" key exposed as "node"
+                # and the usage ratio as a real percentage (0.0 when total is 0).
+                payload = []
+                for storage in storage_list:
+                    item = {k: v for k, v in storage.items() if k != "_node"}
+                    item["node"] = storage.get("_node") or node
+                    total = storage.get("total") or 0
+                    used = storage.get("used") or 0
+                    item["used_percent"] = (used / total * 100) if total else 0.0
+                    payload.append(item)
+                emit_json({"profile": profile_name, "node": node, "storages": payload})
+                return
 
             if not storage_list:
                 print_info("No storage found")

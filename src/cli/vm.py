@@ -3646,7 +3646,7 @@ async def vm_rdp(
         try:
             rdp_proc.wait(timeout=3)
         except subprocess.TimeoutExpired:
-            # Connection established — show info and detach
+            # Connection established: show info and detach
             stderr_file.close()
             console.print(f"[dim]Connected to {target}:{rdp_port} via {client_type}[/dim]")
             console.print(
@@ -3662,7 +3662,7 @@ async def vm_rdp(
                     tunnel.terminate()
                 threading.Thread(target=_cleanup_tunnel, args=(rdp_proc, tunnel_proc), daemon=True).start()
         else:
-            # Exited quickly — check for errors
+            # Exited quickly: check for errors
             if rdp_proc.returncode != 0:
                 stderr_file.seek(0)
                 stderr = stderr_file.read().decode(errors="replace")

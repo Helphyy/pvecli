@@ -6,7 +6,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.10+-3776AB?logo=python&logoColor=white)](https://www.python.org)
 [![License](https://img.shields.io/badge/license-GPLv3-22c55e)](LICENSE.txt)
-[![Version](https://img.shields.io/badge/version-1.8.0-6366f1)](https://github.com/Helphyy/pvecli/releases)
+[![Version](https://img.shields.io/badge/version-1.9.0-6366f1)](https://github.com/Helphyy/pvecli/releases)
 [![Proxmox VE](https://img.shields.io/badge/Proxmox-VE-E57000?logo=proxmox&logoColor=white)](https://www.proxmox.com)
 [![pipx](https://img.shields.io/badge/install%20with-pipx-0ea5e9)](https://pipx.pypa.io)
 
@@ -24,6 +24,7 @@
 - 🖥 **Remote access** - Built-in VNC, SSH (with jump host), and RDP launchers
 - ⚙️ **Remote exec** - Run commands on VMs via QEMU Guest Agent with shell support
 - 🔌 **Node & cluster power** - Shutdown/reboot nodes or entire clusters with safe orchestration
+- 📊 **Usage reporting** - Aggregate CPU, memory and provisioned disk per cluster or per pool
 - 🎨 **Rich output** - Tables, spinners, colors, and confirmation prompts
 - ⚡ **Async** - Fast parallel API calls via httpx
 
@@ -84,11 +85,13 @@ pvecli ct list
 | `pvecli vm` | Full VM lifecycle - start, stop, clone, template, snapshot, exec, VNC, SSH, RDP |
 | `pvecli ct` | LXC container lifecycle - start, stop, clone, template, snapshot, VNC, SSH |
 | `pvecli storage` | Storage listing, content management (upload, delete), config |
-| `pvecli pool` | Resource pool management with export/import |
-| `pvecli cluster` | Cluster status, resources, tasks, shutdown, reboot |
+| `pvecli pool` | Resource pool management with usage reporting and export/import |
+| `pvecli cluster` | Cluster status, resources, usage reporting, tasks, shutdown, reboot |
 | `pvecli tag` | Global tag management with color palette and export/import |
 
 → **[Full command reference](docs/commands.md)**
+
+Sizes are displayed in **base 1000** (KB, MB, GB, TB), the same units as the Proxmox web interface, so a value shown by pvecli always matches the one shown by the GUI. Reporting commands (`cluster usage`, `pool usage`, `cluster resources`, `pool list`, `pool info`, `node list`, `storage list`) accept `--json` for raw, machine-readable byte values.
 
 ---
 
@@ -121,6 +124,12 @@ pvecli node reboot pve1
 
 # Shutdown the entire cluster (with HA + Ceph handling)
 pvecli cluster shutdown
+
+# Cluster-wide usage: node load, guest workload, overhead, pools, storage
+pvecli cluster usage
+
+# Aggregated usage of one pool, as JSON for a script
+pvecli pool usage PROD --json
 
 # Export/import tags and pools between clusters
 pvecli tag export -o tags.json
