@@ -1598,7 +1598,10 @@ class ProxmoxClient:
             raise
 
     async def get_network_interfaces(self, node: str) -> list[dict[str, Any]]:
-        """Get network interfaces/bridges on a node.
+        """Get bridge-capable interfaces on a node.
+
+        Uses the any_bridge filter so Linux bridges, OVS bridges and SDN
+        vnets are all included (a plain listing omits configured vnets).
 
         Args:
             node: Node name
@@ -1606,7 +1609,7 @@ class ProxmoxClient:
         Returns:
             List of network interfaces
         """
-        return await self.get(f"/nodes/{node}/network")
+        return await self.get(f"/nodes/{node}/network", params={"type": "any_bridge"})
 
     async def get_storage_configs(self) -> list[dict[str, Any]]:
         """Get the storage configuration of every storage of the cluster.

@@ -481,7 +481,7 @@ async def _edit_ct_network(config, changes, deletes, client, node):
 
         if options[idx].strip() == "Add NIC":
             interfaces = await client.get_network_interfaces(node)
-            bridges = [i.get("iface", "") for i in interfaces if i.get("type") == "bridge"]
+            bridges = [i.get("iface", "") for i in interfaces if i.get("type") in ("bridge", "OVSBridge", "vnet")]
             if not bridges:
                 print_error("No bridges available")
                 continue
@@ -541,7 +541,7 @@ async def _edit_ct_network(config, changes, deletes, client, node):
             params = parse_kv(current_val)
 
             interfaces = await client.get_network_interfaces(node)
-            bridges = [i.get("iface", "") for i in interfaces if i.get("type") == "bridge"]
+            bridges = [i.get("iface", "") for i in interfaces if i.get("type") in ("bridge", "OVSBridge", "vnet")]
 
             if bridges:
                 current_bridge = params.get("bridge", "")
@@ -2610,7 +2610,7 @@ def create_container(
         else:
             # Interactive network configuration
             console.print("\n[bold cyan]─── Network Configuration ───[/bold cyan]\n")
-            bridges = [b for b in data["bridges"] if b.get("type") == "bridge"]
+            bridges = [b for b in data["bridges"] if b.get("type") in ("bridge", "OVSBridge", "vnet")]
 
             if bridges:
                 bridge_names = [b.get("iface", "") for b in bridges]
