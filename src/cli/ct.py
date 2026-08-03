@@ -40,6 +40,7 @@ from ..utils.menu import menu_row
 from ..utils.network import resolve_node_host
 from .tag import _parse_color_map
 from ._shared import (
+    bridge_choices,
     build_kv,
     confirm_action,
     extract_size,
@@ -57,6 +58,7 @@ from ._shared import (
     shared_list_tags,
     shared_remove_tag,
     shared_rollback_snapshot,
+    storage_choices,
     validate_resources,
 )
 
@@ -403,7 +405,7 @@ async def _edit_ct_disks(config, changes, resizes, deletes, client, node):
             mp_name = f"mp{next_i}"
 
             storages = await client.get_storage_list(node)
-            storage_names = [s.get("storage", "") for s in storages]
+            storage_names = storage_choices(storages, "rootdir")
             if not storage_names:
                 print_error("No storage available")
                 continue
@@ -481,12 +483,12 @@ async def _edit_ct_network(config, changes, deletes, client, node):
 
         if options[idx].strip() == "Add NIC":
             interfaces = await client.get_network_interfaces(node)
-            bridges = [i.get("iface", "") for i in interfaces if i.get("type") in ("bridge", "OVSBridge", "vnet")]
+            bridges, bridge_items = bridge_choices(interfaces)
             if not bridges:
                 print_error("No bridges available")
                 continue
 
-            br_idx = select_menu(bridges, "  Bridge:")
+            br_idx = select_menu(bridge_items, "  Bridge:")
             if br_idx is None:
                 continue
 
@@ -541,11 +543,11 @@ async def _edit_ct_network(config, changes, deletes, client, node):
             params = parse_kv(current_val)
 
             interfaces = await client.get_network_interfaces(node)
-            bridges = [i.get("iface", "") for i in interfaces if i.get("type") in ("bridge", "OVSBridge", "vnet")]
+            bridges, bridge_items = bridge_choices(interfaces)
 
             if bridges:
                 current_bridge = params.get("bridge", "")
-                br_idx = select_menu(bridges, f"  Bridge (current: {current_bridge}):")
+                br_idx = select_menu(bridge_items, f"  Bridge (current: {current_bridge}):")
                 if br_idx is not None:
                     params["bridge"] = bridges[br_idx]
 
@@ -2559,7 +2561,7 @@ def create_container(
             config["rootfs"] = f"{rootfs_storage}:{rootfs_size}"
         else:
             console.print("\n[bold cyan]─── Storage Configuration ───[/bold cyan]\n")
-            storage_names_all = [s.get("storage", "") for s in data["storages"]]
+            storage_names_all = storage_choices(data["storages"], "rootdir")
             console.print("[bold]Root filesystem Storage:[/bold]")
             rootfs_idx = select_menu(storage_names_all, "Select storage for root filesystem:")
             if rootfs_idx is not None:
@@ -2610,12 +2612,11 @@ def create_container(
         else:
             # Interactive network configuration
             console.print("\n[bold cyan]─── Network Configuration ───[/bold cyan]\n")
-            bridges = [b for b in data["bridges"] if b.get("type") in ("bridge", "OVSBridge", "vnet")]
+            bridge_names, bridge_items = bridge_choices(data["bridges"])
 
-            if bridges:
-                bridge_names = [b.get("iface", "") for b in bridges]
+            if bridge_names:
                 console.print("[bold]Bridge:[/bold]")
-                bridge_idx = select_menu(bridge_names, "Select bridge:")
+                bridge_idx = select_menu(bridge_items, "Select bridge:")
                 if bridge_idx is not None:
                     bridge = bridge_names[bridge_idx]
 

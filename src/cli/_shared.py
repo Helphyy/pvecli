@@ -1642,3 +1642,50 @@ def _render_pool_usage(
             row.append(format_bytes(g.disk_provisioned))
         table.add_row(*row)
     console.print(table)
+
+
+# ---------------------------------------------------------------------------
+# Bridge and storage selection helpers
+# ---------------------------------------------------------------------------
+
+_BRIDGE_TYPES = ("bridge", "OVSBridge", "vnet")
+
+
+def bridge_choices(interfaces: list[dict]) -> tuple[list[str], list[str]]:
+    """Filter bridge-capable interfaces (Linux/OVS bridges and SDN vnets).
+
+    Returns (names, menu_items): names are the raw interface names to use
+    in the config, menu_items carry the description when one exists
+    (vnet comments, or the bridge alias from its options).
+    """
+    names: list[str] = []
+    items: list[str] = []
+    for entry in interfaces:
+        if entry.get("type") not in _BRIDGE_TYPES:
+            continue
+        name = entry.get("iface", "")
+        desc = str(entry.get("comments") or "").strip().splitlines()
+        desc_str = desc[0] if desc else ""
+        if not desc_str:
+            for opt in entry.get("options") or []:
+                if isinstance(opt, str) and opt.startswith("alias "):
+                    desc_str = opt[len("alias "):].strip()
+                    break
+        names.append(name)
+        items.append(f"{name}  ({desc_str})" if desc_str else name)
+    if names:
+        names, items = (list(t) for t in zip(*sorted(zip(names, items))))
+    return names, items
+
+
+def storage_choices(storages: list[dict], content: str) -> list[str]:
+    """Names of storages advertising the given content type.
+
+    content is one of the PVE content types: images, iso, vztmpl,
+    rootdir, backup, snippets, import.
+    """
+    return [
+        s.get("storage", "")
+        for s in storages
+        if content in s.get("content", "").split(",")
+    ]

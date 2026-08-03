@@ -42,6 +42,7 @@ from ..utils.menu import menu_row
 from ..utils.network import resolve_node_host
 from .tag import _parse_color_map
 from ._shared import (
+    bridge_choices,
     build_kv,
     confirm_action,
     extract_size,
@@ -59,6 +60,7 @@ from ._shared import (
     shared_list_tags,
     shared_remove_tag,
     shared_rollback_snapshot,
+    storage_choices,
     validate_resources,
 )
 
@@ -607,9 +609,9 @@ async def _edit_vm_disks(config, changes, resizes, deletes, client, node):
             disk_name = f"{bus}{next_i}"
 
             storages = await client.get_storage_list(node)
-            storage_names = [s.get("storage", "") for s in storages]
+            storage_names = storage_choices(storages, "images")
             if not storage_names:
-                print_error("No storage available")
+                print_error("No storage with disk image content available")
                 continue
 
             st_idx = select_menu(storage_names, "  Storage:")
@@ -721,12 +723,12 @@ async def _edit_vm_network(config, changes, deletes, client, node):
 
         if options[idx].strip() == "Add NIC":
             interfaces = await client.get_network_interfaces(node)
-            bridges = [i.get("iface", "") for i in interfaces if i.get("type") in ("bridge", "OVSBridge", "vnet")]
+            bridges, bridge_items = bridge_choices(interfaces)
             if not bridges:
                 print_error("No bridges available")
                 continue
 
-            br_idx = select_menu(bridges, "  Bridge:")
+            br_idx = select_menu(bridge_items, "  Bridge:")
             if br_idx is None:
                 continue
 
@@ -767,11 +769,11 @@ async def _edit_vm_network(config, changes, deletes, client, node):
             params = parse_kv(current_val)
 
             interfaces = await client.get_network_interfaces(node)
-            bridges = [i.get("iface", "") for i in interfaces if i.get("type") in ("bridge", "OVSBridge", "vnet")]
+            bridges, bridge_items = bridge_choices(interfaces)
 
             if bridges:
                 current_bridge = params.get("bridge", "")
-                br_idx = select_menu(bridges, f"  Bridge (current: {current_bridge}):")
+                br_idx = select_menu(bridge_items, f"  Bridge (current: {current_bridge}):")
                 if br_idx is not None:
                     params["bridge"] = bridges[br_idx]
 
@@ -3155,7 +3157,7 @@ def create_vm(
             # 6.3. TPM
             if needs_tpm:
                 console.print("\n[bold cyan]TPM required for this OS[/bold cyan]")
-                storage_names_all = [s.get("storage", "") for s in data["storages"]]
+                storage_names_all = storage_choices(data["storages"], "images")
                 console.print("[bold]TPM Storage:[/bold]")
                 tpm_idx = select_menu(storage_names_all, "Select storage for TPM:")
                 if tpm_idx is not None:
@@ -3164,7 +3166,7 @@ def create_vm(
 
             # 6.4. EFI Disk
             if needs_tpm:
-                storage_names_all = [s.get("storage", "") for s in data["storages"]]
+                storage_names_all = storage_choices(data["storages"], "images")
                 console.print("[bold]EFI Storage:[/bold]")
                 efi_idx = select_menu(storage_names_all, "Select storage for EFI:")
                 if efi_idx is not None:
@@ -3263,7 +3265,7 @@ def create_vm(
             # Ask interactively
             console.print("\n[bold cyan]─── Disk Configuration ───[/bold cyan]\n")
             if Confirm.ask("[bold]Add primary disk?[/bold]", default=True):
-                storage_names_all = [s.get("storage", "") for s in data["storages"]]
+                storage_names_all = storage_choices(data["storages"], "images")
                 console.print("[bold]Disk Storage:[/bold]")
                 disk_idx = select_menu(storage_names_all, "Select storage for primary disk:")
                 if disk_idx is not None:
@@ -3304,12 +3306,11 @@ def create_vm(
         elif bridge is None:
             # Ask interactively
             console.print("\n[bold cyan]─── Network Configuration ───[/bold cyan]\n")
-            bridges = [b for b in data["bridges"] if b.get("type") in ("bridge", "OVSBridge", "vnet")]
+            bridge_names, bridge_items = bridge_choices(data["bridges"])
 
-            if bridges:
-                bridge_names = [b.get("iface", "") for b in bridges]
+            if bridge_names:
                 console.print("[bold]Bridge:[/bold]")
-                bridge_idx = select_menu(bridge_names, "Select bridge:")
+                bridge_idx = select_menu(bridge_items, "Select bridge:")
                 if bridge_idx is not None:
                     bridge = bridge_names[bridge_idx]
 
