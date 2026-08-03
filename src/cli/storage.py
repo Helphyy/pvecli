@@ -441,6 +441,14 @@ async def add_content(
                 print_success("Upload started successfully")
                 console.print(f"[cyan]Task ID:[/cyan] {upid}")
 
+                from ..api.client import _upid_node
+                exec_node = _upid_node(upid)
+                if exec_node and exec_node != node:
+                    print_info(
+                        f"Task executed by '{exec_node}' (proxying node). "
+                        f"Shared storage: the file lands in the same place."
+                    )
+
                 console.print("[cyan]Waiting for upload to complete...[/cyan]")
                 task_result = await client.wait_for_task(node, upid)
 
