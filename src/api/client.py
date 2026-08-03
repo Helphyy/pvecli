@@ -18,6 +18,17 @@ from .exceptions import (
 from ..models.config import ProfileConfig
 
 
+def _upid_node(upid: str) -> str:
+    """Extract the executing node from a UPID (format UPID:node:pid:...).
+
+    Returns an empty string if the UPID cannot be parsed.
+    """
+    parts = upid.split(":")
+    if len(parts) > 2 and parts[0] == "UPID" and parts[1]:
+        return parts[1]
+    return ""
+
+
 class ProxmoxClient:
     """Async client for Proxmox VE API."""
 
@@ -1026,6 +1037,12 @@ class ProxmoxClient:
         import signal
         import time
 
+        # The UPID embeds the node actually running the task
+        # (UPID:node:pid:...), which can differ from the node the request
+        # was sent to (e.g. uploads to shared storage proxied by another
+        # node). Poll the task where it really runs.
+        node = _upid_node(upid) or node
+
         start_time = time.time()
         task = None
         old_handler = None
@@ -1066,7 +1083,7 @@ class ProxmoxClient:
             upid: Task UPID
         """
         try:
-            await self.delete(f"/nodes/{node}/tasks/{upid}")
+            await self.delete(f"/nodes/{_upid_node(upid) or node}/tasks/{upid}")
         except Exception:
             # Task might already be stopped, ignore errors
             pass
