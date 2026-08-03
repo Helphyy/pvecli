@@ -2897,12 +2897,12 @@ def create_vm(
                 async with ProxmoxClient(profile_config) as client:
                     vm_id = config.pop("vmid")
                     upid = await client.create_vm(node, vm_id, **config)
-                    console.print(f"\n[cyan]Creating VM {vm_id}...[/cyan]")
+                    console.print(f"\n[cyan]Creating VM {vm_id} on {node}...[/cyan]")
                     await client.wait_for_task(node, upid, timeout=300)
                     return vm_id
 
             created_vmid = asyncio.run(create())
-            print_success(f"VM {created_vmid} created successfully!")
+            print_success(f"VM {created_vmid} created successfully on {node}!")
             return
 
         # Interactive mode (original code)
@@ -3359,14 +3359,14 @@ def create_vm(
             async with ProxmoxClient(profile_config) as client:
                 vmid = config.pop("vmid")
                 upid = await client.create_vm(node, vmid, **config)
-                console.print(f"\n[cyan]Creating VM...[/cyan]")
+                console.print(f"\n[cyan]Creating VM on {node}...[/cyan]")
                 console.print(f"[cyan]Task ID:[/cyan] {upid}")
                 await client.wait_for_task(node, upid, timeout=300)
                 return vmid
 
         created_vmid = asyncio.run(create())
 
-        print_success(f"VM {created_vmid} created successfully!")
+        print_success(f"VM {created_vmid} created successfully on {node}!")
 
         # Offer to print the full CLI command for reproduction
         if Confirm.ask("\n[bold]Print the full creation command?[/bold]", default=True):

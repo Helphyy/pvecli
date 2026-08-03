@@ -2329,12 +2329,12 @@ def create_container(
                 async with ProxmoxClient(profile_config) as client:
                     ct_id = config.pop("vmid")
                     upid = await client.create_container(node, ct_id, **config)
-                    console.print(f"\n[cyan]Creating container {ct_id}...[/cyan]")
+                    console.print(f"\n[cyan]Creating container {ct_id} on {node}...[/cyan]")
                     await client.wait_for_task(node, upid, timeout=300)
                     return ct_id
 
             created_ctid = asyncio.run(create())
-            print_success(f"Container {created_ctid} created successfully!")
+            print_success(f"Container {created_ctid} created successfully on {node}!")
             return
 
         # Mixed interactive mode - ask only for missing parameters
@@ -2713,14 +2713,14 @@ def create_container(
             async with ProxmoxClient(profile_config) as client:
                 vmid = config.pop("vmid")
                 upid = await client.create_container(node, vmid, **config)
-                console.print(f"\n[cyan]Creating container...[/cyan]")
+                console.print(f"\n[cyan]Creating container on {node}...[/cyan]")
                 console.print(f"[cyan]Task ID:[/cyan] {upid}")
                 await client.wait_for_task(node, upid, timeout=300)
                 return vmid
 
         created_ctid = asyncio.run(create())
 
-        print_success(f"Container {created_ctid} created successfully!")
+        print_success(f"Container {created_ctid} created successfully on {node}!")
 
         # Offer to print the full CLI command for reproduction
         if Confirm.ask("\n[bold]Print the full creation command?[/bold]", default=True):
