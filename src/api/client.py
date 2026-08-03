@@ -379,7 +379,7 @@ class ProxmoxClient:
         Args:
             flag: Flag name
         """
-        await self.post(f"/cluster/ceph/flags/{flag}")
+        await self.put(f"/cluster/ceph/flags/{flag}", data={"value": 1})
 
     async def unset_ceph_flag(self, flag: str) -> None:
         """Unset a Ceph OSD flag.
@@ -387,7 +387,7 @@ class ProxmoxClient:
         Args:
             flag: Flag name
         """
-        await self.delete(f"/cluster/ceph/flags/{flag}")
+        await self.put(f"/cluster/ceph/flags/{flag}", data={"value": 0})
 
     # HA management
 

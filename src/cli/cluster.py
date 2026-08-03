@@ -493,26 +493,42 @@ async def _orchestrate_cluster_power(
         # ── Phase 3: Ceph flags ───────────────────────────────────────
         if not skip_ceph:
             ceph_node = connected_node or ordered[0].get("node", "")
+
+            # Detection and flag setting are kept apart on purpose: a failure
+            # to set the flags must never be reported as "Ceph not detected".
+            ceph_present = True
             try:
                 await client.get_ceph_status(ceph_node)
+            except PVECliError:
+                ceph_present = False
+                print_info("Ceph not detected, skipping flag management")
+
+            if ceph_present:
                 console.print(
                     "\n[bold cyan]── Setting Ceph maintenance flags ──[/bold cyan]"
                 )
-                for flag in _CEPH_FLAGS:
-                    with Progress(
-                        SpinnerColumn(),
-                        TextColumn("[progress.description]{task.description}"),
-                        console=console,
-                    ) as progress:
-                        progress.add_task(
-                            description=f"Setting Ceph flag: {flag}...",
-                            total=None,
-                        )
-                        await client.set_ceph_flag(flag)
+                try:
+                    for flag in _CEPH_FLAGS:
+                        with Progress(
+                            SpinnerColumn(),
+                            TextColumn("[progress.description]{task.description}"),
+                            console=console,
+                        ) as progress:
+                            progress.add_task(
+                                description=f"Setting Ceph flag: {flag}...",
+                                total=None,
+                            )
+                            await client.set_ceph_flag(flag)
+                except PVECliError as e:
+                    print_error(f"Failed to set Ceph maintenance flags: {e}")
+                    print_error(
+                        "Aborting: shutting down a Ceph cluster without these flags "
+                        "lets Ceph rebalance while nodes go down one by one."
+                    )
+                    print_info("Pass --skip-ceph to proceed anyway (not recommended).")
+                    raise typer.Exit(1)
                 ceph_flags_set = True
                 print_success(f"Ceph flags set: {', '.join(_CEPH_FLAGS)}")
-            except PVECliError:
-                print_info("Ceph not detected, skipping flag management")
 
         # ── Phase 4: Stop all guests ──────────────────────────────────
         console.print("\n[bold cyan]── Stopping all guests ──[/bold cyan]")
