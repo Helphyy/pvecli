@@ -2158,17 +2158,21 @@ def create_container(
             print_error("VLAN tag must be a number between 1 and 4094")
             raise typer.Exit(1)
 
-        # Node selection if not provided
-        if node is None:
-            async def _pick_node():
-                async with ProxmoxClient(profile_config) as client:
-                    return await client.get_nodes()
+        # Node selection if not provided; validate it if it is
+        node = node.strip() if node else None
 
-            nodes = asyncio.run(_pick_node())
-            if not nodes:
-                print_error("No nodes found")
-                raise typer.Exit(1)
-            nodes = sorted(nodes, key=lambda x: x.get("node", ""))
+        async def _get_nodes():
+            async with ProxmoxClient(profile_config) as client:
+                return await client.get_nodes()
+
+        nodes = asyncio.run(_get_nodes())
+        if not nodes:
+            print_error("No nodes found")
+            raise typer.Exit(1)
+        nodes = sorted(nodes, key=lambda x: x.get("node", ""))
+        node_names = [n.get("node", "") for n in nodes]
+
+        if node is None:
             node_items = [
                 f"{n.get('node', '')} ({n.get('status', 'unknown')})"
                 for n in nodes
@@ -2182,6 +2186,9 @@ def create_container(
                     print_cancelled()
                     return
                 node = nodes[node_idx].get("node", "")
+        elif node not in node_names:
+            print_error(f"Node '{node}' not found. Available: {', '.join(node_names)}")
+            raise typer.Exit(1)
 
         # Check if we have all required arguments for non-interactive mode
         has_required_args = all([hostname, template_storage, template])
