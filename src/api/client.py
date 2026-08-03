@@ -205,11 +205,19 @@ class ProxmoxClient:
         """
         try:
             data = response.json()
-            if "errors" in data:
-                return "; ".join(str(v) for v in data["errors"].values())
-            return data.get("message", response.text)
+            if isinstance(data, dict):
+                if data.get("errors"):
+                    return "; ".join(str(v) for v in data["errors"].values())
+                if data.get("message"):
+                    return str(data["message"])
         except Exception:
-            return response.text or f"HTTP {response.status_code}"
+            pass
+        # Proxmox puts the actual error in the HTTP status line reason
+        # (the JSON body is often just {"data":null})
+        reason = (response.reason_phrase or "").strip()
+        if reason:
+            return reason
+        return response.text or f"HTTP {response.status_code}"
 
     async def get(
         self, endpoint: str, params: dict[str, Any] | None = None
