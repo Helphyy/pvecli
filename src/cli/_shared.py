@@ -16,7 +16,7 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
-from ..api.client import ProxmoxClient
+from ..api.client import ProxmoxClient, is_not_implemented
 from ..api.exceptions import (
     APIError,
     NetworkError,
@@ -1331,6 +1331,219 @@ async def shared_ha_set(
         await client.update_ha_resource(sid, **params)
     changes = ", ".join([f"{k}={v}" for k, v in params.items()] + ([rule_change] if rule_change else []))
     print_success(f"HA resource {sid} updated ({changes})")
+
+
+# ---------------------------------------------------------------------------
+# Migration
+# ---------------------------------------------------------------------------
+
+def _first(d: dict[str, Any], *keys: str) -> Any:
+    """First present key: the qemu and lxc endpoints spell the same field
+    with underscores and with dashes."""
+    return next((d[k] for k in keys if k in d), None)
+
+
+def _blocked_reason(info: Any) -> str:
+    """Readable reason from a not_allowed_nodes entry."""
+    if not isinstance(info, dict):
+        return str(info)
+    parts = []
+    for key, value in info.items():
+        if isinstance(value, list):
+            value = ", ".join(str(v) for v in value)
+        parts.append(f"{key.replace('_', ' ').replace('-', ' ')}: {value}")
+    return "; ".join(parts) or "not allowed"
+
+
+async def _wait_ha_migration(
+    client: ProxmoxClient, sid: str, target: str, timeout: int, start_grace: int = 60
+) -> None:
+    """Follow an HA migration until the service runs on the target node.
+
+    The HA manager only queues the request, and silently drops it when the
+    service is in a transitional state (request_start, fence...) at that
+    moment. A request that never turns into a 'migrate' or 'relocate' state
+    within start_grace seconds is reported instead of waited on for an hour.
+    """
+    started = time.time()
+    seen_moving = False
+    while time.time() - started < timeout:
+        try:
+            entries = await client.get_cluster_ha_status() or []
+        except PVECliError:
+            entries = []
+        svc = next((e for e in entries if e.get("sid") == sid), {})
+        state, node = svc.get("state"), svc.get("node")
+        if state in ("migrate", "relocate"):
+            seen_moving = True
+        elif node == target and state in ("started", "stopped"):
+            return
+        elif not seen_moving and time.time() - started >= start_grace:
+            raise PVECliError(
+                f"The HA manager did not act on the request: {sid} is still "
+                f"'{state}' on {node}. It ignores migrations while a resource "
+                "changes state; run the command again once it is settled."
+            )
+        await asyncio.sleep(3)
+    raise PVECliError(
+        f"{sid} is not on {target} after {timeout}s. Follow it with: "
+        f"pvecli {sid.split(':')[0]} ha status {sid.split(':')[1]}"
+    )
+
+
+async def shared_migrate(
+    client: ProxmoxClient,
+    kind: str,
+    guest_id: int,
+    target: str | None,
+    online: bool | None,
+    with_local_disks: bool,
+    target_storage: str | None,
+    restart: bool,
+    shutdown_timeout: int | None,
+    yes: bool,
+    wait_timeout: int = 3600,
+) -> None:
+    """Migrate one VM ("vm") or container ("ct") to another node.
+
+    The preconditions endpoint is asked first, so a blocked target is refused
+    with its reason before anything moves. Older PVE versions lack it for
+    containers: the migration is then attempted and the API has the last word.
+    """
+    label = "VM" if kind == "vm" else "CT"
+    api_kind = "qemu" if kind == "vm" else "lxc"
+
+    resources = await client.get_cluster_resources(resource_type="vm")
+    guest = next(
+        (r for r in resources if r.get("vmid") == guest_id and r.get("type") == api_kind), None
+    )
+    if not guest:
+        raise PVECliError(f"{label} {guest_id} not found")
+    node = guest.get("node", "")
+    # /cluster/resources lags behind (a fresh guest even shows "unknown"):
+    # the live state decides between a live, restart or offline migration.
+    try:
+        current = await client.get(f"/nodes/{node}/{api_kind}/{guest_id}/status/current") or {}
+    except PVECliError:
+        current = {}
+    running = (current.get("status") or guest.get("status")) == "running"
+    name = current.get("name") or guest.get("name", "")
+
+    online_nodes = sorted(
+        n.get("node", "") for n in await client.get_nodes() if n.get("status") == "online"
+    )
+    candidates = [n for n in online_nodes if n != node]
+    if not candidates:
+        raise PVECliError(f"No other online node to migrate {label} {guest_id} to")
+
+    try:
+        pre = await client.get_migrate_preconditions(node, api_kind, guest_id, target)
+    except PVECliError as e:
+        if not is_not_implemented(e):
+            raise
+        pre = {}
+    not_allowed = _first(pre, "not_allowed_nodes", "not-allowed-nodes") or {}
+    allowed = _first(pre, "allowed_nodes", "allowed-nodes")
+
+    def blocked(n: str) -> str | None:
+        """Why a node is refused, or None. PVE lists every node in
+        not_allowed_nodes, most with an empty entry, while also naming them
+        in allowed_nodes: only a real reason or an absence from
+        allowed_nodes counts."""
+        if not_allowed.get(n):
+            return _blocked_reason(not_allowed[n])
+        if allowed is not None and n not in allowed:
+            return "not allowed by Proxmox"
+        return None
+
+    if target is None:
+        items = [n + (f"   [blocked: {blocked(n)}]" if blocked(n) else "") for n in candidates]
+        idx = select_menu(items, f"  Migrate {label} {guest_id} ({name}) from {node} to:")
+        if idx is None:
+            print_cancelled()
+            return
+        target = candidates[idx]
+    if target == node:
+        raise PVECliError(f"{label} {guest_id} already runs on {node}")
+    if target not in online_nodes:
+        raise PVECliError(
+            f"Node '{target}' is not an online cluster member. Online: {', '.join(online_nodes)}"
+        )
+    if blocked(target):
+        raise PVECliError(f"{label} {guest_id} cannot go to {target}: {blocked(target)}")
+
+    params: dict[str, Any] = {}
+    mode = "offline"
+    if kind == "vm":
+        local_disks = pre.get("local_disks") or []
+        if running:
+            if online is False:
+                raise PVECliError(
+                    f"VM {guest_id} is running: stop it first for an offline migration"
+                )
+            params["online"] = 1
+            mode = "live"
+            if local_disks and not with_local_disks:
+                raise PVECliError(
+                    f"VM {guest_id} has local disks "
+                    f"({', '.join(str(d.get('volid', d)) for d in local_disks)}): "
+                    "pass --with-local-disks to copy them during the live migration"
+                )
+        if with_local_disks:
+            params["with-local-disks"] = 1
+        if target_storage:
+            params["targetstorage"] = target_storage
+    else:
+        if running:
+            if not restart:
+                if yes:
+                    raise PVECliError(
+                        f"CT {guest_id} is running: containers cannot move live, "
+                        "pass --restart to stop it, move it and start it again"
+                    )
+                if not confirm(
+                    f"CT {guest_id} is running. Containers cannot move live: stop it, "
+                    "move it and start it again on the target?",
+                    default=False,
+                ):
+                    print_cancelled()
+                    return
+            params["restart"] = 1
+            mode = "restart"
+            if shutdown_timeout is not None:
+                params["timeout"] = shutdown_timeout
+        if target_storage:
+            params["target-storage"] = target_storage
+
+    try:
+        ha_sids = {r.get("sid") for r in await client.get_ha_resources()}
+    except PVECliError:
+        ha_sids = set()
+    ha_managed = f"{kind}:{guest_id}" in ha_sids
+
+    console.print(f"\n[bold cyan]═══ Migrate {label} {guest_id} ({name}) ═══[/bold cyan]\n")
+    console.print(f"  [bold]From:[/bold]   {node}")
+    console.print(f"  [bold]To:[/bold]     {target}")
+    console.print(f"  [bold]Mode:[/bold]   {mode}")
+    if target_storage:
+        console.print(f"  [bold]Target storage:[/bold] {target_storage}")
+    if ha_managed:
+        console.print("  [bold]HA:[/bold]     managed, the move goes through the HA manager")
+    if not yes and not confirm("\nStart the migration?", default=True):
+        print_cancelled()
+        return
+
+    upid = await client.migrate_guest(node, api_kind, guest_id, target, **params)
+    with Progress(
+        SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console
+    ) as progress:
+        progress.add_task(f"Migrating {label} {guest_id} to {target}...", total=None)
+        await client.wait_for_task(node, upid, timeout=wait_timeout)
+        # An HA-managed guest only queues a request ('hamigrate' task) that
+        # ends before the guest moves: wait for the guest itself.
+        if ha_managed or ":hamigrate:" in str(upid):
+            await _wait_ha_migration(client, f"{kind}:{guest_id}", target, wait_timeout)
+    print_success(f"{label} {guest_id} migrated to {target}")
 
 
 # ---------------------------------------------------------------------------

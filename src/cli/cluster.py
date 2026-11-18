@@ -23,6 +23,7 @@ from ..utils import (
     format_uptime,
     get_status_color,
     menu_prompt,
+    parse_tags,
     print_cancelled,
     print_error,
     print_info,
@@ -1711,6 +1712,350 @@ async def ha_arm(
                     raise typer.Exit(1)
                 raise
             print_success("HA re-armed: check its state with: pvecli cluster health")
+    except PVECliError as e:
+        print_error(str(e))
+        raise typer.Exit(1)
+
+
+# ── cluster guests ───────────────────────────────────────────────────────
+
+guests_app = typer.Typer(
+    help="Start, shut down, suspend or migrate many guests in one go",
+    no_args_is_help=True,
+)
+app.add_typer(guests_app, name="guests")
+
+
+async def _select_guests(
+    client: ProxmoxClient,
+    vms: str | None,
+    tag: str | None,
+    pool: str | None,
+    node: str | None,
+) -> list[dict]:
+    """Guests matching every filter given. At least one filter is required:
+    acting on the whole cluster by accident is not an option."""
+    if not any((vms, tag, pool, node)):
+        raise PVECliError("Pick the guests with --vms, --tag, --pool or --node")
+    from ._shared import parse_id_list
+
+    wanted = set(parse_id_list(vms, "guest")) if vms else None
+    guests = []
+    for r in await client.get_cluster_resources(resource_type="vm"):
+        if r.get("template"):
+            continue
+        if wanted is not None and r.get("vmid") not in wanted:
+            continue
+        if tag and tag not in parse_tags(r.get("tags", "") or ""):
+            continue
+        if pool and r.get("pool") != pool:
+            continue
+        if node and r.get("node") != node:
+            continue
+        guests.append(r)
+    if wanted:
+        missing = wanted - {g.get("vmid") for g in guests}
+        if missing:
+            raise PVECliError(
+                "Not found or filtered out: " + ", ".join(str(m) for m in sorted(missing))
+            )
+    if not guests:
+        raise PVECliError("No guest matches these filters")
+    return sorted(guests, key=lambda g: g.get("vmid", 0))
+
+
+async def _run_bulk(
+    client: ProxmoxClient,
+    action: str,
+    guests: list[dict],
+    yes: bool,
+    cluster_params: dict,
+    node_params: dict,
+    describe: str,
+) -> None:
+    """Run one bulk action: a single cluster task where PVE offers it, one
+    task per node (startall/stopall/suspendall/migrateall) otherwise.
+
+    Beware of suspendall: PVE always hibernates to disk there (todisk => 1),
+    so a plain in-memory suspend falls back on one call per VM instead.
+    """
+    table = Table(title=f"{describe}: {len(guests)} guest(s)", header_style="bold cyan")
+    table.add_column("ID", justify="right", style="cyan")
+    table.add_column("Name")
+    table.add_column("Type")
+    table.add_column("Node")
+    table.add_column("Status")
+    for g in guests:
+        table.add_row(
+            str(g.get("vmid")), g.get("name", "") or "-",
+            "VM" if g.get("type") == "qemu" else "CT", g.get("node", ""), g.get("status", ""),
+        )
+    console.print(table)
+    if not yes and not confirm(f"{describe} these {len(guests)} guest(s)?", default=False):
+        print_cancelled()
+        return
+
+    ids = [g["vmid"] for g in guests]
+    params = {k: v for k, v in cluster_params.items() if v is not None}
+    try:
+        upid = await client.bulk_guest_action(action, vms=ids, **params)
+        tasks = [("", upid)]  # wait_for_task reads the node from the UPID
+        print_info("Running as one cluster task")
+    except PVECliError as e:
+        if not is_not_implemented(e):
+            raise
+        if action == "suspend" and not cluster_params.get("to-disk"):
+            tasks = [
+                (g.get("node", ""), await client.suspend_vm(g.get("node", ""), g["vmid"]))
+                for g in guests
+            ]
+            print_info(f"Running as {len(tasks)} task(s), one per VM")
+            return await _finish_bulk(client, action, guests, tasks, cluster_params, describe)
+        # Older PVE: one task per node, same filtering through 'vms'
+        node_action = {
+            "start": "startall", "shutdown": "stopall",
+            "suspend": "suspendall", "migrate": "migrateall",
+        }[action]
+        per_node: dict[str, list[int]] = {}
+        for g in guests:
+            per_node.setdefault(g.get("node", ""), []).append(g["vmid"])
+        tasks = []
+        for node, node_ids in sorted(per_node.items()):
+            p = {k: v for k, v in node_params.items() if v is not None}
+            p["vms"] = ",".join(str(i) for i in node_ids)
+            if node_action == "migrateall":
+                # migrateall refuses to run without a worker count unless
+                # datacenter.cfg sets one; 1 is the web UI default
+                p.setdefault("max-workers", 1)
+
+            async def call(params: dict) -> str:
+                if node_action == "migrateall":
+                    return await client.migrate_all(node, **params)
+                return await client.node_bulk_action(node, node_action, **params)
+
+            # The worker count is spelled 'max-workers', 'maxworkers' on
+            # older releases, and some per-node endpoints of those releases
+            # accept neither: try each, then run without it.
+            workers = p.pop("max-workers", None)
+            upid = None
+            for key in ("max-workers", "maxworkers", None) if workers is not None else (None,):
+                attempt = {**p, key: workers} if key else p
+                try:
+                    upid = await call(attempt)
+                    break
+                except PVECliError as e:
+                    if key is None or "not defined in schema" not in str(e):
+                        raise
+            if workers is not None and key is None:
+                print_warning(
+                    f"{node}: this PVE version cannot limit the parallel tasks of "
+                    f"{node_action}, its own default applies"
+                )
+            tasks.append((node, upid))
+        print_info(f"Running as {len(tasks)} task(s), one per node")
+
+    await _finish_bulk(client, action, guests, tasks, cluster_params, describe)
+
+
+async def _finish_bulk(
+    client: ProxmoxClient,
+    action: str,
+    guests: list[dict],
+    tasks: list[tuple[str, str]],
+    cluster_params: dict,
+    describe: str,
+) -> None:
+    """Wait for the bulk tasks, then check each guest reached the state."""
+    with Progress(
+        SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console
+    ) as progress:
+        progress.add_task(f"{describe} {len(guests)} guest(s)...", total=None)
+        results = await asyncio.gather(
+            *(client.wait_for_task(n, u, timeout=7200) for n, u in tasks),
+            return_exceptions=True,
+        )
+    # "WARNINGS: n" is how PVE ends a task that succeeded with warnings, a
+    # skipped guest for instance: not a failure, the check below tells which.
+    errors = [r for r in results if isinstance(r, Exception)]
+    failed = [str(r) for r in errors if "WARNINGS:" not in str(r)]
+    if failed:
+        for f in failed:
+            print_error(f)
+        raise typer.Exit(1)
+    if errors:
+        print_warning("The task ended with warnings, see: pvecli cluster tasks")
+
+    # A bulk task ends OK even when it skipped guests (locked, HA-managed,
+    # already in the target state...): check every guest really got there.
+    missed = await _bulk_missed(client, action, guests, cluster_params.get("target"))
+    if missed:
+        print_warning(
+            f"{describe}: {len(guests) - len(missed)}/{len(guests)} guest(s) done. "
+            "Not reached: " + "; ".join(missed)
+        )
+        print_info("The task log says why: pvecli cluster tasks")
+        raise typer.Exit(1)
+    print_success(f"{describe}: done for {len(guests)} guest(s)")
+
+
+async def _bulk_missed(
+    client: ProxmoxClient, action: str, guests: list[dict], target: str | None
+) -> list[str]:
+    """Guests not in the state the bulk action promised, read live."""
+
+    async def check(g: dict) -> str | None:
+        kind = "qemu" if g.get("type") == "qemu" else "lxc"
+        node = target if action == "migrate" else g.get("node")
+        try:
+            cur = await client.get(f"/nodes/{node}/{kind}/{g['vmid']}/status/current") or {}
+        except PVECliError:
+            return f"{g['vmid']} (still on {g.get('node')})" if action == "migrate" else f"{g['vmid']} (unreadable)"
+        status, lock = cur.get("status"), cur.get("lock")
+        ok = {
+            "start": status == "running",
+            "shutdown": status == "stopped",
+            "suspend": cur.get("qmpstatus") in ("paused", "suspended") or lock == "suspended",
+            "migrate": True,
+        }[action]
+        if ok:
+            return None
+        return f"{g['vmid']} ({status}{', locked ' + lock if lock else ''})"
+
+    results = await asyncio.gather(*(check(g) for g in guests))
+    return [r for r in results if r]
+
+
+_GUEST_FILTERS = {
+    "vms": typer.Option(None, "--vms", help="Guest IDs: 100,101 or 100-110"),
+    "tag": typer.Option(None, "--tag", help="Only guests carrying this tag"),
+    "pool": typer.Option(None, "--pool", help="Only guests of this resource pool"),
+    "node": typer.Option(None, "--node", help="Only guests currently on this node"),
+}
+
+
+@guests_app.command("start")
+@async_to_sync
+async def guests_start(
+    vms: str = _GUEST_FILTERS["vms"],
+    tag: str = _GUEST_FILTERS["tag"],
+    pool: str = _GUEST_FILTERS["pool"],
+    node: str = _GUEST_FILTERS["node"],
+    max_workers: int = typer.Option(None, "--max-workers", help="Guests handled at the same time"),
+    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip confirmation"),
+    profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+) -> None:
+    """Start (or resume) every guest matching the filters."""
+    await _guests_command(
+        "start", vms, tag, pool, node, yes, profile, "Start",
+        {"max-workers": max_workers},
+        # startall only starts onboot=1 guests unless forced
+        {"max-workers": max_workers, "force": 1},
+    )
+
+
+@guests_app.command("shutdown")
+@async_to_sync
+async def guests_shutdown(
+    vms: str = _GUEST_FILTERS["vms"],
+    tag: str = _GUEST_FILTERS["tag"],
+    pool: str = _GUEST_FILTERS["pool"],
+    node: str = _GUEST_FILTERS["node"],
+    timeout: int = typer.Option(None, "--timeout", "-t", help="Shutdown timeout per guest, in seconds"),
+    force_stop: bool = typer.Option(False, "--force-stop", is_flag=True, help="Hard stop guests still running after the timeout"),
+    max_workers: int = typer.Option(None, "--max-workers", help="Guests handled at the same time"),
+    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip confirmation"),
+    profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+) -> None:
+    """Shut down every guest matching the filters."""
+    params = {"max-workers": max_workers, "timeout": timeout, "force-stop": 1 if force_stop else None}
+    await _guests_command("shutdown", vms, tag, pool, node, yes, profile, "Shut down", params, params)
+
+
+@guests_app.command("suspend")
+@async_to_sync
+async def guests_suspend(
+    vms: str = _GUEST_FILTERS["vms"],
+    tag: str = _GUEST_FILTERS["tag"],
+    pool: str = _GUEST_FILTERS["pool"],
+    node: str = _GUEST_FILTERS["node"],
+    to_disk: bool = typer.Option(False, "--to-disk", is_flag=True, help="Hibernate to disk instead of pausing in memory"),
+    max_workers: int = typer.Option(None, "--max-workers", help="Guests handled at the same time"),
+    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip confirmation"),
+    profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+) -> None:
+    """Suspend every VM matching the filters (containers cannot be suspended)."""
+    await _guests_command(
+        "suspend", vms, tag, pool, node, yes, profile, "Suspend",
+        {"max-workers": max_workers, "to-disk": 1 if to_disk else None},
+        {"max-workers": max_workers},
+        only_vms=True,
+    )
+
+
+@guests_app.command("migrate")
+@async_to_sync
+async def guests_migrate(
+    target: str = typer.Argument(..., help="Target node"),
+    vms: str = _GUEST_FILTERS["vms"],
+    tag: str = _GUEST_FILTERS["tag"],
+    pool: str = _GUEST_FILTERS["pool"],
+    node: str = _GUEST_FILTERS["node"],
+    with_local_disks: bool = typer.Option(False, "--with-local-disks", is_flag=True, help="Copy local disks during live migrations"),
+    max_workers: int = typer.Option(None, "--max-workers", help="Migrations running at the same time"),
+    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip confirmation"),
+    profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+) -> None:
+    """Migrate every guest matching the filters to one node."""
+    params = {
+        "target": target,
+        "max-workers": max_workers,
+        "with-local-disks": 1 if with_local_disks else None,
+    }
+    await _guests_command(
+        "migrate", vms, tag, pool, node, yes, profile, f"Migrate to {target}",
+        {**params, "online": 1}, params, exclude_node=target,
+    )
+
+
+async def _guests_command(
+    action: str,
+    vms: str | None,
+    tag: str | None,
+    pool: str | None,
+    node: str | None,
+    yes: bool,
+    profile: str | None,
+    describe: str,
+    cluster_params: dict,
+    node_params: dict,
+    only_vms: bool = False,
+    exclude_node: str | None = None,
+) -> None:
+    config_manager = ConfigManager()
+    try:
+        profile_config = config_manager.get_profile(profile)
+        async with ProxmoxClient(profile_config) as client:
+            guests = await _select_guests(client, vms, tag, pool, node)
+            if only_vms:
+                skipped = [g for g in guests if g.get("type") != "qemu"]
+                guests = [g for g in guests if g.get("type") == "qemu"]
+                if skipped:
+                    print_warning(
+                        "Containers cannot be suspended, skipped: "
+                        + ", ".join(str(g.get("vmid")) for g in skipped)
+                    )
+            if exclude_node:
+                members = {n.get("node") for n in await client.get_nodes()}
+                if exclude_node not in members:
+                    raise PVECliError(f"Unknown node '{exclude_node}'")
+                guests = [g for g in guests if g.get("node") != exclude_node]
+            if not guests:
+                print_info("Nothing to do")
+                return
+            await _run_bulk(client, action, guests, yes, cluster_params, node_params, describe)
+    except KeyboardInterrupt:
+        console.print()
+        print_cancelled()
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)

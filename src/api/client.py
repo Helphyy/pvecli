@@ -533,6 +533,54 @@ class ProxmoxClient:
         """Re-arm the HA stack after disarm_ha (PVE 9.2+)."""
         return await self.post("/cluster/ha/status/arm-ha")
 
+    # Migration
+
+    async def get_migrate_preconditions(
+        self, node: str, kind: str, vmid: int, target: str | None = None
+    ) -> dict[str, Any]:
+        """What blocks or constrains a migration, before starting it.
+
+        Args:
+            kind: "qemu" or "lxc". The lxc variant only exists on recent PVE
+                versions and spells its keys with dashes (allowed-nodes)
+                where qemu uses underscores (allowed_nodes).
+        """
+        return await self.get(
+            f"/nodes/{node}/{kind}/{vmid}/migrate",
+            params={"target": target} if target else None,
+        ) or {}
+
+    async def migrate_guest(
+        self, node: str, kind: str, vmid: int, target: str, **params: Any
+    ) -> str:
+        """Start a VM or container migration. Returns the task UPID."""
+        data: dict[str, Any] = {"target": target}
+        data.update({k: v for k, v in params.items() if v is not None})
+        return await self.post(f"/nodes/{node}/{kind}/{vmid}/migrate", data=data)
+
+    async def migrate_all(self, node: str, target: str, **params: Any) -> str:
+        """Migrate every guest of a node (or the 'vms' subset). Returns the UPID."""
+        data: dict[str, Any] = {"target": target}
+        data.update({k: v for k, v in params.items() if v is not None})
+        return await self.post(f"/nodes/{node}/migrateall", data=data)
+
+    # Bulk guest actions
+
+    async def bulk_guest_action(self, action: str, **params: Any) -> str:
+        """Cluster wide start, shutdown, suspend or migrate in one task.
+
+        Only exists on recent PVE 9 releases: callers fall back on the
+        per-node startall/stopall/suspendall/migrateall when it is missing.
+        'vms' is an array parameter, sent as one value per guest.
+        """
+        data: dict[str, Any] = {k: v for k, v in params.items() if v is not None}
+        return await self.post(f"/cluster/bulk-action/guest/{action}", data=data)
+
+    async def node_bulk_action(self, node: str, action: str, **params: Any) -> str:
+        """Per-node startall, stopall or suspendall, available on every version."""
+        data: dict[str, Any] = {k: v for k, v in params.items() if v is not None}
+        return await self.post(f"/nodes/{node}/{action}", data=data or None)
+
     async def create_vnc_shell(self, node: str, websocket: bool = True) -> dict[str, Any]:
         """Create a VNC shell proxy to a node.
 

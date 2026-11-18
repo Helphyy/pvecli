@@ -29,7 +29,7 @@ from ._shared import detect_connected_node, pick_node
 app = typer.Typer(
     help="Manage cluster nodes",
     no_args_is_help=True,
-    cls=ordered_group(["shutdown", "reboot", "vnc", "ssh", "list", "show"]),
+    cls=ordered_group(["shutdown", "reboot", "evacuate", "vnc", "ssh", "list", "show"]),
 )
 
 
@@ -461,3 +461,32 @@ async def node_ssh(
         raise typer.Exit(1)
 
 
+@app.command("evacuate")
+@async_to_sync
+async def evacuate_node(
+    node: str = typer.Argument(..., help="Node to empty"),
+    target: str = typer.Argument(..., help="Node receiving its guests"),
+    with_local_disks: bool = typer.Option(False, "--with-local-disks", is_flag=True, help="Copy local disks during live migrations"),
+    max_workers: int = typer.Option(None, "--max-workers", help="Migrations running at the same time"),
+    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip confirmation"),
+    profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+) -> None:
+    """Move every guest off a node before maintenance.
+
+    Same as: pvecli cluster guests migrate TARGET --node NODE
+
+    Examples:
+        pvecli node evacuate pve1 pve2
+        pvecli node evacuate pve1 pve2 --with-local-disks --max-workers 2
+    """
+    from .cluster import _guests_command
+
+    params = {
+        "target": target,
+        "max-workers": max_workers,
+        "with-local-disks": 1 if with_local_disks else None,
+    }
+    await _guests_command(
+        "migrate", None, None, None, node, yes, profile, f"Evacuate {node} to {target}",
+        {**params, "online": 1}, params, exclude_node=target,
+    )

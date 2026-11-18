@@ -58,6 +58,7 @@ from ._shared import (
     shared_ha_status,
     shared_list_snapshots,
     shared_list_tags,
+    shared_migrate,
     shared_remove_tag,
     shared_rollback_snapshot,
     storage_choices,
@@ -67,7 +68,7 @@ from ._shared import (
 _CMD_ORDER = [
     "start", "stop", "shutdown", "reboot", "suspend", "resume",
     "lock", "unlock",
-    "add", "clone", "edit", "remove",
+    "add", "clone", "migrate", "edit", "remove",
     "tag", "snapshot", "template", "ha",
     "vnc", "ssh", "rdp", "exec",
     "list", "show",
@@ -3768,6 +3769,45 @@ async def convert_vm_template(
             if len(vmid_list) > 1:
                 print_info(f"Summary: {converted}/{len(vmid_list)} converted")
 
+    except PVECliError as e:
+        print_error(str(e))
+        raise typer.Exit(1)
+
+
+@app.command("migrate")
+@async_to_sync
+async def migrate_vm(
+    vmid: int = typer.Argument(None, help="VM ID"),
+    target: str = typer.Argument(None, help="Target node (menu when omitted)"),
+    online: bool = typer.Option(None, "--online/--offline", help="Live migration (default when the VM runs)"),
+    with_local_disks: bool = typer.Option(False, "--with-local-disks", is_flag=True, help="Copy local disks during a live migration"),
+    target_storage: str = typer.Option(None, "--target-storage", help="Storage on the target, or a source:target mapping"),
+    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip confirmation"),
+    profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+) -> None:
+    """Migrate a VM to another node of the cluster.
+
+    A running VM moves live. The target is checked first: storage missing on
+    it, local resources or HA constraints are refused with their reason.
+
+    Examples:
+        pvecli vm migrate 100 pve2
+        pvecli vm migrate 100 pve2 --with-local-disks
+        pvecli vm migrate 100              # pick the target node
+    """
+    config_manager = ConfigManager()
+    try:
+        profile_config = config_manager.get_profile(profile)
+        async with ProxmoxClient(profile_config) as client:
+            if vmid is None:
+                vmid = await _select_vm(client)
+                if vmid is None:
+                    print_cancelled()
+                    return
+            await shared_migrate(client, "vm", vmid, target, online, with_local_disks, target_storage, False, None, yes)
+    except KeyboardInterrupt:
+        console.print()
+        print_cancelled()
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)

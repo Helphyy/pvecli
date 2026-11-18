@@ -56,6 +56,7 @@ from ._shared import (
     shared_ha_status,
     shared_list_snapshots,
     shared_list_tags,
+    shared_migrate,
     shared_remove_tag,
     shared_rollback_snapshot,
     storage_choices,
@@ -64,7 +65,7 @@ from ._shared import (
 
 _CMD_ORDER = [
     "start", "stop", "shutdown", "reboot",
-    "add", "clone", "edit", "remove",
+    "add", "clone", "migrate", "edit", "remove",
     "tag", "snapshot", "template", "image", "ha",
     "vnc", "ssh",
     "list", "show",
@@ -3262,6 +3263,44 @@ async def convert_ct_template(
             if len(ctid_list) > 1:
                 print_info(f"Summary: {converted}/{len(ctid_list)} converted")
 
+    except PVECliError as e:
+        print_error(str(e))
+        raise typer.Exit(1)
+
+
+@app.command("migrate")
+@async_to_sync
+async def migrate_ct(
+    ctid: int = typer.Argument(None, help="CT ID"),
+    target: str = typer.Argument(None, help="Target node (menu when omitted)"),
+    restart: bool = typer.Option(False, "--restart", is_flag=True, help="Stop a running container, move it and start it again"),
+    timeout: int = typer.Option(None, "--timeout", "-t", help="Shutdown timeout in seconds for --restart"),
+    target_storage: str = typer.Option(None, "--target-storage", help="Storage on the target, or a source:target mapping"),
+    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip confirmation"),
+    profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+) -> None:
+    """Migrate a container to another node of the cluster.
+
+    Containers cannot move live: a running one needs --restart (or a yes at
+    the prompt), which stops it, moves it and starts it again on the target.
+
+    Examples:
+        pvecli ct migrate 200 pve2
+        pvecli ct migrate 200 pve2 --restart
+    """
+    config_manager = ConfigManager()
+    try:
+        profile_config = config_manager.get_profile(profile)
+        async with ProxmoxClient(profile_config) as client:
+            if ctid is None:
+                ctid = await _select_ct(client)
+                if ctid is None:
+                    print_cancelled()
+                    return
+            await shared_migrate(client, "ct", ctid, target, None, False, target_storage, restart, timeout, yes)
+    except KeyboardInterrupt:
+        console.print()
+        print_cancelled()
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)
