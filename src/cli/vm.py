@@ -4,9 +4,9 @@ import asyncio
 import re
 import subprocess
 import time
+from enum import Enum
 from typing import Any
 
-import click
 import typer
 from rich.panel import Panel
 from rich.prompt import Confirm, IntPrompt, Prompt
@@ -1698,6 +1698,15 @@ async def _exec_on_vm(
         await asyncio.sleep(0.2)
 
 
+class ExecShell(str, Enum):
+    """Shells accepted by `vm exec --shell`."""
+
+    sh = "sh"
+    bash = "bash"
+    cmd = "cmd"
+    powershell = "powershell"
+
+
 @app.command("exec", context_settings={
     "allow_extra_args": True,
     "ignore_unknown_options": True,
@@ -1709,7 +1718,7 @@ async def exec_vm_command(
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
     timeout: int = typer.Option(30, "--timeout", "-t", help="Timeout in seconds"),
     quiet: bool = typer.Option(False, "--quiet", "-q", help="Suppress stderr output"),
-    shell: str = typer.Option(None, "--shell", "-s", help="Shell override (default: sh on Linux, cmd on Windows)", click_type=click.Choice(["sh", "bash", "cmd", "powershell"])),
+    shell: ExecShell = typer.Option(None, "--shell", "-s", help="Shell override (default: sh on Linux, cmd on Windows)"),
 ) -> None:
     """Execute a command in one or more VMs via QEMU Guest Agent.
 
@@ -1766,7 +1775,7 @@ async def exec_vm_command(
 
             for vmid in vmid_list:
                 try:
-                    exitcode = await _exec_on_vm(client, vmid, command, timeout, show_header, quiet, shell)
+                    exitcode = await _exec_on_vm(client, vmid, command, timeout, show_header, quiet, shell.value if shell else None)
                     if exitcode == 0:
                         success_count += 1
                     else:
