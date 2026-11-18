@@ -1,6 +1,11 @@
 """Storage management commands."""
 
 import asyncio
+import os
+import re
+from getpass import getpass
+from pathlib import Path
+from typing import Any
 
 import typer
 from rich.panel import Panel
@@ -9,12 +14,27 @@ from rich.table import Table
 from ..api.client import ProxmoxClient
 from ..api.exceptions import PVECliError
 from ..config import ConfigManager
-from ..utils import JSON_OPTION, build_ordered_table, confirm, console, emit_json, format_bytes, format_percentage, print_cancelled, print_error, print_info, print_success, print_warning, prompt
+from ..utils import (
+    JSON_OPTION,
+    build_ordered_table,
+    confirm,
+    console,
+    emit_json,
+    format_bytes,
+    format_percentage,
+    menu_prompt,
+    print_cancelled,
+    print_error,
+    print_info,
+    print_success,
+    print_warning,
+    prompt,
+)
 from ..utils.helpers import async_to_sync, ordered_group
 from ..utils.menu import multi_select_menu, select_menu
 from ._shared import pick_node
 
-app = typer.Typer(help="Manage storage", no_args_is_help=True, cls=ordered_group(["config", "content", "list", "show"]))
+app = typer.Typer(help="Manage storage", no_args_is_help=True, cls=ordered_group(["add", "remove", "config", "content", "list", "show"]))
 content_app = typer.Typer(help="Manage storage content", no_args_is_help=True)
 app.add_typer(content_app, name="content")
 
@@ -44,6 +64,603 @@ async def _resolve_node_storage(client: ProxmoxClient, node: str | None, storage
         if storage is None:
             return None
     return node, storage
+
+
+# ── storage add ──────────────────────────────────────────────────────────
+
+# Shared storage types pvecli can create.
+#   scan / scan_arg: discovery endpoint under /nodes/{node}/scan, verified
+#     against the published API schema. None when the backend cannot be probed.
+#   supported: content types the backend accepts, from the "Available storage
+#     types" table of the Proxmox storage documentation.
+#   default: the subset preselected in the wizard.
+# All of these types are shared by nature, so the 'shared' property is never
+# sent: PVE rejects it for them.
+_FILE_CONTENT = ("images", "rootdir", "vztmpl", "iso", "backup", "snippets", "import")
+
+# Same rule as PVE's own storage ID check (pve_verify_storage_id), so a bad
+# ID is refused before any scan instead of after the summary.
+_STORAGE_ID_RE = re.compile(r"^[a-z][a-z0-9\-_.]*[a-z0-9]$", re.IGNORECASE)
+
+# A self-signed PBS rejects the scan and names the fingerprint it presents.
+_FINGERPRINT_RE = re.compile(r"(?:[0-9a-f]{2}:){31}[0-9a-f]{2}", re.IGNORECASE)
+
+_STORAGE_TYPES: dict[str, dict] = {
+    "nfs": {
+        "label": "NFS share",
+        "scan": "nfs",
+        "scan_arg": "server",
+        "supported": _FILE_CONTENT,
+        "default": "images,rootdir,vztmpl,iso,backup",
+    },
+    "cifs": {
+        "label": "SMB/CIFS share",
+        "scan": "cifs",
+        "scan_arg": "server",
+        "supported": _FILE_CONTENT,
+        "default": "images,rootdir,vztmpl,iso,backup",
+    },
+    "rbd": {
+        "label": "Ceph RBD (external cluster)",
+        "scan": None,
+        "supported": ("images", "rootdir"),
+        "default": "images,rootdir",
+    },
+    "cephfs": {
+        "label": "CephFS (external cluster)",
+        "scan": None,
+        "supported": ("vztmpl", "iso", "backup", "snippets", "import"),
+        "default": "vztmpl,iso,backup",
+    },
+    "pbs": {
+        "label": "Proxmox Backup Server",
+        "scan": "pbs",
+        "scan_arg": "server",
+        # /nodes/{node}/scan/pbs also requires username and password:
+        # without them the datastore cannot be discovered, only declared.
+        "scan_needs": ("username", "password"),
+        "supported": ("backup",),
+        "default": "backup",
+    },
+    "iscsi": {
+        "label": "iSCSI target",
+        "scan": "iscsi",
+        "scan_arg": "portal",
+        # The iSCSI plugin advertises images, or none to only expose the LUNs
+        # as a base for an LVM storage
+        "supported": ("images", "none"),
+        "default": "images",
+    },
+}
+
+
+async def _probe_from_all_nodes(
+    client: ProxmoxClient, nodes: list[str], scan_type: str, **params
+) -> dict[str, list | str]:
+    """Run the same scan from every node at once. Returns {node: entries or error}.
+
+    Concurrent on purpose: an unreachable server makes each scan wait for its
+    own timeout, which would otherwise add up node after node.
+    """
+
+    async def one(node: str) -> list | str:
+        try:
+            return await client.scan_storage(node, scan_type, **params)
+        except PVECliError as e:
+            return str(e)
+
+    results = await asyncio.gather(*(one(n) for n in nodes))
+    return dict(zip(nodes, results, strict=True))
+
+
+def _scan_key(scan_type: str, entry: dict) -> str:
+    """Identifier of a discovered entry, per backend."""
+    if scan_type == "nfs":
+        return str(entry.get("path", ""))
+    if scan_type == "cifs":
+        return str(entry.get("share", ""))
+    if scan_type == "iscsi":
+        return str(entry.get("target", ""))
+    if scan_type == "pbs":
+        return str(entry.get("store", ""))
+    return str(entry.get("pool") or entry.get("vg") or entry.get("name") or "")
+
+
+@app.command("add")
+@async_to_sync
+async def add_storage(
+    storage_id: str = typer.Argument(None, help="Storage ID to create"),
+    storage_type: str = typer.Option(None, "--type", "-t", help=f"Type: {', '.join(_STORAGE_TYPES)}"),
+    server: str = typer.Option(None, "--server", help="Server for nfs, cifs, pbs"),
+    export: str = typer.Option(None, "--export", help="NFS export path"),
+    share: str = typer.Option(None, "--share", help="CIFS share name"),
+    portal: str = typer.Option(None, "--portal", help="iSCSI portal"),
+    target: str = typer.Option(None, "--target", help="iSCSI target"),
+    datastore: str = typer.Option(None, "--datastore", help="PBS datastore"),
+    fingerprint: str = typer.Option(None, "--fingerprint", help="TLS fingerprint of the PBS server (self-signed certificates)"),
+    monhost: str = typer.Option(None, "--monhost", help="Ceph monitors, comma separated"),
+    ceph_pool: str = typer.Option(None, "--pool", help="Ceph RBD pool"),
+    fs_name: str = typer.Option(None, "--fs-name", help="CephFS filesystem name"),
+    username: str = typer.Option(None, "--username", help="User name: Ceph client id (default admin), CIFS user, or PBS user"),
+    keyring_file: str = typer.Option(None, "--keyring-file", help="Path to the Ceph keyring file (never pass the key on the command line)"),
+    password_env: str = typer.Option(None, "--password-env", help="Env var holding the CIFS or PBS password"),
+    content: str = typer.Option(None, "--content", "-c", help="Content types, comma separated"),
+    nodes: str = typer.Option(None, "--nodes", "-n", help="Restrict to these nodes, comma separated"),
+    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip confirmation"),
+    profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+) -> None:
+    """Add a shared storage to the cluster, checking every node can reach it."""
+    config_manager = ConfigManager()
+
+    try:
+        profile_config = config_manager.get_profile(profile)
+
+        async with ProxmoxClient(profile_config) as client:
+            all_nodes = sorted(
+                n.get("node", "")
+                for n in await client.get_nodes()
+                if n.get("status") == "online"
+            )
+            if not all_nodes:
+                print_error("No online node found")
+                raise typer.Exit(1)
+
+            if nodes:
+                asked = [n.strip() for n in nodes.split(",") if n.strip()]
+                unknown = [n for n in asked if n not in all_nodes]
+                if unknown:
+                    print_error(
+                        f"Unknown node(s): {', '.join(unknown)}. "
+                        f"Cluster members: {', '.join(all_nodes)}"
+                    )
+                    raise typer.Exit(1)
+
+            interactive = storage_type is None
+
+            # ── Type ──
+            if storage_type is None:
+                console.print("\n[bold cyan]═══ Add Storage ═══[/bold cyan]\n")
+                keys = list(_STORAGE_TYPES)
+                items = [f"{k.ljust(8)} {_STORAGE_TYPES[k]['label']}" for k in keys]
+                idx = select_menu(items, "  Storage type:")
+                if idx is None:
+                    print_cancelled()
+                    return
+                storage_type = keys[idx]
+            elif storage_type not in _STORAGE_TYPES:
+                print_error(
+                    f"Unsupported type '{storage_type}'. Available: {', '.join(_STORAGE_TYPES)}"
+                )
+                raise typer.Exit(1)
+
+            spec = _STORAGE_TYPES[storage_type]
+
+            # ── Pure input checks first, before touching the network ──
+            if content is not None:
+                asked = [c.strip() for c in content.split(",") if c.strip()]
+                unsupported = [c for c in asked if c not in spec["supported"]]
+                if unsupported:
+                    print_error(
+                        f"Content type(s) {', '.join(unsupported)} are not supported by "
+                        f"'{storage_type}'. Supported: {', '.join(spec['supported'])}"
+                    )
+                    raise typer.Exit(1)
+                if not asked:
+                    print_error("At least one content type is required")
+                    raise typer.Exit(1)
+
+            # ── Existing storages: refuse duplicates early ──
+            existing = {s.get("storage") for s in await client.get_storage_configs()}
+
+            if storage_id is None:
+                storage_id = menu_prompt("  Storage ID")
+            if not storage_id:
+                print_cancelled()
+                return
+            if not _STORAGE_ID_RE.match(storage_id):
+                print_error(
+                    f"Invalid storage ID '{storage_id}': at least 2 characters, starting "
+                    "with a letter, ending with a letter or digit, and only letters, "
+                    "digits, '-', '_' or '.' in between"
+                )
+                raise typer.Exit(1)
+            if storage_id in existing:
+                print_error(f"Storage '{storage_id}' already exists")
+                raise typer.Exit(1)
+
+            params: dict[str, Any] = {}
+
+            # ── Backend specific parameters, with discovery when possible ──
+            if storage_type in ("nfs", "cifs", "pbs"):
+                if server is None:
+                    server = menu_prompt("  Server (IP or DNS name)")
+                if not server:
+                    print_cancelled()
+                    return
+                params["server"] = server
+
+            if storage_type == "iscsi":
+                if portal is None:
+                    portal = menu_prompt("  Portal (IP or DNS name)")
+                if not portal:
+                    print_cancelled()
+                    return
+                params["portal"] = portal
+
+            # Discovery from every node: this is what the web UI never does
+            probe_arg = spec.get("scan_arg")
+            chosen_entry = {"nfs": export, "cifs": share, "iscsi": target, "pbs": datastore}.get(
+                storage_type
+            )
+            # PBS discovery needs credentials; collect them before deciding
+            # whether the scan can run at all.
+            if storage_type == "pbs":
+                if fingerprint:
+                    params["fingerprint"] = fingerprint
+                if username:
+                    params["username"] = username
+                if password_env:
+                    pwd = os.environ.get(password_env)
+                    if not pwd:
+                        print_error(f"Environment variable '{password_env}' is empty or unset")
+                        raise typer.Exit(1)
+                    params["password"] = pwd
+                elif interactive and params.get("username"):
+                    params["password"] = getpass("  PBS password: ")
+
+            # A self-signed PBS refuses the scan without its fingerprint, and
+            # says which one it expects in the error.
+            scan_needs = spec.get("scan_needs", ())
+            missing_for_scan = [k for k in scan_needs if not params.get(k)]
+            if spec["scan"] and probe_arg and missing_for_scan:
+                print_info(
+                    f"Discovery skipped: scanning {storage_type} also requires "
+                    f"{', '.join(missing_for_scan)}"
+                )
+            elif spec["scan"] and probe_arg:
+                probe_value = params.get(probe_arg)
+                console.print(
+                    f"\n[cyan]Scanning {storage_type} on {probe_value} from {len(all_nodes)} node(s)...[/cyan]"
+                )
+                # The scan needs whatever the backend requires to authenticate,
+                # not only the server address: PBS wants username, password and
+                # the fingerprint of its self-signed certificate.
+                scan_args = {probe_arg: probe_value}
+                for key in ("username", "password", "fingerprint", "domain"):
+                    if params.get(key):
+                        scan_args[key] = params[key]
+                probes = await _probe_from_all_nodes(
+                    client, all_nodes, spec["scan"], **scan_args
+                )
+
+                ok_nodes = {n: r for n, r in probes.items() if isinstance(r, list)}
+                ko_nodes = {n: r for n, r in probes.items() if not isinstance(r, list)}
+
+                fingerprints = {
+                    fp.lower()
+                    for err in ko_nodes.values()
+                    for fp in _FINGERPRINT_RE.findall(str(err))
+                }
+                if not ok_nodes and storage_type == "pbs" and len(fingerprints) == 1:
+                    # Reachable, but its self-signed certificate is not trusted yet
+                    print_error(
+                        f"{probe_value} answered, but its TLS certificate is not trusted. "
+                        "If this fingerprint is the one shown on the PBS dashboard, "
+                        "run the command again with:"
+                    )
+                    console.print(f"  --fingerprint {fingerprints.pop()}", soft_wrap=True)
+                    raise typer.Exit(1)
+
+                if not ok_nodes:
+                    print_error(f"No node could reach {probe_value}:")
+                    for n, err in ko_nodes.items():
+                        console.print(f"  [red]{n}[/red]: {err}")
+                    raise typer.Exit(1)
+
+                # Which entries are visible from every node
+                per_node_keys = {
+                    n: {_scan_key(spec["scan"], e) for e in entries}
+                    for n, entries in ok_nodes.items()
+                }
+                common = set.intersection(*per_node_keys.values()) if per_node_keys else set()
+
+                table = Table(title="Backend visibility", show_header=True, header_style="bold cyan")
+                table.add_column("Node", style="cyan")
+                table.add_column("Reachable")
+                table.add_column("Entries", justify="right")
+                for n in all_nodes:
+                    r = probes.get(n)
+                    if isinstance(r, list):
+                        table.add_row(n, "[green]yes[/green]", str(len(r)))
+                    else:
+                        table.add_row(n, "[red]no[/red]", "-")
+                console.print(table)
+
+                if ko_nodes:
+                    print_warning(
+                        f"{len(ko_nodes)} node(s) cannot reach this backend: "
+                        + ", ".join(ko_nodes)
+                    )
+                    if nodes is None and not yes:
+                        if confirm(
+                            "Restrict the storage to the nodes that can reach it?",
+                            default=True,
+                        ):
+                            nodes = ",".join(sorted(ok_nodes))
+
+                # Entry selection among what was discovered
+                all_keys = sorted(set().union(*per_node_keys.values()))
+                if chosen_entry is not None:
+                    if chosen_entry not in all_keys:
+                        print_warning(
+                            f"'{chosen_entry}' was not found by the scan, creating anyway"
+                        )
+                elif not all_keys:
+                    print_error("The backend exposes nothing usable")
+                    raise typer.Exit(1)
+                elif len(all_keys) == 1 and all_keys[0] in common:
+                    # Nothing to choose: the only entry, seen by every node
+                    chosen_entry = all_keys[0]
+                    print_info(f"Using the only {storage_type} entry found: {chosen_entry}")
+                elif yes:
+                    # --yes means unattended: never fall into a menu
+                    entry_flag = {
+                        "nfs": "--export", "cifs": "--share", "iscsi": "--target", "pbs": "--datastore",
+                    }[storage_type]
+                    print_error(
+                        f"Several {storage_type} entries found, pick one with "
+                        f"{entry_flag}: {', '.join(all_keys)}"
+                    )
+                    raise typer.Exit(1)
+                else:
+                    items = [
+                        k + ("" if k in common else "   [seen on some nodes only]")
+                        for k in all_keys
+                    ]
+                    idx = select_menu(items, f"  {storage_type} entry:")
+                    if idx is None:
+                        print_cancelled()
+                        return
+                    chosen_entry = all_keys[idx]
+
+            # The chosen entry is applied whether it came from discovery or
+            # straight from a flag: skipping the scan must not drop it.
+            entry_param = {
+                "nfs": "export",
+                "cifs": "share",
+                "iscsi": "target",
+                "pbs": "datastore",
+            }.get(storage_type)
+            if entry_param:
+                if not chosen_entry:
+                    chosen_entry = menu_prompt(f"  {entry_param}")
+                if not chosen_entry:
+                    print_error(f"'{entry_param}' is required for a {storage_type} storage")
+                    raise typer.Exit(1)
+                params[entry_param] = chosen_entry
+
+            # ── External Ceph: no scan endpoint, everything is declarative ──
+            if storage_type in ("rbd", "cephfs"):
+                if monhost is None:
+                    monhost = menu_prompt("  Ceph monitors (comma separated)")
+                if not monhost:
+                    print_cancelled()
+                    return
+                params["monhost"] = monhost
+                params["username"] = username or (
+                    menu_prompt("  Ceph client id", default="admin") if interactive else "admin"
+                )
+                if storage_type == "rbd":
+                    if ceph_pool is None and interactive:
+                        ceph_pool = menu_prompt("  RBD pool", default="rbd")
+                    params["pool"] = ceph_pool or "rbd"
+                else:
+                    if fs_name is None and interactive:
+                        fs_name = menu_prompt("  CephFS filesystem name", default="cephfs")
+                    params["fs-name"] = fs_name or "cephfs"
+
+                if keyring_file is None and interactive:
+                    keyring_file = menu_prompt("  Path to the keyring file")
+                if keyring_file:
+                    kf = Path(keyring_file).expanduser()
+                    if not kf.is_file():
+                        print_error(f"Keyring file not found: {kf}")
+                        raise typer.Exit(1)
+                    raw_key = kf.read_text().strip()
+                    # rbd stores the whole keyring, cephfs wants the bare key.
+                    # Accept either file shape and hand each backend what it
+                    # expects, instead of failing on a silent mount error.
+                    if storage_type == "cephfs" and "key" in raw_key and "=" in raw_key:
+                        for line in raw_key.splitlines():
+                            if line.strip().startswith("key"):
+                                raw_key = line.split("=", 1)[1].strip()
+                                break
+                    params["keyring"] = raw_key
+                else:
+                    print_warning(
+                        "No keyring provided: the storage will be created but stay inactive "
+                        "until the key is in place"
+                    )
+
+            # ── Credentials from the environment, never from argv ──
+            if password_env:
+                pwd = os.environ.get(password_env)
+                if not pwd:
+                    print_error(f"Environment variable '{password_env}' is empty or unset")
+                    raise typer.Exit(1)
+                params["password"] = pwd
+            if storage_type == "cifs":
+                # --username must reach the payload whatever the password came
+                # from: a CIFS share created with a password but no user name
+                # mounts nowhere, and the node report only says "error".
+                if username:
+                    params.setdefault("username", username)
+                if "password" not in params:
+                    if interactive and confirm("Does this share need a password?", default=False):
+                        params["password"] = getpass("  CIFS password: ")
+                        params["username"] = username or menu_prompt("  CIFS username")
+
+            # ── Content types: only offer, and only accept, what this
+            # backend actually supports ──
+            choices = list(spec["supported"])
+            if content is None:
+                if interactive:
+                    preselected = [
+                        i for i, c in enumerate(choices) if c in spec["default"].split(",")
+                    ]
+                    sel = multi_select_menu(
+                        choices,
+                        "  Content types (Space to toggle, Enter to confirm):",
+                        preselected=preselected,
+                    )
+                    if sel is None:
+                        print_cancelled()
+                        return
+                    content = ",".join(choices[i] for i in sel)
+                else:
+                    content = spec["default"]
+            params["content"] = content
+
+            if nodes:
+                params["nodes"] = nodes
+            # No 'shared' parameter here: nfs, cifs, rbd, cephfs, pbs and iscsi
+            # are shared by nature and PVE rejects the property for them.
+
+            # ── Summary ──
+            console.print("\n[bold cyan]═══ Summary ═══[/bold cyan]\n")
+            console.print(f"  [bold]Storage:[/bold] {storage_id}")
+            console.print(f"  [bold]Type:[/bold]    {storage_type} ({spec['label']})")
+            for key, value in params.items():
+                if key in ("keyring", "password"):
+                    console.print(f"  [bold]{key}:[/bold] [dim](provided, hidden)[/dim]")
+                else:
+                    console.print(f"  [bold]{key}:[/bold] {value}")
+            console.print(
+                f"  [bold]Applies to:[/bold] "
+                f"{nodes or (all_nodes[0] if len(all_nodes) == 1 else 'every node in the cluster')}"
+            )
+
+            if not yes and not confirm("\nCreate this storage?", default=True):
+                print_cancelled()
+                return
+
+            await client.create_storage(storage_id, storage_type, **params)
+            print_success(f"Storage '{storage_id}' created")
+
+            # ── Verification: does it actually work on each node ──
+            target_nodes = [n.strip() for n in nodes.split(",")] if nodes else all_nodes
+            console.print("\n[cyan]Checking the storage on each node...[/cyan]")
+
+            # Mounting a remote share cluster wide takes longer than any fixed
+            # delay would cover, so poll until every node reports it active.
+            statuses: dict[str, dict | str] = {}
+            for _ in range(10):
+                statuses = {}
+                for node in target_nodes:
+                    try:
+                        statuses[node] = await client.get_storage_status(node, storage_id)
+                    except PVECliError as e:
+                        statuses[node] = str(e)
+                if all(
+                    isinstance(v, dict) and v.get("active") for v in statuses.values()
+                ):
+                    break
+                await asyncio.sleep(3)
+
+            table = Table(title=f"Status of '{storage_id}'", show_header=True, header_style="bold cyan")
+            table.add_column("Node", style="cyan")
+            table.add_column("Active")
+            table.add_column("Total", justify="right")
+            table.add_column("Available", justify="right")
+            failed = []
+            for node in target_nodes:
+                st = statuses.get(node)
+                if not isinstance(st, dict):
+                    table.add_row(node, "[red]error[/red]", "-", "-")
+                    failed.append(f"{node} ({st})")
+                    continue
+                active = st.get("active", 0)
+                table.add_row(
+                    node,
+                    "[green]yes[/green]" if active else "[red]no[/red]",
+                    format_bytes(st.get("total", 0)) if st.get("total") else "-",
+                    format_bytes(st.get("avail", 0)) if st.get("avail") else "-",
+                )
+                if not active:
+                    failed.append(node)
+            console.print(table)
+
+            if len(failed) == len(target_nodes):
+                print_error(
+                    f"Storage '{storage_id}' was created but is active on no node. "
+                    "Check the backend, or remove it with: "
+                    f"pvecli storage remove {storage_id}"
+                )
+                raise typer.Exit(1)
+            if failed:
+                print_warning(
+                    "Storage created but not active on: " + ", ".join(str(f) for f in failed)
+                )
+            else:
+                print_success(f"Storage '{storage_id}' is active on all {len(target_nodes)} node(s)")
+
+    except KeyboardInterrupt:
+        console.print()
+        print_cancelled()
+    except PVECliError as e:
+        print_error(str(e))
+        raise typer.Exit(1)
+
+
+@app.command("remove")
+@async_to_sync
+async def remove_storage(
+    storage_id: str = typer.Argument(None, help="Storage ID to remove"),
+    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip confirmation"),
+    profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+) -> None:
+    """Remove a storage definition. The data on the backend is left untouched."""
+    config_manager = ConfigManager()
+
+    try:
+        profile_config = config_manager.get_profile(profile)
+
+        async with ProxmoxClient(profile_config) as client:
+            configs = await client.get_storage_configs()
+            ids = sorted(s.get("storage", "") for s in configs if s.get("storage"))
+
+            if storage_id is None:
+                idx = select_menu(ids, "  Storage to remove:")
+                if idx is None:
+                    print_cancelled()
+                    return
+                storage_id = ids[idx]
+            elif storage_id not in ids:
+                print_error(f"Storage '{storage_id}' not found")
+                raise typer.Exit(1)
+
+            cfg = next((s for s in configs if s.get("storage") == storage_id), {})
+            console.print(f"\n  [bold]Storage:[/bold] {storage_id}")
+            console.print(f"  [bold]Type:[/bold]    {cfg.get('type', '?')}")
+            console.print(f"  [bold]Content:[/bold] {cfg.get('content', '-')}")
+            print_info("Only the PVE definition is removed, data on the backend is kept")
+
+            if not yes and not confirm(
+                f"Remove storage '{storage_id}' from the cluster configuration?",
+                default=False,
+            ):
+                print_cancelled()
+                return
+
+            await client.delete_storage(storage_id)
+            print_success(f"Storage '{storage_id}' removed")
+
+    except KeyboardInterrupt:
+        console.print()
+        print_cancelled()
+    except PVECliError as e:
+        print_error(str(e))
+        raise typer.Exit(1)
 
 
 # ── storage list ─────────────────────────────────────────────────────────

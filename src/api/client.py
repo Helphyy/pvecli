@@ -1878,6 +1878,49 @@ class ProxmoxClient:
         """Information a node needs to join: nodelist, fingerprints, totem."""
         return await self.get("/cluster/config/join")
 
+    async def create_storage(self, storage: str, storage_type: str, **params: Any) -> None:
+        """Create a storage. Cluster wide: one call covers every node.
+
+        Args:
+            storage: Storage ID
+            storage_type: One of nfs, cifs, rbd, cephfs, pbs, dir, lvm, ...
+            **params: Type specific parameters (server, export, monhost, ...)
+
+        Returns:
+            None
+        """
+        data: dict[str, Any] = {"storage": storage, "type": storage_type}
+        for key, value in params.items():
+            if value is not None:
+                data[key] = value
+        await self.post("/storage", data=data)
+
+    async def delete_storage(self, storage: str) -> None:
+        """Remove a storage from the cluster configuration.
+
+        The underlying data is never touched, only the PVE definition.
+
+        Args:
+            storage: Storage ID
+        """
+        await self.delete(f"/storage/{storage}")
+
+    async def scan_storage(
+        self, node: str, scan_type: str, **params: Any
+    ) -> list[dict[str, Any]]:
+        """Discover what a storage backend offers, as seen from one node.
+
+        Args:
+            node: Node performing the scan
+            scan_type: nfs, cifs, iscsi, lvm, lvmthin, zfs or pbs
+            **params: server for nfs/cifs, portal for iscsi, ...
+
+        Returns:
+            List of discovered entries
+        """
+        query = {k: v for k, v in params.items() if v is not None}
+        return await self.get(f"/nodes/{node}/scan/{scan_type}", params=query or None)
+
     async def update_storage_config(
         self,
         storage: str,
