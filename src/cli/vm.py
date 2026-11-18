@@ -37,11 +37,17 @@ from ..utils import (
     select_menu,
     usage_bar,
 )
+from ..utils.fleet import fleet
 from ..utils.helpers import async_to_sync, ordered_group
 from ..utils.menu import menu_row
 from ..utils.network import resolve_node_host
 from .tag import _parse_color_map
 from ._shared import (
+    NODE_FILTER,
+    POOL_FILTER,
+    TAG_FILTER,
+    has_filters,
+    resolve_targets,
     bridge_choices,
     build_kv,
     confirm_action,
@@ -128,6 +134,7 @@ async def _select_vms(client: ProxmoxClient) -> list[int] | None:
 
 
 @app.command("list")
+@fleet(parallel=True)
 @async_to_sync
 async def list_vms(
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
@@ -1119,10 +1126,15 @@ async def edit_vm(
 
 
 @app.command("start")
+@fleet
 @async_to_sync
 async def start_vm(
     vmids: str = typer.Argument(None, help="VM ID(s) - single, comma-separated, or range (e.g., 100, 100,101, 100-105)"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+    tag: str = TAG_FILTER,
+    pool: str = POOL_FILTER,
+    node_filter: str = NODE_FILTER,
+    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip confirmation"),
 ) -> None:
     """Start one or more VMs."""
     config_manager = ConfigManager()
@@ -1131,13 +1143,13 @@ async def start_vm(
         profile_config = config_manager.get_profile(profile)
 
         async with ProxmoxClient(profile_config) as client:
-            if vmids is None:
+            if vmids is None and not has_filters(tag, pool, node_filter):
                 vmid_list = await _select_vms(client)
                 if not vmid_list:
                     print_cancelled()
                     return
             else:
-                vmid_list = parse_id_list(vmids, "VM")
+                vmid_list = await resolve_targets(client, vmids, "qemu", "VM", tag, pool, node_filter, "Start", yes)
 
             # Validate all VMIDs
             vms = await validate_resources(client, vmid_list, "qemu", "VM")
@@ -1186,10 +1198,14 @@ async def start_vm(
 
 
 @app.command("stop")
+@fleet
 @async_to_sync
 async def stop_vm(
     vmids: str = typer.Argument(None, help="VM ID(s) - single, comma-separated, or range (e.g., 100, 100,101, 100-105)"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+    tag: str = TAG_FILTER,
+    pool: str = POOL_FILTER,
+    node_filter: str = NODE_FILTER,
     timeout: int = typer.Option(None, "--timeout", "-t", help="Timeout in seconds"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ) -> None:
@@ -1200,13 +1216,13 @@ async def stop_vm(
         profile_config = config_manager.get_profile(profile)
 
         async with ProxmoxClient(profile_config) as client:
-            if vmids is None:
+            if vmids is None and not has_filters(tag, pool, node_filter):
                 vmid_list = await _select_vms(client)
                 if not vmid_list:
                     print_cancelled()
                     return
             else:
-                vmid_list = parse_id_list(vmids, "VM")
+                vmid_list = await resolve_targets(client, vmids, "qemu", "VM", tag, pool, node_filter, None, False)
 
             # Confirmation
             if not confirm_action(vmid_list, "Hard stop", "VM", yes):
@@ -1260,10 +1276,14 @@ async def stop_vm(
 
 
 @app.command("shutdown")
+@fleet
 @async_to_sync
 async def shutdown_vm(
     vmids: str = typer.Argument(None, help="VM ID(s) - single, comma-separated, or range (e.g., 100, 100,101, 100-105)"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+    tag: str = TAG_FILTER,
+    pool: str = POOL_FILTER,
+    node_filter: str = NODE_FILTER,
     timeout: int = typer.Option(60, "--timeout", "-t", help="Timeout before force stop"),
     force: bool = typer.Option(False, "--force", help="Force stop after timeout"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
@@ -1275,13 +1295,13 @@ async def shutdown_vm(
         profile_config = config_manager.get_profile(profile)
 
         async with ProxmoxClient(profile_config) as client:
-            if vmids is None:
+            if vmids is None and not has_filters(tag, pool, node_filter):
                 vmid_list = await _select_vms(client)
                 if not vmid_list:
                     print_cancelled()
                     return
             else:
-                vmid_list = parse_id_list(vmids, "VM")
+                vmid_list = await resolve_targets(client, vmids, "qemu", "VM", tag, pool, node_filter, None, False)
 
             # Confirmation
             if not confirm_action(vmid_list, "Shutdown", "VM", yes):
@@ -1335,10 +1355,14 @@ async def shutdown_vm(
 
 
 @app.command("reboot")
+@fleet
 @async_to_sync
 async def reboot_vm(
     vmids: str = typer.Argument(None, help="VM ID(s) - single, comma-separated, or range (e.g., 100, 100,101, 100-105)"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+    tag: str = TAG_FILTER,
+    pool: str = POOL_FILTER,
+    node_filter: str = NODE_FILTER,
     timeout: int = typer.Option(None, "--timeout", "-t", help="Timeout in seconds"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ) -> None:
@@ -1349,13 +1373,13 @@ async def reboot_vm(
         profile_config = config_manager.get_profile(profile)
 
         async with ProxmoxClient(profile_config) as client:
-            if vmids is None:
+            if vmids is None and not has_filters(tag, pool, node_filter):
                 vmid_list = await _select_vms(client)
                 if not vmid_list:
                     print_cancelled()
                     return
             else:
-                vmid_list = parse_id_list(vmids, "VM")
+                vmid_list = await resolve_targets(client, vmids, "qemu", "VM", tag, pool, node_filter, None, False)
 
             # Confirmation
             if not confirm_action(vmid_list, "Reboot", "VM", yes):
@@ -1409,10 +1433,14 @@ async def reboot_vm(
 
 
 @app.command("suspend")
+@fleet
 @async_to_sync
 async def suspend_vm(
     vmids: str = typer.Argument(None, help="VM ID(s) - single, comma-separated, or range (e.g., 100, 100,101, 100-105)"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+    tag: str = TAG_FILTER,
+    pool: str = POOL_FILTER,
+    node_filter: str = NODE_FILTER,
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ) -> None:
     """Suspend one or more VMs."""
@@ -1422,13 +1450,13 @@ async def suspend_vm(
         profile_config = config_manager.get_profile(profile)
 
         async with ProxmoxClient(profile_config) as client:
-            if vmids is None:
+            if vmids is None and not has_filters(tag, pool, node_filter):
                 vmid_list = await _select_vms(client)
                 if not vmid_list:
                     print_cancelled()
                     return
             else:
-                vmid_list = parse_id_list(vmids, "VM")
+                vmid_list = await resolve_targets(client, vmids, "qemu", "VM", tag, pool, node_filter, None, False)
 
             # Confirmation
             if not confirm_action(vmid_list, "Suspend", "VM", yes):
@@ -1481,10 +1509,14 @@ async def suspend_vm(
 
 
 @app.command("resume")
+@fleet
 @async_to_sync
 async def resume_vm(
     vmids: str = typer.Argument(None, help="VM ID(s) - single, comma-separated, or range (e.g., 100, 100,101, 100-105)"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+    tag: str = TAG_FILTER,
+    pool: str = POOL_FILTER,
+    node_filter: str = NODE_FILTER,
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ) -> None:
     """Resume one or more suspended VMs."""
@@ -1494,13 +1526,13 @@ async def resume_vm(
         profile_config = config_manager.get_profile(profile)
 
         async with ProxmoxClient(profile_config) as client:
-            if vmids is None:
+            if vmids is None and not has_filters(tag, pool, node_filter):
                 vmid_list = await _select_vms(client)
                 if not vmid_list:
                     print_cancelled()
                     return
             else:
-                vmid_list = parse_id_list(vmids, "VM")
+                vmid_list = await resolve_targets(client, vmids, "qemu", "VM", tag, pool, node_filter, None, False)
 
             # Confirmation
             if not confirm_action(vmid_list, "Resume", "VM", yes):
@@ -1712,6 +1744,7 @@ class ExecShell(str, Enum):
     "allow_extra_args": True,
     "ignore_unknown_options": True,
 })
+@fleet
 @async_to_sync
 async def exec_vm_command(
     ctx: typer.Context,
@@ -1720,6 +1753,10 @@ async def exec_vm_command(
     timeout: int = typer.Option(30, "--timeout", "-t", help="Timeout in seconds"),
     quiet: bool = typer.Option(False, "--quiet", "-q", help="Suppress stderr output"),
     shell: ExecShell = typer.Option(None, "--shell", "-s", help="Shell override (default: sh on Linux, cmd on Windows)"),
+    tag: str = TAG_FILTER,
+    pool: str = POOL_FILTER,
+    node_filter: str = NODE_FILTER,
+    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip the confirmation asked when targeting by filter"),
 ) -> None:
     """Execute a command in one or more VMs via QEMU Guest Agent.
 
@@ -1733,11 +1770,20 @@ async def exec_vm_command(
         pvecli vm exec 10{2..5} -- systemctl status chrony
         pvecli vm exec 102 -- 'apt install chrony -y; systemctl restart chrony'
         pvecli vm exec 106 -s powershell -- Get-Service
+        pvecli vm exec --tag debian -- apt update
+        pvecli vm exec --pool PROD -p 'client-*' -- uptime
     """
     config_manager = ConfigManager()
 
     try:
         profile_config = config_manager.get_profile(profile)
+
+        # Without a VMID (menu, or --tag/--pool/--node), the first word after
+        # "--" lands in the vmids argument: give it back to the command.
+        extra = list(ctx.args)
+        if vmids and not re.fullmatch(r"[\d,\s-]+", vmids):
+            extra.insert(0, vmids)
+            vmids = None
 
         # Build VMID list from declared arg + extra integers from brace expansion
         vmid_list: list[int] = []
@@ -1745,14 +1791,13 @@ async def exec_vm_command(
             vmid_list = parse_id_list(vmids, "VM")
 
         # Extra args: leading integers are VMIDs (brace expansion), rest is the command
-        extra = list(ctx.args)
         while extra and extra[0].isdigit():
             vmid_list.append(int(extra.pop(0)))
 
         command = " ".join(extra) if extra else None
 
         async with ProxmoxClient(profile_config) as client:
-            if not vmid_list:
+            if not vmid_list and not has_filters(tag, pool, node_filter):
                 vmid = await _select_vm(client)
                 if vmid is None:
                     print_cancelled()
@@ -1769,6 +1814,12 @@ async def exec_vm_command(
             if not command.strip():
                 print_error("Command cannot be empty")
                 raise typer.Exit(1)
+
+            if has_filters(tag, pool, node_filter):
+                vmid_list = await resolve_targets(
+                    client, ",".join(str(v) for v in vmid_list) or None, "qemu", "VM",
+                    tag, pool, node_filter, f"Run '{command}' on", yes,
+                )
 
             show_header = len(vmid_list) > 1
             success_count = 0
@@ -2242,10 +2293,14 @@ app.add_typer(ha_app, name="ha")
 
 
 @ha_app.command("status")
+@fleet(parallel=True)
 @async_to_sync
 async def ha_status(
     vmids: str = typer.Argument(None, help="VM ID(s) - single, comma-separated, or range (empty = list all)"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+    tag: str = TAG_FILTER,
+    pool: str = POOL_FILTER,
+    node_filter: str = NODE_FILTER,
 ) -> None:
     """Show HA status for one or more VMs, or list all HA-managed VMs."""
     config_manager = ConfigManager()
@@ -2253,10 +2308,10 @@ async def ha_status(
     try:
         profile_config = config_manager.get_profile(profile)
         async with ProxmoxClient(profile_config) as client:
-            if vmids is None:
+            if vmids is None and not has_filters(tag, pool, node_filter):
                 await shared_ha_status(client, "vm", None)
                 return
-            vmid_list = parse_id_list(vmids, "VM")
+            vmid_list = await resolve_targets(client, vmids, "qemu", "VM", tag, pool, node_filter, None, False)
             for vmid in vmid_list:
                 await shared_ha_status(client, "vm", vmid)
     except PVECliError as e:
@@ -2269,6 +2324,9 @@ async def ha_status(
 async def ha_add(
     vmids: str = typer.Argument(None, help="VM ID(s) - single, comma-separated, or range"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+    tag: str = TAG_FILTER,
+    pool: str = POOL_FILTER,
+    node_filter: str = NODE_FILTER,
     group: str = typer.Option(None, "--group", "-g", help="HA group (clusters still using groups)"),
     nodes: str = typer.Option(None, "--nodes", "-n", help="Preferred nodes '<node>[:<priority>],...' (clusters using HA rules, PVE 9). '' drops the pin"),
     strict: bool = typer.Option(None, "--strict/--no-strict", help="With --nodes: restrict to those nodes instead of preferring them"),
@@ -2284,14 +2342,14 @@ async def ha_add(
     try:
         profile_config = config_manager.get_profile(profile)
         async with ProxmoxClient(profile_config) as client:
-            if vmids is None:
+            if vmids is None and not has_filters(tag, pool, node_filter):
                 vmid = await _select_vm(client)
                 if vmid is None:
                     print_cancelled()
                     return
                 vmid_list = [vmid]
             else:
-                vmid_list = parse_id_list(vmids, "VM")
+                vmid_list = await resolve_targets(client, vmids, "qemu", "VM", tag, pool, node_filter, "Register under HA", yes)
 
             interactive = not yes and len(vmid_list) == 1
             added = 0
@@ -2323,6 +2381,10 @@ async def ha_add(
 async def ha_set(
     vmids: str = typer.Argument(None, help="VM ID(s) - single, comma-separated, or range"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+    tag: str = TAG_FILTER,
+    pool: str = POOL_FILTER,
+    node_filter: str = NODE_FILTER,
+    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip confirmation"),
     state: str = typer.Option(None, "--state", "-s", help="State: started|stopped|enabled|disabled|ignored"),
     group: str = typer.Option(None, "--group", "-g", help="HA group (clusters still using groups)"),
     nodes: str = typer.Option(None, "--nodes", "-n", help="Preferred nodes '<node>[:<priority>],...' (clusters using HA rules, PVE 9). '' drops the pin"),
@@ -2337,14 +2399,14 @@ async def ha_set(
     try:
         profile_config = config_manager.get_profile(profile)
         async with ProxmoxClient(profile_config) as client:
-            if vmids is None:
+            if vmids is None and not has_filters(tag, pool, node_filter):
                 vmid = await _select_vm(client)
                 if vmid is None:
                     print_cancelled()
                     return
                 vmid_list = [vmid]
             else:
-                vmid_list = parse_id_list(vmids, "VM")
+                vmid_list = await resolve_targets(client, vmids, "qemu", "VM", tag, pool, node_filter, "Change the HA settings of", yes)
 
             updated = 0
             failed = 0
@@ -2375,6 +2437,9 @@ async def ha_set(
 async def ha_remove(
     vmids: str = typer.Argument(None, help="VM ID(s) - single, comma-separated, or range"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+    tag: str = TAG_FILTER,
+    pool: str = POOL_FILTER,
+    node_filter: str = NODE_FILTER,
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ) -> None:
     """Remove one or more VMs from HA management."""
@@ -2383,14 +2448,14 @@ async def ha_remove(
     try:
         profile_config = config_manager.get_profile(profile)
         async with ProxmoxClient(profile_config) as client:
-            if vmids is None:
+            if vmids is None and not has_filters(tag, pool, node_filter):
                 vmid = await _select_vm(client)
                 if vmid is None:
                     print_cancelled()
                     return
                 vmid_list = [vmid]
             else:
-                vmid_list = parse_id_list(vmids, "VM")
+                vmid_list = await resolve_targets(client, vmids, "qemu", "VM", tag, pool, node_filter, None, False)
 
             if not confirm_action(vmid_list, "Remove from HA", "VM", yes):
                 return
@@ -3410,6 +3475,10 @@ async def vm_vnc(
     no_background: bool = typer.Option(False, "--no-background", "-b", is_flag=True, help="Run VNC server in foreground (blocking, single VM only)"),
     split: bool = typer.Option(False, "--split", "-s", is_flag=True, help="Open each console in a separate browser window instead of tabs"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+    tag: str = TAG_FILTER,
+    pool: str = POOL_FILTER,
+    node_filter: str = NODE_FILTER,
+    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip confirmation"),
 ) -> None:
     """Open authenticated VNC console(s) for one or more VMs."""
     from ..utils import open_browser_window
@@ -3422,13 +3491,13 @@ async def vm_vnc(
         profile_config = config_manager.get_profile(profile)
 
         async with ProxmoxClient(profile_config) as client:
-            if vmids is None:
+            if vmids is None and not has_filters(tag, pool, node_filter):
                 vmid_list = await _select_vms(client)
                 if not vmid_list:
                     print_cancelled()
                     return
             else:
-                vmid_list = parse_id_list(vmids, "VM")
+                vmid_list = await resolve_targets(client, vmids, "qemu", "VM", tag, pool, node_filter, "Open a console on", yes)
 
             if no_background and len(vmid_list) > 1:
                 print_warning("--no-background only supports a single VM, running in background")

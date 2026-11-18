@@ -30,6 +30,7 @@ from ..utils import (
     print_success,
     print_warning,
 )
+from ..utils.fleet import fleet
 from ..utils.helpers import async_to_sync
 from ._shared import ceph_absent, detect_connected_node, shared_usage
 
@@ -113,6 +114,7 @@ async def _gather_node_facts(client: ProxmoxClient, nodes: list[str]) -> dict[st
 
 
 @app.command("preflight")
+@fleet(parallel=True)
 @async_to_sync
 async def cluster_preflight(
     ntp_drift: int = typer.Option(2, "--max-drift", help="Clock drift tolerated between nodes, in seconds"),
@@ -345,6 +347,7 @@ async def cluster_preflight(
 
 
 @app.command("health")
+@fleet(parallel=True)
 @async_to_sync
 async def cluster_health(
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
@@ -936,6 +939,7 @@ async def cluster_join(
 
 
 @app.command("status")
+@fleet(parallel=True)
 @async_to_sync
 async def cluster_status(
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
@@ -993,6 +997,7 @@ async def cluster_status(
 
 
 @app.command("resources")
+@fleet(parallel=True)
 @async_to_sync
 async def cluster_resources(
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
@@ -1172,6 +1177,7 @@ def _print_resources_table(resources: list[dict], title: str) -> None:
 
 
 @app.command("usage")
+@fleet(parallel=True)
 @async_to_sync
 async def cluster_usage(
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
@@ -1202,6 +1208,7 @@ async def cluster_usage(
 
 
 @app.command("tasks")
+@fleet(parallel=True)
 @async_to_sync
 async def cluster_tasks(
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),

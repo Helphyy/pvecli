@@ -80,7 +80,10 @@ class AuthHandler:
             except httpx.HTTPStatusError as e:
                 raise AuthenticationError(f"Authentication failed: {e}")
             except httpx.RequestError as e:
-                raise AuthenticationError(f"Connection failed: {e}")
+                # A timeout carries no message: name it and say where it went
+                raise AuthenticationError(
+                    f"Connection failed to {self.base_url}: {str(e) or type(e).__name__}"
+                )
             except KeyError:
                 raise AuthenticationError("Invalid response from server")
 
@@ -111,7 +114,10 @@ class AuthHandler:
                     raise AuthenticationError("Authentication invalid or expired")
                 raise AuthenticationError(f"Verification failed: {e}")
             except httpx.RequestError as e:
-                raise AuthenticationError(f"Connection failed: {e}")
+                # A timeout carries no message: name it and say where it went
+                raise AuthenticationError(
+                    f"Connection failed to {self.base_url}: {str(e) or type(e).__name__}"
+                )
 
     async def get_fresh_ticket(self, password: str) -> str:
         """Get a fresh authentication ticket.
@@ -146,6 +152,9 @@ class AuthHandler:
             except httpx.HTTPStatusError as e:
                 raise AuthenticationError(f"Authentication failed: {e}")
             except httpx.RequestError as e:
-                raise AuthenticationError(f"Connection failed: {e}")
+                # A timeout carries no message: name it and say where it went
+                raise AuthenticationError(
+                    f"Connection failed to {self.base_url}: {str(e) or type(e).__name__}"
+                )
             except KeyError:
                 raise AuthenticationError("Invalid response from server")

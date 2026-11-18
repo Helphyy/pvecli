@@ -22,6 +22,7 @@ from ..utils import (
     print_info,
     print_warning,
 )
+from ..utils.fleet import fleet
 from ..utils.helpers import async_to_sync, ordered_group
 from ._shared import ceph_absent as _absent
 
@@ -51,6 +52,7 @@ async def _first_node(client: ProxmoxClient) -> str:
 
 
 @app.command("status")
+@fleet(parallel=True)
 @async_to_sync
 async def ceph_status(
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
@@ -174,6 +176,7 @@ async def ceph_status(
 
 
 @app.command("osd")
+@fleet(parallel=True)
 @async_to_sync
 async def ceph_osd(
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
@@ -248,6 +251,7 @@ async def ceph_osd(
 
 
 @app.command("pool")
+@fleet(parallel=True)
 @async_to_sync
 async def ceph_pool(
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
@@ -313,6 +317,7 @@ async def ceph_pool(
 
 
 @app.command("flags")
+@fleet(parallel=True)
 @async_to_sync
 async def ceph_flags(
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
@@ -363,6 +368,7 @@ async def ceph_flags(
 
 
 @app.command("versions")
+@fleet(parallel=True)
 @async_to_sync
 async def ceph_versions(
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
@@ -435,6 +441,7 @@ async def ceph_versions(
 
 
 @app.command("log")
+@fleet(parallel=True)
 @async_to_sync
 async def ceph_log(
     node: str = typer.Argument(None, help="Node to read the log from"),

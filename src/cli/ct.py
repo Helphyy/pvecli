@@ -35,11 +35,17 @@ from ..utils import (
     select_menu,
     usage_bar,
 )
+from ..utils.fleet import fleet
 from ..utils.helpers import async_to_sync, ordered_group
 from ..utils.menu import menu_row
 from ..utils.network import resolve_node_host
 from .tag import _parse_color_map
 from ._shared import (
+    NODE_FILTER,
+    POOL_FILTER,
+    TAG_FILTER,
+    has_filters,
+    resolve_targets,
     bridge_choices,
     build_kv,
     confirm_action,
@@ -76,6 +82,7 @@ app = typer.Typer(help="Manage containers (LXC)", no_args_is_help=True, cls=orde
 
 
 @app.command("list")
+@fleet(parallel=True)
 @async_to_sync
 async def list_containers(
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
@@ -956,10 +963,15 @@ async def _select_cts(client: ProxmoxClient) -> list[int] | None:
 
 
 @app.command("start")
+@fleet
 @async_to_sync
 async def start_container(
     ctids: str = typer.Argument(None, help="Container ID(s) - single, comma-separated, or range (e.g., 100, 100,101, 100-105)"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+    tag: str = TAG_FILTER,
+    pool: str = POOL_FILTER,
+    node_filter: str = NODE_FILTER,
+    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip confirmation"),
 ) -> None:
     """Start one or more containers."""
     config_manager = ConfigManager()
@@ -968,13 +980,13 @@ async def start_container(
         profile_config = config_manager.get_profile(profile)
 
         async with ProxmoxClient(profile_config) as client:
-            if ctids is None:
+            if ctids is None and not has_filters(tag, pool, node_filter):
                 ctid_list = await _select_cts(client)
                 if not ctid_list:
                     print_cancelled()
                     return
             else:
-                ctid_list = parse_id_list(ctids, "CT")
+                ctid_list = await resolve_targets(client, ctids, "lxc", "CT", tag, pool, node_filter, "Start", yes)
 
             cts = await validate_resources(client, ctid_list, "lxc", "Container")
 
@@ -1022,10 +1034,14 @@ async def start_container(
 
 
 @app.command("stop")
+@fleet
 @async_to_sync
 async def stop_container(
     ctids: str = typer.Argument(None, help="Container ID(s) - single, comma-separated, or range (e.g., 100, 100,101, 100-105)"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+    tag: str = TAG_FILTER,
+    pool: str = POOL_FILTER,
+    node_filter: str = NODE_FILTER,
     timeout: int = typer.Option(None, "--timeout", "-t", help="Timeout in seconds"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ) -> None:
@@ -1036,13 +1052,13 @@ async def stop_container(
         profile_config = config_manager.get_profile(profile)
 
         async with ProxmoxClient(profile_config) as client:
-            if ctids is None:
+            if ctids is None and not has_filters(tag, pool, node_filter):
                 ctid_list = await _select_cts(client)
                 if not ctid_list:
                     print_cancelled()
                     return
             else:
-                ctid_list = parse_id_list(ctids, "CT")
+                ctid_list = await resolve_targets(client, ctids, "lxc", "CT", tag, pool, node_filter, None, False)
 
             if not confirm_action(ctid_list, "Hard stop", "container", yes):
                 return
@@ -1093,10 +1109,14 @@ async def stop_container(
 
 
 @app.command("shutdown")
+@fleet
 @async_to_sync
 async def shutdown_container(
     ctids: str = typer.Argument(None, help="Container ID(s) - single, comma-separated, or range (e.g., 100, 100,101, 100-105)"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+    tag: str = TAG_FILTER,
+    pool: str = POOL_FILTER,
+    node_filter: str = NODE_FILTER,
     timeout: int = typer.Option(60, "--timeout", "-t", help="Timeout before force stop"),
     force: bool = typer.Option(False, "--force", help="Force stop after timeout"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
@@ -1108,13 +1128,13 @@ async def shutdown_container(
         profile_config = config_manager.get_profile(profile)
 
         async with ProxmoxClient(profile_config) as client:
-            if ctids is None:
+            if ctids is None and not has_filters(tag, pool, node_filter):
                 ctid_list = await _select_cts(client)
                 if not ctid_list:
                     print_cancelled()
                     return
             else:
-                ctid_list = parse_id_list(ctids, "CT")
+                ctid_list = await resolve_targets(client, ctids, "lxc", "CT", tag, pool, node_filter, None, False)
 
             if not confirm_action(ctid_list, "Shutdown", "container", yes):
                 return
@@ -1165,10 +1185,14 @@ async def shutdown_container(
 
 
 @app.command("reboot")
+@fleet
 @async_to_sync
 async def reboot_container(
     ctids: str = typer.Argument(None, help="Container ID(s) - single, comma-separated, or range (e.g., 100, 100,101, 100-105)"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+    tag: str = TAG_FILTER,
+    pool: str = POOL_FILTER,
+    node_filter: str = NODE_FILTER,
     timeout: int = typer.Option(None, "--timeout", "-t", help="Timeout in seconds"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ) -> None:
@@ -1179,13 +1203,13 @@ async def reboot_container(
         profile_config = config_manager.get_profile(profile)
 
         async with ProxmoxClient(profile_config) as client:
-            if ctids is None:
+            if ctids is None and not has_filters(tag, pool, node_filter):
                 ctid_list = await _select_cts(client)
                 if not ctid_list:
                     print_cancelled()
                     return
             else:
-                ctid_list = parse_id_list(ctids, "CT")
+                ctid_list = await resolve_targets(client, ctids, "lxc", "CT", tag, pool, node_filter, None, False)
 
             if not confirm_action(ctid_list, "Reboot", "container", yes):
                 return
@@ -1719,10 +1743,14 @@ app.add_typer(ha_app, name="ha")
 
 
 @ha_app.command("status")
+@fleet(parallel=True)
 @async_to_sync
 async def ha_status(
     ctids: str = typer.Argument(None, help="CT ID(s) - single, comma-separated, or range (empty = list all)"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+    tag: str = TAG_FILTER,
+    pool: str = POOL_FILTER,
+    node_filter: str = NODE_FILTER,
 ) -> None:
     """Show HA status for one or more containers, or list all HA-managed containers."""
     config_manager = ConfigManager()
@@ -1730,10 +1758,10 @@ async def ha_status(
     try:
         profile_config = config_manager.get_profile(profile)
         async with ProxmoxClient(profile_config) as client:
-            if ctids is None:
+            if ctids is None and not has_filters(tag, pool, node_filter):
                 await shared_ha_status(client, "ct", None)
                 return
-            ctid_list = parse_id_list(ctids, "CT")
+            ctid_list = await resolve_targets(client, ctids, "lxc", "CT", tag, pool, node_filter, None, False)
             for ctid in ctid_list:
                 await shared_ha_status(client, "ct", ctid)
     except PVECliError as e:
@@ -1746,6 +1774,9 @@ async def ha_status(
 async def ha_add(
     ctids: str = typer.Argument(None, help="CT ID(s) - single, comma-separated, or range"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+    tag: str = TAG_FILTER,
+    pool: str = POOL_FILTER,
+    node_filter: str = NODE_FILTER,
     group: str = typer.Option(None, "--group", "-g", help="HA group (clusters still using groups)"),
     nodes: str = typer.Option(None, "--nodes", "-n", help="Preferred nodes '<node>[:<priority>],...' (clusters using HA rules, PVE 9). '' drops the pin"),
     strict: bool = typer.Option(None, "--strict/--no-strict", help="With --nodes: restrict to those nodes instead of preferring them"),
@@ -1761,14 +1792,14 @@ async def ha_add(
     try:
         profile_config = config_manager.get_profile(profile)
         async with ProxmoxClient(profile_config) as client:
-            if ctids is None:
+            if ctids is None and not has_filters(tag, pool, node_filter):
                 ctid = await _select_ct(client)
                 if ctid is None:
                     print_cancelled()
                     return
                 ctid_list = [ctid]
             else:
-                ctid_list = parse_id_list(ctids, "CT")
+                ctid_list = await resolve_targets(client, ctids, "lxc", "CT", tag, pool, node_filter, "Register under HA", yes)
 
             interactive = not yes and len(ctid_list) == 1
             added = 0
@@ -1800,6 +1831,10 @@ async def ha_add(
 async def ha_set(
     ctids: str = typer.Argument(None, help="CT ID(s) - single, comma-separated, or range"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+    tag: str = TAG_FILTER,
+    pool: str = POOL_FILTER,
+    node_filter: str = NODE_FILTER,
+    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip confirmation"),
     state: str = typer.Option(None, "--state", "-s", help="State: started|stopped|enabled|disabled|ignored"),
     group: str = typer.Option(None, "--group", "-g", help="HA group (clusters still using groups)"),
     nodes: str = typer.Option(None, "--nodes", "-n", help="Preferred nodes '<node>[:<priority>],...' (clusters using HA rules, PVE 9). '' drops the pin"),
@@ -1814,14 +1849,14 @@ async def ha_set(
     try:
         profile_config = config_manager.get_profile(profile)
         async with ProxmoxClient(profile_config) as client:
-            if ctids is None:
+            if ctids is None and not has_filters(tag, pool, node_filter):
                 ctid = await _select_ct(client)
                 if ctid is None:
                     print_cancelled()
                     return
                 ctid_list = [ctid]
             else:
-                ctid_list = parse_id_list(ctids, "CT")
+                ctid_list = await resolve_targets(client, ctids, "lxc", "CT", tag, pool, node_filter, "Change the HA settings of", yes)
 
             updated = 0
             failed = 0
@@ -1852,6 +1887,9 @@ async def ha_set(
 async def ha_remove(
     ctids: str = typer.Argument(None, help="CT ID(s) - single, comma-separated, or range"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+    tag: str = TAG_FILTER,
+    pool: str = POOL_FILTER,
+    node_filter: str = NODE_FILTER,
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ) -> None:
     """Remove one or more containers from HA management."""
@@ -1860,14 +1898,14 @@ async def ha_remove(
     try:
         profile_config = config_manager.get_profile(profile)
         async with ProxmoxClient(profile_config) as client:
-            if ctids is None:
+            if ctids is None and not has_filters(tag, pool, node_filter):
                 ctid = await _select_ct(client)
                 if ctid is None:
                     print_cancelled()
                     return
                 ctid_list = [ctid]
             else:
-                ctid_list = parse_id_list(ctids, "CT")
+                ctid_list = await resolve_targets(client, ctids, "lxc", "CT", tag, pool, node_filter, None, False)
 
             if not confirm_action(ctid_list, "Remove from HA", "CT", yes):
                 return
@@ -3071,6 +3109,10 @@ async def ct_vnc(
     no_background: bool = typer.Option(False, "--no-background", "-b", is_flag=True, help="Run VNC server in foreground (blocking, single CT only)"),
     split: bool = typer.Option(False, "--split", "-s", is_flag=True, help="Open each console in a separate browser window instead of tabs"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+    tag: str = TAG_FILTER,
+    pool: str = POOL_FILTER,
+    node_filter: str = NODE_FILTER,
+    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip confirmation"),
 ) -> None:
     """Open authenticated VNC console(s) for one or more containers."""
     from ..utils import open_browser_window
@@ -3083,13 +3125,13 @@ async def ct_vnc(
         profile_config = config_manager.get_profile(profile)
 
         async with ProxmoxClient(profile_config) as client:
-            if ctids is None:
+            if ctids is None and not has_filters(tag, pool, node_filter):
                 ctid_list = await _select_cts(client)
                 if not ctid_list:
                     print_cancelled()
                     return
             else:
-                ctid_list = parse_id_list(ctids, "CT")
+                ctid_list = await resolve_targets(client, ctids, "lxc", "CT", tag, pool, node_filter, "Open a console on", yes)
 
             if no_background and len(ctid_list) > 1:
                 print_warning("--no-background only supports a single container, running in background")

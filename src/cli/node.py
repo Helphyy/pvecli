@@ -21,6 +21,7 @@ from ..utils import (
     print_success,
     print_warning,
 )
+from ..utils.fleet import fleet
 from ..utils.helpers import async_to_sync, ordered_group
 from ..utils.menu import select_menu
 from ..utils.network import resolve_node_host
@@ -144,6 +145,7 @@ async def reboot_node(
 
 
 @app.command("list")
+@fleet(parallel=True)
 @async_to_sync
 async def list_nodes(
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),

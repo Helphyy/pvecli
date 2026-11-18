@@ -26,6 +26,7 @@ from ..utils import (
     print_success,
     print_warning,
 )
+from ..utils.fleet import fleet
 from ..utils.helpers import async_to_sync, ordered_group
 from ..utils.menu import select_menu
 
@@ -206,6 +207,7 @@ async def _vnet_status_by_node(client: ProxmoxClient, nodes: list[str]) -> dict[
 
 
 @app.command("list")
+@fleet(parallel=True)
 @async_to_sync
 async def sdn_list(
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
@@ -280,6 +282,7 @@ async def sdn_list(
 
 
 @app.command("zones")
+@fleet(parallel=True)
 @async_to_sync
 async def sdn_zones(
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
@@ -473,6 +476,7 @@ async def sdn_info(
 
 
 @app.command("health")
+@fleet(parallel=True)
 @async_to_sync
 async def sdn_health(
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),

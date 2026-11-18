@@ -45,6 +45,7 @@ from ..utils import (
     format_percentage,
     format_uptime,
     get_status_color,
+    parse_tags,
     print_cancelled,
     print_error,
     print_info,
@@ -227,6 +228,69 @@ async def validate_resources(
 
     await asyncio.gather(*(live_status(e) for e in result))
     return result
+
+
+# Guest filters shared by every multi-target vm/ct command. The node filter
+# is bound to `node_filter`: most commands use `node` as a local variable.
+TAG_FILTER = typer.Option(None, "--tag", help="Target the guests carrying this tag")
+POOL_FILTER = typer.Option(None, "--pool", help="Target the guests of this resource pool")
+NODE_FILTER = typer.Option(None, "--node", help="Target the guests currently on this node")
+
+
+def has_filters(tag: str | None, pool: str | None, node_filter: str | None) -> bool:
+    """Whether the guests are picked by filter rather than by ID or menu."""
+    return bool(tag or pool or node_filter)
+
+
+async def resolve_targets(
+    client: ProxmoxClient,
+    ids: str | None,
+    resource_type: str,
+    label: str,
+    tag: str | None = None,
+    pool: str | None = None,
+    node_filter: str | None = None,
+    action: str | None = None,
+    yes: bool = False,
+) -> list[int]:
+    """IDs from the argument, narrowed or replaced by --tag, --pool, --node.
+
+    Without filters this is parse_id_list. With filters, every matching
+    guest of the type is selected (templates excluded), restricted to the
+    IDs when some are given too; the selection is always printed, and when
+    `action` is set it is confirmed unless `yes`.
+    """
+    if not has_filters(tag, pool, node_filter):
+        return parse_id_list(ids or "", label)
+
+    wanted = set(parse_id_list(ids, label)) if ids else None
+    picked = []
+    for r in await client.get_cluster_resources(resource_type="vm"):
+        if r.get("type") != resource_type or r.get("template"):
+            continue
+        if wanted is not None and r.get("vmid") not in wanted:
+            continue
+        if tag and tag not in parse_tags(r.get("tags", "") or ""):
+            continue
+        if pool and r.get("pool") != pool:
+            continue
+        if node_filter and r.get("node") != node_filter:
+            continue
+        picked.append(r)
+    criteria = ", ".join(
+        f"{k}={v}" for k, v in (("tag", tag), ("pool", pool), ("node", node_filter)) if v
+    )
+    if not picked:
+        raise PVECliError(f"No {label} matches {criteria}")
+    picked.sort(key=lambda r: r.get("vmid", 0))
+    print_info(
+        f"{len(picked)} {label}(s) matching {criteria}: "
+        + ", ".join(f"{r['vmid']} ({r.get('name', '')})" for r in picked)
+    )
+    if action and not yes and not confirm(f"{action} these {len(picked)} {label}(s)?", default=False):
+        print_cancelled()
+        raise typer.Exit(0)
+    return [r["vmid"] for r in picked]
 
 
 def confirm_action(

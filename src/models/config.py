@@ -55,6 +55,9 @@ class ProfileConfig(BaseModel):
     # Opt-in required before any SDN write command touches this cluster.
     # Absent or false means pvecli refuses to create, edit or apply SDN here.
     sdn_write: bool = False
+    # False keeps this profile out of every pattern (-p 'client-*') and
+    # group expansion: it is then only reached when named explicitly.
+    fleet: bool = True
 
 
 class OutputConfig(BaseModel):

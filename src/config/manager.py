@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from ..api.exceptions import ConfigError
 from ..crypto import decrypt, encrypt
@@ -14,8 +14,13 @@ from ..models.config import AuthConfig, OutputConfig, ProfileConfig
 class Config(BaseModel):
     """Main configuration model."""
 
+    # Keep keys this version does not know, like ProfileConfig does
+    model_config = ConfigDict(extra="allow")
+
     default_profile: str | None = None
     profiles: dict[str, ProfileConfig] = Field(default_factory=dict)
+    # Named sets of profiles, used as -p @name
+    groups: dict[str, list[str]] = Field(default_factory=dict)
     output: OutputConfig = Field(default_factory=OutputConfig)
 
 

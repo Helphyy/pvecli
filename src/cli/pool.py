@@ -23,6 +23,7 @@ from ..utils import (
     print_warning,
     prompt,
 )
+from ..utils.fleet import fleet
 from ..utils.helpers import async_to_sync, ordered_group
 from ..utils.menu import multi_select_menu, select_menu
 from ._shared import shared_usage
@@ -33,6 +34,7 @@ app.add_typer(content_app, name="content")
 
 
 @app.command("list")
+@fleet(parallel=True)
 @async_to_sync
 async def list_pools(
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
@@ -197,6 +199,7 @@ async def show_pool(
 
 
 @app.command("usage")
+@fleet(parallel=True)
 @async_to_sync
 async def pool_usage(
     poolid: str = typer.Argument(None, help="Pool ID"),

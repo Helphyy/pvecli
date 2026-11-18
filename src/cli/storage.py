@@ -30,6 +30,7 @@ from ..utils import (
     print_warning,
     prompt,
 )
+from ..utils.fleet import fleet
 from ..utils.helpers import async_to_sync, ordered_group
 from ..utils.menu import multi_select_menu, select_menu
 from ._shared import pick_node
@@ -667,6 +668,7 @@ async def remove_storage(
 
 
 @app.command("list")
+@fleet(parallel=True)
 @async_to_sync
 async def list_storage(
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
