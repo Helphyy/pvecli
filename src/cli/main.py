@@ -6,7 +6,7 @@ import typer
 from rich.console import Console
 
 from .. import __version__
-from . import ceph, cluster, config, ct, node, pool, sdn, storage, tag, vm
+from . import ceph, cluster, config, ct, node, pool, sdn, snapshot, storage, tag, vm
 from .audit import audit as audit_command
 from .find import find as find_command
 
@@ -29,6 +29,7 @@ app.add_typer(pool.app, name="pool")
 app.add_typer(ceph.app, name="ceph")
 app.add_typer(sdn.app, name="sdn")
 app.add_typer(tag.app, name="tag")
+app.add_typer(snapshot.app, name="snapshot")
 app.command("find")(find_command)
 app.command("audit")(audit_command)
 
