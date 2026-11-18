@@ -154,6 +154,31 @@ async def _probe_from_all_nodes(
     return dict(zip(nodes, results, strict=True))
 
 
+def _keyring_secret(keyring: str, client: str) -> str:
+    """The bare key of [client.<client>] in a keyring file.
+
+    A keyring may hold several clients (admin, then pve...): taking the
+    first key would mount CephFS with another client's secret. Falls back
+    on the only key when the file has a single one.
+    """
+    sections: dict[str, str] = {}
+    current = ""
+    for line in keyring.splitlines():
+        line = line.strip()
+        if line.startswith("[") and line.endswith("]"):
+            current = line[1:-1].strip()
+        elif line.startswith("key") and "=" in line:
+            sections[current] = line.split("=", 1)[1].strip()
+    wanted = client if client.startswith("client.") else f"client.{client}"
+    if wanted in sections:
+        return sections[wanted]
+    if len(sections) == 1:
+        return next(iter(sections.values()))
+    raise PVECliError(
+        f"The keyring has no [{wanted}] section: {', '.join(sorted(sections)) or 'no key at all'}"
+    )
+
+
 def _scan_key(scan_type: str, entry: dict) -> str:
     """Identifier of a discovered entry, per backend."""
     if scan_type == "nfs":
@@ -293,8 +318,18 @@ async def add_storage(
             chosen_entry = {"nfs": export, "cifs": share, "iscsi": target, "pbs": datastore}.get(
                 storage_type
             )
-            # PBS discovery needs credentials; collect them before deciding
-            # whether the scan can run at all.
+            # PBS and CIFS discovery need credentials: a share without guest
+            # access answers ACCESS_DENIED to an anonymous scan, from every
+            # node. Collect them before deciding whether the scan can run.
+            if storage_type == "cifs":
+                if username:
+                    params["username"] = username
+                if password_env:
+                    pwd = os.environ.get(password_env)
+                    if not pwd:
+                        print_error(f"Environment variable '{password_env}' is empty or unset")
+                        raise typer.Exit(1)
+                    params["password"] = pwd
             if storage_type == "pbs":
                 if fingerprint:
                     params["fingerprint"] = fingerprint
@@ -472,10 +507,7 @@ async def add_storage(
                     # Accept either file shape and hand each backend what it
                     # expects, instead of failing on a silent mount error.
                     if storage_type == "cephfs" and "key" in raw_key and "=" in raw_key:
-                        for line in raw_key.splitlines():
-                            if line.strip().startswith("key"):
-                                raw_key = line.split("=", 1)[1].strip()
-                                break
+                        raw_key = _keyring_secret(raw_key, params["username"])
                     params["keyring"] = raw_key
                 else:
                     print_warning(
@@ -1167,6 +1199,19 @@ async def download_content(
                 print_error(f"Invalid content type '{content_type}'. Valid: {', '.join(valid_types)}")
                 raise typer.Exit(1)
 
+            if checksum and not checksum_algorithm:
+                # PVE requires checksum-algorithm with checksum: derive it
+                # from the length of the hex digest, refuse when it cannot be
+                checksum_algorithm = {
+                    32: "md5", 40: "sha1", 56: "sha224", 64: "sha256", 96: "sha384", 128: "sha512",
+                }.get(len(checksum.strip())) if re.fullmatch(r"[0-9a-fA-F]+", checksum.strip()) else None
+                if not checksum_algorithm:
+                    print_error(
+                        "Cannot tell the algorithm of this checksum: pass --checksum-algorithm "
+                        "(md5, sha1, sha224, sha256, sha384, sha512)"
+                    )
+                    raise typer.Exit(1)
+
             console.print("\n[bold]Download details:[/bold]")
             console.print(f"  URL:      {url}")
             console.print(f"  Filename: {filename}")
@@ -1174,7 +1219,7 @@ async def download_content(
             console.print(f"  Node:     {node}")
             console.print(f"  Type:     {content_type}")
             if checksum:
-                console.print(f"  Checksum: {checksum} ({checksum_algorithm or 'auto'})")
+                console.print(f"  Checksum: {checksum} ({checksum_algorithm})")
 
             if not yes and not confirm("Start download?", default=True):
                 print_cancelled()

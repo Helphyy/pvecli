@@ -105,7 +105,7 @@ pvecli vm cloudinit set VMID       Change user, keys, IP, DNS; adds the drive if
 pvecli vm migrate [VMID] [TARGET]  Migrate a VM to another node (live when it runs)
 pvecli vm edit [VMID]              Edit VM configuration interactively
 pvecli vm remove [VMIDS]           Delete VMs (--purge, --force)
-pvecli vm template [VMIDS]         Convert VMs to templates
+pvecli vm template [VMIDS] [-y]    Convert VMs to templates (asks first: irreversible)
 pvecli vm vnc [VMIDS]              Open VNC console(s) as browser tabs (--split for windows)
 pvecli vm ssh [VMID]               SSH into VM (--jump for jump host)
 pvecli vm rdp [VMID]               Open RDP session
@@ -212,7 +212,7 @@ pvecli ct clone [CTID]             Clone a container
 pvecli ct migrate [CTID] [TARGET]  Migrate a container (--restart when it runs)
 pvecli ct edit [CTID]              Edit container configuration
 pvecli ct remove [CTIDS]           Delete containers (--purge, --force)
-pvecli ct template [CTIDS]         Convert containers to templates
+pvecli ct template [CTIDS] [-y]    Convert containers to templates (asks first: irreversible)
 pvecli ct vnc [CTIDS]              Open VNC console(s) as browser tabs (--split for windows)
 pvecli ct ssh [CTID]               SSH into container (--jump)
 pvecli ct list                     List all containers (--node, --status)

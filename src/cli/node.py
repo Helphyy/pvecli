@@ -218,6 +218,19 @@ async def list_nodes(
                 uptime = node.get("uptime", 0)
                 uptime_str = f"{uptime // 86400}d {(uptime % 86400) // 3600}h"
 
+                if not node.get("maxcpu") and not node.get("maxmem"):
+                    # An offline node has no figures: show none rather than
+                    # an invented "1 cores, 0 B / 1 B"
+                    rows.append({
+                        "Node": (node.get("node", "unknown"), node.get("node", "unknown")),
+                        "Status": (status, f"[{status_color}]{status}[/{status_color}]"),
+                        "CPU": (-1, "-"),
+                        "Memory": (-1, "-"),
+                        "Disk": (-1, "-"),
+                        "Uptime": (0, "-"),
+                    })
+                    continue
+
                 rows.append({
                     "Node": (node.get("node", "unknown"), node.get("node", "unknown")),
                     "Status": (status, f"[{status_color}]{status}[/{status_color}]"),
@@ -263,7 +276,14 @@ async def show_node(
                 for node_info in sorted(nodes, key=lambda n: n.get("node", "")):
                     node_name = node_info.get("node", "unknown")
                     ns = node_info.get("status", "unknown")
-                    status = await client.get_node_status(node_name)
+                    try:
+                        status = await client.get_node_status(node_name)
+                    except PVECliError as e:
+                        # One unreachable node must not hide all the others
+                        console.print(Panel(
+                            f"[red]{ns}[/red]: {e}", title=f"[bold]{node_name}[/bold]", border_style="red",
+                        ))
+                        continue
                     console.print(_render_node_panel(node_name, status, version, ns))
             else:
                 if not node:
@@ -448,13 +468,28 @@ async def node_ssh(
     try:
         profile_config = config_manager.get_profile(profile)
 
-        if not node:
-            async with ProxmoxClient(profile_config) as client:
+        # The named or picked node, at the address the cluster knows it by:
+        # the profile host is only one node of the cluster
+        host = resolve_node_host(profile_config)
+        async with ProxmoxClient(profile_config) as client:
+            if not node:
                 node = await pick_node(client)
                 if node is None:
                     return
-
-        host = resolve_node_host(profile_config)
+            try:
+                members = await client.get_cluster_status() or []
+            except PVECliError:
+                members = []
+            match = next(
+                (m for m in members if m.get("type") == "node" and m.get("name") == node), None
+            )
+            # The node the profile is connected to keeps the profile host
+            # (it may be a name or a NAT address the cluster IP is not)
+            if match and match.get("ip") and not match.get("local"):
+                host = match["ip"]
+            elif match is None and members:
+                print_error(f"Node '{node}' is not a member of this cluster")
+                raise typer.Exit(1)
         ssh_user = user or profile_config.ssh_user or "root"
         ssh_port = port or profile_config.ssh_port
         ssh_key = key or profile_config.ssh_key

@@ -889,10 +889,15 @@ async def edit_container(
 
             # Apply
             api_params = {}
+            to_delete = set(deletes)
             for k, v in changes.items():
+                if k == "tags" and not v:
+                    # tags='' leaves an empty key behind: delete it, as ct tag remove does
+                    to_delete.add("tags")
+                    continue
                 api_params[k] = (1 if v else 0) if isinstance(v, bool) else v
-            if deletes:
-                api_params["delete"] = ",".join(sorted(deletes))
+            if to_delete:
+                api_params["delete"] = ",".join(sorted(to_delete))
 
             if api_params:
                 await client.update_container_config(node, vmid=ctid, **api_params)
@@ -1304,6 +1309,16 @@ def _print_clone_command(
     console.print(f"\n[dim]{cmd}[/dim]\n")
 
 
+# Storage types on which PVE can make a linked clone of a container template.
+# GET /nodes/{node}/storage carries no capability flag, so the type decides.
+_LINKED_CLONE_STORAGE_TYPES = frozenset({"lvmthin", "zfspool", "rbd", "btrfs"})
+
+
+def _template_clone_full(full: bool, linked_clone_supported: bool) -> int:
+    """Return the 'full' value for a template clone: PVE refuses a linked clone elsewhere."""
+    return 1 if full or not linked_clone_supported else 0
+
+
 @app.command("clone")
 def clone_container(
     ctid: int = typer.Argument(None, help="Source container ID"),
@@ -1347,14 +1362,13 @@ def clone_container(
                 source_node = cast(str, ct_resource.get("node"))
                 source_config = await client.get_container_config(source_node, vmid=ctid)
 
-                # Check if rootfs storage supports linked clones (thinprovisioned)
                 rootfs = source_config.get("rootfs", "")
                 rootfs_storage = rootfs.split(":")[0] if ":" in rootfs else ""
                 linked_clone_supported = False
                 if rootfs_storage:
                     storages = await client.get_storage_list(source_node)
                     st = next((s for s in storages if s.get("storage") == rootfs_storage), None)
-                    linked_clone_supported = bool(st and st.get("thinprovisioned"))
+                    linked_clone_supported = bool(st and st.get("type") in _LINKED_CLONE_STORAGE_TYPES)
 
                 return {
                     "source_node": source_node,
@@ -1381,7 +1395,7 @@ def clone_container(
                 "hostname": hostname,
             }
             if is_template:
-                clone_params["full"] = 1 if full else 0
+                clone_params["full"] = _template_clone_full(full, linked_clone_supported)
             if target and target != source_node:
                 clone_params["target"] = target
             if pool:
@@ -1468,7 +1482,11 @@ def clone_container(
                     post_cfg["tags"] = source_tags
             else:
                 chosen = [entries[i] for i in sel]
-                if "(none)" not in chosen:
+                if "(none)" in chosen:
+                    # PVE copies the source config, tags included: drop them explicitly
+                    if source_tags:
+                        post_cfg["delete"] = "tags"
+                else:
                     result_tags = [t for t in chosen if t != "+ Add custom tag"]
                     if "+ Add custom tag" in chosen:
                         custom = Prompt.ask("  Custom tag name")
@@ -1490,7 +1508,7 @@ def clone_container(
 
         # 6. Clone type (only for templates on thin-provisioned storage)
         if is_template:
-            if full or not linked_clone_supported:
+            if _template_clone_full(full, linked_clone_supported):
                 clone_cfg["full"] = 1
             else:
                 clone_cfg["full"] = 0 if Confirm.ask("[bold]Create linked clone?[/bold]", default=True) else 1
@@ -2331,8 +2349,8 @@ def create_container(
             memory_value = memory if memory else 512
             config["memory"] = memory_value
 
-            swap_value = swap if swap else 512
-            config["swap"] = swap_value
+            # 0 is a real value (no swap): only a missing option takes the default
+            config["swap"] = swap if swap is not None else 512
 
             # Root filesystem
             if rootfs_storage and rootfs_size:
@@ -2429,11 +2447,12 @@ def create_container(
             config["vmid"] = ctid
         else:
             default_ctid = data["next_vmid"]
-            ctid_input = Prompt.ask(
-                "[bold]CTID[/bold]",
-                default=str(default_ctid),
-            )
-            config["vmid"] = int(ctid_input)
+            while "vmid" not in config:
+                ctid_input = Prompt.ask("[bold]CTID[/bold]", default=str(default_ctid))
+                try:
+                    config["vmid"] = int(ctid_input)
+                except ValueError:
+                    print_error("CTID must be a valid number (e.g., 100, 102)")
 
         # 2. Hostname
         if hostname:
@@ -2926,6 +2945,9 @@ async def add_template(
                         return
                     storage = storage_ids[idx]
 
+            # Images to download, each with its index entry when the index was read
+            selected_names: list[tuple[str, dict[str, Any] | None]]
+
             # If no template specified, use fzf to select
             if not name:
                 # Get available templates
@@ -2942,6 +2964,7 @@ async def add_template(
                     if not name:
                         print_error("Image filename is required")
                         raise typer.Exit(1)
+                    selected_names = [(name, None)]
                 else:
                     # Extract template names and keep mapping to full template data
                     template_display = []
@@ -2980,7 +3003,7 @@ async def add_template(
                             return
 
                         # Map back to full template data
-                        selected_names: list[tuple[str, dict[str, Any] | None]] = [
+                        selected_names = [
                             (name, template_map[name]) for name in selected_display
                         ]
 
@@ -3277,6 +3300,7 @@ async def ct_ssh(
 async def convert_ct_template(
     ctids: str = typer.Argument(None, help="CT ID(s) - single, comma-separated, or range (e.g., 100, 100,101, 100-105)"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ) -> None:
     """Convert one or more containers to templates."""
     config_manager = ConfigManager()
@@ -3306,10 +3330,16 @@ async def convert_ct_template(
             else:
                 ctid_list = parse_id_list(ctids, "CT")
 
+            cts = await validate_resources(client, ctid_list, "lxc", "Container")
+
+            # A template cannot be turned back into a container
+            if not confirm_action(ctid_list, "Convert to template (cannot be undone):", "container", yes):
+                return
+
             converted = 0
-            for ctid in ctid_list:
+            for ct_info in cts:
+                ctid, node, status = ct_info["id"], ct_info["node"], ct_info["status"]
                 try:
-                    node, status = await _get_container_node(client, ctid)
                     if status == "running":
                         print_warning(f"CT {ctid} is running - stop it first")
                         continue
@@ -3321,6 +3351,8 @@ async def convert_ct_template(
 
             if len(ctid_list) > 1:
                 print_info(f"Summary: {converted}/{len(ctid_list)} converted")
+            if converted < len(ctid_list):
+                raise typer.Exit(1)
 
     except PVECliError as e:
         print_error(str(e))

@@ -166,6 +166,26 @@ class ConfigManager:
 
         self.save(config)
 
+    def rename_profile(self, old: str, new: str, profile: ProfileConfig) -> None:
+        """Replace profile `old` by `new` in one write.
+
+        The default profile and the groups follow the rename: a command run
+        without -p must keep targeting the same cluster, and `-p @group`
+        must not point at a profile that no longer exists.
+        """
+        config = self.get()
+        if old not in config.profiles:
+            raise ConfigError(f"Profile '{old}' not found")
+        if new != old and new in config.profiles:
+            raise ConfigError(f"Profile '{new}' already exists")
+        config.profiles = {
+            (new if k == old else k): (profile if k == old else v) for k, v in config.profiles.items()
+        }
+        if config.default_profile == old:
+            config.default_profile = new
+        config.groups = {g: [new if m == old else m for m in members] for g, members in config.groups.items()}
+        self.save(config)
+
     def remove_profile(self, name: str) -> None:
         """Remove a profile.
 

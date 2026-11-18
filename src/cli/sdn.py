@@ -123,6 +123,30 @@ def _uses_vnet(net_value: str, vnet: str) -> bool:
     return False
 
 
+def _split_ip_range(text: str) -> tuple[str, str] | None:
+    """Split "start:end" into two addresses of one family.
+
+    IPv6 addresses contain colons themselves (fd00::10:fd00::20): try every
+    separator position and keep the one where both halves are addresses.
+    """
+    import ipaddress
+
+    # "-" never appears inside an address: when present it is the separator,
+    # and the only unambiguous one for IPv6 (fd00::1:2:fd00::3 splits two ways)
+    seps = "-" if "-" in text else ":"
+    for i, ch in enumerate(text):
+        if ch not in seps:
+            continue
+        start, end = text[:i].strip(), text[i + 1:].strip()
+        try:
+            a, b = ipaddress.ip_address(start), ipaddress.ip_address(end)
+        except ValueError:
+            continue
+        if a.version == b.version:
+            return start, end
+    return None
+
+
 def _format_dhcp_ranges(raw: Any) -> str:
     """Render DHCP ranges as 'start - end'.
 
@@ -961,10 +985,14 @@ async def sdn_zone_add(
                 if not interactive:
                     print_error("--tag is required for a qinq zone")
                     raise typer.Exit(1)
-                tag = _ask_int("  Service VLAN tag")
+                tag = _ask_int("  Service VLAN tag (1-4094)", minimum=1, maximum=4094)
                 if tag is None:
                     print_cancelled()
                     return
+            if "tag" in asks and tag is not None and not 1 <= tag <= 4094:
+                # Accepted by the API, refused at apply time on every node
+                print_error(f"A service VLAN tag is between 1 and 4094, got {tag}")
+                raise typer.Exit(1)
             if "controller" in asks and not controller:
                 controllers = [
                     c.get("controller", "")
@@ -1234,6 +1262,11 @@ async def sdn_vnet_add(
                     minimum=low,
                     maximum=high,
                 )
+                if tag is None:
+                    # This zone type needs a tag: PVE would refuse the vnet
+                    # at apply time ("missing vlan tag")
+                    print_cancelled()
+                    return
             elif tag is not None and tag_range and not tag_range[0] <= tag <= tag_range[1]:
                 print_error(
                     f"A {zone_type} zone takes a tag between {tag_range[0]} and "
@@ -1299,6 +1332,7 @@ async def sdn_vnet_remove(
 
             # Guests still bridged on it would lose their network on apply
             attached = []
+            unreadable = []
             for res in await client.get_cluster_resources(resource_type="vm") or []:
                 node, vmid = res.get("node"), res.get("vmid")
                 if not node or vmid is None:
@@ -1310,6 +1344,7 @@ async def sdn_vnet_remove(
                         else await client.get_container_config(node, vmid=vmid)
                     )
                 except PVECliError:
+                    unreadable.append(f"{vmid} on {node}")
                     continue
                 for key, value in (cfg or {}).items():
                     if key.startswith("net") and _uses_vnet(value, vnet):
@@ -1320,6 +1355,15 @@ async def sdn_vnet_remove(
                     "Move those guests first."
                 )
                 raise typer.Exit(1)
+            if unreadable:
+                # A guest whose config cannot be read may still sit on this
+                # vnet: never conclude "unused" from what could not be seen
+                print_warning(
+                    f"Could not check {len(unreadable)} guest(s) for this vnet: {', '.join(unreadable)}"
+                )
+                if yes or not confirm("Remove the vnet anyway?", default=False):
+                    print_error("Not removed: check those guests first (node offline, missing VM.Audit?)")
+                    raise typer.Exit(1)
 
             # PVE refuses to drop a vnet that still owns subnets, and its raw
             # error does not say which ones.
@@ -1467,10 +1511,11 @@ async def sdn_subnet_add(
             if snat:
                 params["snat"] = 1
             if dhcp_range:
-                if ":" not in dhcp_range:
-                    print_error("A DHCP range is given as start-ip:end-ip")
+                bounds = _split_ip_range(dhcp_range)
+                if bounds is None:
+                    print_error("A DHCP range is given as start-ip:end-ip (or start-ip-end-ip for IPv6)")
                     raise typer.Exit(1)
-                start, end = dhcp_range.split(":", 1)
+                start, end = bounds
                 params["dhcp-range"] = f"start-address={start},end-address={end}"
             if dhcp_dns:
                 params["dhcp-dns-server"] = dhcp_dns

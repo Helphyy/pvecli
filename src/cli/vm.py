@@ -521,6 +521,24 @@ def _is_cdrom(val: str) -> bool:
     return "media=cdrom" in val
 
 
+def _cdrom_slot(config: dict[str, Any], changes: dict[str, Any], deletes: set[str]) -> str | None:
+    """Where Mount ISO goes: the existing CD drive, else a free ide/sata slot.
+
+    ide2 is only the usual place of the CD drive: a data disk may sit there,
+    and writing the ISO over it would detach that disk.
+    """
+    current = {k: str(changes.get(k, config.get(k, ""))) for k in set(config) | set(changes)
+               if _VM_DISK_RE.match(k) and k not in deletes}
+    drives = sorted(k for k, v in current.items() if _is_cdrom(v))
+    if drives:
+        return "ide2" if "ide2" in drives else drives[0]
+    taken = set(config) | set(changes)
+    for slot in ["ide2", "ide0", "ide1", "ide3"] + [f"sata{i}" for i in range(6)]:
+        if slot not in taken:
+            return slot
+    return None
+
+
 async def _edit_vm_disks(
     config: dict[str, Any],
     changes: dict[str, Any],
@@ -593,8 +611,11 @@ async def _edit_vm_disks(
             if iso_idx is None:
                 continue
 
-            selected_volid = isos[iso_idx].get("volid", "")
-            changes["ide2"] = f"{selected_volid},media=cdrom"
+            slot = _cdrom_slot(config, changes, deletes)
+            if slot is None:
+                print_error("No free IDE or SATA slot for a CD drive")
+                continue
+            changes[slot] = f"{isos[iso_idx].get('volid', '')},media=cdrom"
             continue
 
         if options[idx].strip() == "Eject CDROM":
@@ -638,9 +659,9 @@ async def _edit_vm_disks(
             size = IntPrompt.ask("  Size (GB)", default=32)
             clear_lines(1)
 
-            formats = ["qcow2", "raw", "vmdk"]
+            formats = _disk_formats(storages, storage)
             fmt_idx = select_menu(formats, "  Format:")
-            fmt = formats[fmt_idx] if fmt_idx is not None else "qcow2"
+            fmt = formats[fmt_idx if fmt_idx is not None else 0]
 
             changes[disk_name] = f"{storage}:{size},format={fmt}"
             if bus == "scsi" and "scsihw" not in config:
@@ -1050,7 +1071,9 @@ async def edit_vm(
                         raw_input = menu_prompt(f"  {label}", default=str(current))
                         try:
                             new_val = int(raw_input)
-                            if new_val != original:
+                            # PVE returns some numbers as strings (memory: "2048"):
+                            # compare the text, not 2048 against "2048"
+                            if str(new_val) != str(original):
                                 changes[key] = new_val
                             elif key in changes:
                                 del changes[key]
@@ -1563,11 +1586,16 @@ async def resume_vm(
             for vm_info in vms:
                 vmid = vm_info["id"]
                 node = vm_info["node"]
-                vm_status = vm_info["status"]
                 upid = None
 
-                if vm_status != "suspended":
-                    print_warning(f"VM {vmid} is not suspended (status: {vm_status})")
+                # PVE never reports status "suspended": a paused VM is running
+                # with qmpstatus "paused", a hibernated one is stopped with the
+                # "suspended" lock. The resume endpoint handles both.
+                current = await client.get(f"/nodes/{node}/qemu/{vmid}/status/current") or {}
+                paused = current.get("status") == "running" and current.get("qmpstatus") == "paused"
+                hibernated = current.get("status") == "stopped" and current.get("lock") == "suspended"
+                if not (paused or hibernated):
+                    print_warning(f"VM {vmid} is not suspended (status: {current.get('qmpstatus') or vm_info['status']})")
                     skipped_count += 1
                     continue
 
@@ -2022,14 +2050,19 @@ def clone_vm(
                     post_cfg["tags"] = source_tags
             else:
                 chosen = [entries[i] for i in sel]
+                result_tags = []
                 if "(none)" not in chosen:
                     result_tags = [t for t in chosen if t != "+ Add custom tag"]
                     if "+ Add custom tag" in chosen:
                         custom = Prompt.ask("  Custom tag name")
                         if custom and custom.strip():
                             result_tags.append(custom.strip())
-                    if result_tags:
-                        post_cfg["tags"] = ";".join(sorted(result_tags))
+                if result_tags:
+                    post_cfg["tags"] = ";".join(sorted(result_tags))
+                elif source_tags:
+                    # PVE copies the source tags with the config: only a
+                    # delete gives a clone without tags
+                    post_cfg["delete"] = "tags"
         else:
             default_tags = source_tags
             custom = Prompt.ask("[bold]Tags[/bold] (leave empty for none)", default=default_tags)
@@ -2062,6 +2095,8 @@ def clone_vm(
             console.print(f"[bold]Pool:[/bold] {clone_cfg['pool']}")
         if "tags" in post_cfg:
             console.print(f"[bold]Tags:[/bold] {post_cfg['tags']}")
+        elif post_cfg.get("delete") == "tags":
+            console.print("[bold]Tags:[/bold] (none)")
         if is_template:
             console.print(f"[bold]Clone Type:[/bold] {'Full' if clone_cfg.get('full') else 'Linked'}")
         if "target" in clone_cfg:
@@ -2667,6 +2702,53 @@ async def delete_snapshot(
         raise typer.Exit(1)
 
 
+# Windows versions as the PVE GUI labels them (pve-manager kvm_ostypes), with
+# their ostype. Matched exactly: a substring test sends "7/2008r2" to win8,
+# since "8" is in "2008".
+_WINDOWS_VERSIONS: dict[str, str] = {
+    "11/2022/2025": "win11",
+    "10/2016/2019": "win10",
+    "8.x/2012/2012r2": "win8",
+    "7/2008r2": "win7",
+    "Vista/2008": "w2k8",
+    "XP/2003": "wxp",
+    "2000": "w2k",
+}
+
+
+def _windows_ostype(version: str) -> str:
+    """The ostype of a Windows --os-version label (or of an ostype given as is)."""
+    wanted = version.strip().lower()
+    for label, ostype in _WINDOWS_VERSIONS.items():
+        if wanted in (label.lower(), ostype):
+            return ostype
+    print_error(f"Unknown Windows version '{version}'. Use one of: {', '.join(_WINDOWS_VERSIONS)}")
+    raise typer.Exit(1)
+
+
+# Only file storages hold image files: qcow2 and vmdk need one. Block
+# storages (lvm, lvmthin, zfspool, rbd, iscsi, btrfs...) store raw volumes
+# only and PVE refuses any other format.
+_FILE_STORAGE_TYPES = {"dir", "nfs", "cifs", "glusterfs"}
+
+
+def _disk_formats(storages: list[dict[str, Any]], storage: str) -> list[str]:
+    """Disk formats the storage accepts, the default first."""
+    stype = next((s.get("type") for s in storages if s.get("storage") == storage), None)
+    return ["qcow2", "raw", "vmdk"] if stype in _FILE_STORAGE_TYPES else ["raw"]
+
+
+def _disk_format(storages: list[dict[str, Any]], storage: str, wanted: str | None) -> str:
+    """The --disk-format to use on this storage: the asked one if it can hold it, else its default."""
+    formats = _disk_formats(storages, storage)
+    if wanted is None:
+        return formats[0]
+    if wanted not in formats:
+        print_error(f"Storage '{storage}' cannot hold {wanted} disks (allowed: {', '.join(formats)})")
+        raise typer.Exit(1)
+    return wanted
+
+
 def _print_create_command(
     node: str, config: dict[str, Any], vmid: int, is_windows: bool
 , profile_name: str | None = None) -> None:
@@ -2675,9 +2757,7 @@ def _print_create_command(
     ostype = config.get("ostype", "l26")
     ostype_map = {
         "l26": ("linux", "6.x"), "l24": ("linux", "2.4"),
-        "win11": ("windows", "11/2022/2025"), "win10": ("windows", "10/2016/2019"),
-        "win8": ("windows", "8/2012"), "win7": ("windows", "7/2008"),
-        "wxp": ("windows", "xp/2003"), "w2k": ("windows", "2000"),
+        **{code: ("windows", label) for label, code in _WINDOWS_VERSIONS.items()},
     }
     os_type_str, os_version_str = ostype_map.get(ostype, ("linux", "6.x"))
 
@@ -2915,30 +2995,8 @@ def create_vm(
 
             if is_windows:
                 # Windows OS type mapping
-                if not os_version:
-                    os_version = "11/2022/2025"  # Default
-
-                if "11" in os_version or "2022" in os_version or "2025" in os_version:
-                    config["ostype"] = "win11"
-                    needs_tpm = True
-                elif "10" in os_version or "2016" in os_version or "2019" in os_version:
-                    config["ostype"] = "win10"
-                    needs_tpm = False
-                elif "8" in os_version or "2012" in os_version:
-                    config["ostype"] = "win8"
-                    needs_tpm = False
-                elif "7" in os_version or "2008" in os_version:
-                    config["ostype"] = "win7"
-                    needs_tpm = False
-                elif "xp" in os_version.lower() or "2003" in os_version:
-                    config["ostype"] = "wxp"
-                    needs_tpm = False
-                elif "2000" in os_version:
-                    config["ostype"] = "w2k"
-                    needs_tpm = False
-                else:
-                    config["ostype"] = "win11"
-                    needs_tpm = True
+                config["ostype"] = _windows_ostype(os_version or "11/2022/2025")
+                needs_tpm = config["ostype"] == "win11"
 
                 # VirtIO drivers
                 if virtio_iso_storage and virtio_iso:
@@ -2982,7 +3040,7 @@ def create_vm(
 
             # Disk configuration
             if disk_storage and disk_size:
-                format_str = disk_format if disk_format else "qcow2"
+                format_str = _disk_format(data["storages"], disk_storage, disk_format)
                 if is_windows:
                     config["scsi0"] = f"{disk_storage}:{disk_size},format={format_str}"
                     config["scsihw"] = "virtio-scsi-pci"
@@ -3170,69 +3228,24 @@ def create_vm(
             console.print("\n[bold]OS Type:[/bold]")
             os_types = ["Linux", "Windows"]
             os_idx = select_menu(os_types, "Select OS type:")
+            if os_idx is None:
+                print_cancelled()
+                return
             is_windows = os_idx == 1
 
         # 5.4. OS Version
         if is_windows:
             if os_version:
-                # Use provided version
-                # Determine ostype based on provided version
-                if "11" in os_version or "2022" in os_version or "2025" in os_version:
-                    config["ostype"] = "win11"
-                    needs_tpm = True
-                elif "10" in os_version or "2016" in os_version or "2019" in os_version:
-                    config["ostype"] = "win10"
-                    needs_tpm = False
-                elif "8" in os_version or "2012" in os_version:
-                    config["ostype"] = "win8"
-                    needs_tpm = False
-                elif "7" in os_version or "2008" in os_version:
-                    config["ostype"] = "win7"
-                    needs_tpm = False
-                elif "xp" in os_version.lower() or "2003" in os_version:
-                    config["ostype"] = "wxp"
-                    needs_tpm = False
-                elif "2000" in os_version:
-                    config["ostype"] = "w2k"
-                    needs_tpm = False
-                else:
-                    config["ostype"] = "win11"
-                    needs_tpm = True
+                config["ostype"] = _windows_ostype(os_version)
             else:
-                # Ask user for version
-                win_versions = [
-                    "11/2022/2025",
-                    "10/2016/2019",
-                    "8.x/2012/2012r2",
-                    "7/2008r2",
-                    "Vista/2008",
-                    "XP/2003",
-                    "2000",
-                ]
+                win_versions = list(_WINDOWS_VERSIONS)
                 console.print("\n[bold]Windows Version:[/bold]")
                 win_idx = select_menu(win_versions, "Select version:")
-                # Determine ostype based on selection
-                if win_idx == 0:  # 11/2022/2025
-                    config["ostype"] = "win11"
-                    needs_tpm = True
-                elif win_idx == 1:  # 10/2016/2019
-                    config["ostype"] = "win10"
-                    needs_tpm = False
-                elif win_idx == 2:  # 8.x/2012/2012r2
-                    config["ostype"] = "win8"
-                    needs_tpm = False
-                elif win_idx == 3:  # 7/2008r2
-                    config["ostype"] = "win7"
-                    needs_tpm = False
-                elif win_idx == 4:  # Vista/2008
-                    config["ostype"] = "win7"
-                    needs_tpm = False
-                elif win_idx == 5:  # XP/2003
-                    config["ostype"] = "wxp"
-                    needs_tpm = False
-                else:  # 2000
-                    config["ostype"] = "w2k"
-                    needs_tpm = False
+                if win_idx is None:
+                    print_cancelled()
+                    return
+                config["ostype"] = _WINDOWS_VERSIONS[win_versions[win_idx]]
+            needs_tpm = config["ostype"] == "win11"
 
             # 6.1. VirtIO Drivers
             if virtio_iso_storage and virtio_iso:
@@ -3290,12 +3303,12 @@ def create_vm(
             ]
             console.print("\n[bold]Linux Kernel Version:[/bold]")
             linux_idx = select_menu(linux_versions, "Select kernel version:")
-
-            # Determine ostype based on kernel version
-            if linux_idx == 0:  # 6.x or 2.6 Kernel
-                config["ostype"] = "l26"
-            else:  # 2.4 Kernel
-                config["ostype"] = "l24"
+            # Escape stops the wizard: it must never fall through to the
+            # obsolete 2.4 kernel
+            if linux_idx is None:
+                print_cancelled()
+                return
+            config["ostype"] = "l26" if linux_idx == 0 else "l24"
 
         # 7. QEMU Guest Agent
         if agent is not None:
@@ -3363,7 +3376,7 @@ def create_vm(
         # 9.5. Primary Disk
         if disk_storage and disk_size:
             # Use provided disk configuration
-            format_str = disk_format if disk_format else "qcow2"
+            format_str = _disk_format(data["storages"], disk_storage, disk_format)
             if is_windows:
                 config["scsi0"] = f"{disk_storage}:{disk_size},format={format_str}"
                 config["scsihw"] = "virtio-scsi-pci"
@@ -3382,9 +3395,9 @@ def create_vm(
 
                     # Disk format
                     console.print("\n[bold]Disk Format:[/bold]")
-                    disk_formats = ["qcow2", "raw", "vmdk"]
+                    disk_formats = _disk_formats(data["storages"], disk_storage)
                     format_idx = select_menu(disk_formats, "Select disk format:")
-                    disk_format = disk_formats[format_idx] if format_idx is not None else "qcow2"
+                    disk_format = disk_formats[format_idx if format_idx is not None else 0]
 
                     # Use virtio for Linux, scsi for Windows
                     if is_windows:
@@ -3810,6 +3823,7 @@ async def vm_rdp(
 async def convert_vm_template(
     vmids: str = typer.Argument(None, help="VM ID(s) - single, comma-separated, or range (e.g., 100, 100,101, 100-105)"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ) -> None:
     """Convert one or more VMs to templates."""
     config_manager = ConfigManager()
@@ -3839,12 +3853,16 @@ async def convert_vm_template(
             else:
                 vmid_list = parse_id_list(vmids, "VM")
 
+            # A template cannot be turned back into a VM: ask first
+            if not confirm_action(vmid_list, "Convert to template", "VM", yes):
+                return
+
             converted = 0
             for vmid in vmid_list:
                 try:
                     node, status = await _get_vm_node(client, vmid)
                     if status == "running":
-                        print_warning(f"VM {vmid} is running - stop it first")
+                        print_error(f"VM {vmid} is running, stop it first")
                         continue
                     await run_with_spinner(
                         client, node,
@@ -3859,6 +3877,9 @@ async def convert_vm_template(
 
             if len(vmid_list) > 1:
                 print_info(f"Summary: {converted}/{len(vmid_list)} converted")
+            # A skipped or refused conversion must not look like a success to scripts
+            if converted < len(vmid_list):
+                raise typer.Exit(1)
 
     except PVECliError as e:
         print_error(str(e))

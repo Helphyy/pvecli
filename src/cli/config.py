@@ -516,6 +516,15 @@ def edit_profile(
         final_name = changes.get("name", name)
         auth_type = changes.get("auth_type", current.auth.type)
 
+        if auth_type == "token" and not (
+            changes.get("token_name", current.auth.token_name) and changes.get("token_value", current.auth.token_value)
+        ):
+            print_error("Token auth needs a token name and a token value: set both before applying")
+            raise typer.Exit(1)
+        if auth_type == "password" and not changes.get("password", current.auth.password):
+            print_error("Password auth needs a password: set it before applying")
+            raise typer.Exit(1)
+
         if auth_type == "token":
             auth_config = AuthConfig(
                 type="token",
@@ -546,11 +555,7 @@ def edit_profile(
             }
         )
 
-        # If renamed, remove old profile
-        if final_name != name:
-            config_manager.remove_profile(name)
-
-        config_manager.add_profile(final_name, profile)
+        config_manager.rename_profile(name, final_name, profile)
         print_success(f"Profile '{final_name}' updated successfully")
 
     except KeyboardInterrupt:

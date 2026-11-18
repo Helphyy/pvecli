@@ -329,6 +329,7 @@ async def import_pools(
             existing_ids = {p.get("poolid", "") for p in existing_pools}
 
             created = 0
+            updated = 0
             skipped = 0
 
             for pool_entry in pools_to_import:
@@ -341,10 +342,14 @@ async def import_pools(
                         skipped += 1
                         continue
                     print_warning(f"Pool '{poolid}' already exists")
-                    if not confirm(f"  Skip pool '{poolid}'?", default=True):
+                    comment = pool_entry.get("comment", "")
+                    if not comment or confirm(f"  Skip pool '{poolid}'?", default=True):
                         skipped += 1
                         continue
-                    skipped += 1
+                    # Not skipping an existing pool means applying the file
+                    # to it: the comment is all a pool export carries
+                    await client.put(f"/pools/{poolid}", data={"comment": comment})
+                    updated += 1
                     continue
 
                 pool_data: dict[str, str] = {"poolid": poolid}
@@ -357,9 +362,11 @@ async def import_pools(
 
             if created:
                 print_success(f"{created} pool(s) imported from {file_path}")
+            if updated:
+                print_success(f"{updated} existing pool(s) updated from {file_path}")
             if skipped:
                 console.print(f"  [dim]{skipped} pool(s) skipped[/dim]")
-            if not created and not skipped:
+            if not created and not updated and not skipped:
                 print_warning("Nothing to import")
 
     except json.JSONDecodeError:
@@ -439,7 +446,7 @@ async def remove_pool(
     poolid: str = typer.Argument(None, help="Pool ID"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
-    force: bool = typer.Option(False, "--force", "-f", help="Delete even if pool contains resources"),
+    force: bool = typer.Option(False, "--force", "-f", help="Delete even if pool has members (they are detached, not destroyed)"),
 ) -> None:
     """Delete one or more resource pools."""
     config_manager = ConfigManager()
@@ -475,6 +482,7 @@ async def remove_pool(
             # Check each pool for members
             blocked = []
             empty = []
+            to_detach: dict[str, list] = {}
             for pid in selected_pools:
                 pool_data = await client.get(f"/pools/{pid}")
                 if isinstance(pool_data, dict) and "data" in pool_data:
@@ -484,6 +492,8 @@ async def remove_pool(
                     blocked.append((pid, members))
                 else:
                     empty.append(pid)
+                    if members:
+                        to_detach[pid] = members
 
             if blocked:
                 for pid, members in blocked:
@@ -519,6 +529,19 @@ async def remove_pool(
                     console=console,
                 ) as progress:
                     progress.add_task(description=f"Deleting pool '{pid}'...", total=None)
+                    if pid in to_detach:
+                        # PVE refuses to delete a pool that still has members
+                        # and has no force flag: detach them first. Guests and
+                        # storages are only taken out of the pool, untouched.
+                        members = to_detach[pid]
+                        detach: dict = {"delete": 1}
+                        vms = [str(m["vmid"]) for m in members if m.get("vmid") is not None]
+                        stores = [m["storage"] for m in members if m.get("type") == "storage" and m.get("storage")]
+                        if vms:
+                            detach["vms"] = ",".join(vms)
+                        if stores:
+                            detach["storage"] = ",".join(stores)
+                        await client.put(f"/pools/{pid}", data=detach)
                     await client.delete(f"/pools/{pid}")
                 deleted += 1
 

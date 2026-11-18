@@ -26,6 +26,16 @@ from ..utils.fleet import fleet
 from ..utils.helpers import async_to_sync, ordered_group
 from ._shared import ceph_absent as _absent
 
+
+def _no_ceph(json_output: bool = False) -> None:
+    """A cluster without Ceph is an answer, not an error: in --json it is a
+    valid document on stdout, never a sentence that breaks the stream."""
+    if json_output:
+        emit_json({"ceph": None})
+    else:
+        print_info("No Ceph on this cluster")
+
+
 app = typer.Typer(
     help="Inspect Ceph (read only)",
     no_args_is_help=True,
@@ -69,7 +79,7 @@ async def ceph_status(
                 status = await client.get_ceph_cluster_status() or {}
             except PVECliError as e:
                 if _absent(e):
-                    print_info("No Ceph on this cluster")
+                    _no_ceph(json_output)
                     return
                 raise
 
@@ -194,7 +204,7 @@ async def ceph_osd(
                 tree = await client.get_ceph_osds(node) or {}
             except PVECliError as e:
                 if _absent(e):
-                    print_info("No Ceph on this cluster")
+                    _no_ceph(json_output)
                     return
                 raise
 
@@ -269,7 +279,7 @@ async def ceph_pool(
                 pools = await client.get_ceph_pools(node) or []
             except PVECliError as e:
                 if _absent(e):
-                    print_info("No Ceph on this cluster")
+                    _no_ceph(json_output)
                     return
                 raise
 
@@ -334,7 +344,7 @@ async def ceph_flags(
                 flags = await client.get_ceph_flags() or []
             except PVECliError as e:
                 if _absent(e):
-                    print_info("No Ceph on this cluster")
+                    _no_ceph(json_output)
                     return
                 raise
 
@@ -387,13 +397,13 @@ async def ceph_versions(
                 meta = await client.get_ceph_metadata() or {}
             except PVECliError as e:
                 if _absent(e):
-                    print_info("No Ceph on this cluster")
+                    _no_ceph(json_output)
                     return
                 raise
 
             # Without Ceph the endpoint answers {"node": {}} instead of erroring
             if not any(v for v in (meta or {}).values()):
-                print_info("No Ceph on this cluster")
+                _no_ceph(json_output)
                 return
 
             if json_output:
@@ -461,7 +471,7 @@ async def ceph_log(
                 lines = await client.get_ceph_log(node, limit=limit) or []
             except PVECliError as e:
                 if _absent(e):
-                    print_info("No Ceph on this cluster")
+                    _no_ceph()
                     return
                 raise
 

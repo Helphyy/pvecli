@@ -59,14 +59,14 @@ def _load_palette() -> dict[str, dict]:
 def _save_palette(palette: dict[str, dict]) -> None:
     """Save color palette to tag_color.yml."""
     _COLOR_FILE.parent.mkdir(parents=True, exist_ok=True)
-    lines = []
-    for name in sorted(palette):
-        entry = palette[name]
-        lines.append(f"{name}:")
-        lines.append(f'  font: "{entry.get("font", "white")}"')
-        lines.append(f'  hex: "{entry.get("hex", "888888")}"')
+    # Through the YAML dumper, not by hand: a name like No, On or "a: b"
+    # written bare would read back as a boolean or break the file
+    data = {
+        str(name): {"font": str(palette[name].get("font", "white")), "hex": str(palette[name].get("hex", "888888"))}
+        for name in sorted(palette, key=str)
+    }
     with open(_COLOR_FILE, "w") as f:
-        f.write("\n".join(lines) + "\n")
+        yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
 
 
 def _get_full_palette() -> list[tuple[str, str, str]]:
@@ -402,6 +402,10 @@ async def edit_tag(
                     print_cancelled()
                     return
                 tag = all_tags[idx]
+            elif tag not in all_tags:
+                # A typo must not report "renamed on 0 resource(s)" as a success
+                print_error(f"Tag '{tag}' not found (existing: {', '.join(all_tags)})")
+                raise typer.Exit(1)
 
             # New name: --name flag, or prompt prefilled with the current name
             new_name = name
@@ -551,26 +555,32 @@ async def remove_tag(
             # Remove tags from resources
             total_removed = 0
             color_removed = 0
+            # One write per guest with every removed tag: writing once per
+            # tag from the original list would put back the tags removed
+            # by the previous write (db;web minus db, then minus web = db)
+            to_remove: dict[tuple, tuple[dict, set[str]]] = {}
             for t, affected, has_color in actionable:
                 for r in affected:
-                    node = r.get("node", "")
-                    vmid = cast(int, r.get("vmid"))
-                    tags_str = r.get("tags", "")
-                    tags = [x.strip() for x in tags_str.split(";") if x.strip()]
-                    tags.remove(t)
-                    new_tags = ";".join(tags)
-                    # An empty value leaves "tags: " in the config: drop the key
-                    change = {"tags": new_tags} if new_tags else {"delete": "tags"}
-
-                    if r.get("type") == "qemu":
-                        await client.update_vm_config(node, vmid, **change)
-                    else:
-                        await client.update_container_config(node, vmid, **change)
+                    key = (r.get("type"), r.get("node"), r.get("vmid"))
+                    to_remove.setdefault(key, (r, set()))[1].add(t)
                 total_removed += len(affected)
 
                 if has_color:
                     del color_map[t]
                     color_removed += 1
+
+            for r, removed in to_remove.values():
+                node = r.get("node", "")
+                vmid = cast(int, r.get("vmid"))
+                tags = [x.strip() for x in r.get("tags", "").split(";") if x.strip() and x.strip() not in removed]
+                new_tags = ";".join(tags)
+                # An empty value leaves "tags: " in the config: drop the key
+                change = {"tags": new_tags} if new_tags else {"delete": "tags"}
+
+                if r.get("type") == "qemu":
+                    await client.update_vm_config(node, vmid, **change)
+                else:
+                    await client.update_container_config(node, vmid, **change)
 
             # Update color map once
             if color_removed:

@@ -1296,7 +1296,19 @@ async def _orchestrate_cluster_power(
     # Track what was done for interrupt recovery messages
     ha_disabled: list[str] = []
     ha_disarmed = False
-    ceph_flags_set = False
+    # Flags really set so far: a failure halfway leaves only these behind
+    flags_set: list[str] = []
+
+    def left_behind() -> None:
+        """Say what this run changed and did not undo, on any abort."""
+        if ha_disarmed:
+            print_warning("The HA stack was disarmed. Re-arm it with: pvecli cluster ha arm")
+        if ha_disabled:
+            print_warning(f"HA resources were disabled: {', '.join(ha_disabled)}")
+            print_warning("You may need to re-enable them manually.")
+        if flags_set:
+            print_warning(f"Ceph flags were set: {', '.join(flags_set)}")
+            print_warning("Unset them with: " + ", ".join(f"ceph osd unset {f}" for f in flags_set))
 
     try:
         # ── Phase 0: Gather info ──────────────────────────────────────
@@ -1458,6 +1470,7 @@ async def _orchestrate_cluster_power(
                                 total=None,
                             )
                             await client.set_ceph_flag(flag)
+                        flags_set.append(flag)
                 except PVECliError as e:
                     # Some flags may already be set: report what was reached
                     print_error(f"Failed to set Ceph maintenance flags: {e}")
@@ -1467,7 +1480,6 @@ async def _orchestrate_cluster_power(
                     )
                     print_info("Pass --skip-ceph to proceed anyway (not recommended).")
                     raise typer.Exit(1)
-                ceph_flags_set = True
                 print_success(f"Ceph flags set: {', '.join(_CEPH_FLAGS)}")
 
         # ── Phase 4: Stop all guests ──────────────────────────────────
@@ -1498,26 +1510,23 @@ async def _orchestrate_cluster_power(
         # ── Phase 5: Shutdown/reboot nodes ────────────────────────────
         console.print(f"\n[bold cyan]── Sending {command} to nodes ──[/bold cyan]")
 
-        # Workers first (all except connected)
+        # The connected node goes last, so the API answers until the end.
+        # Not detected: the last in order goes last, each node once.
+        last = connected_node or (ordered[-1].get("node", "") if ordered else "")
         for n in ordered:
             name = n.get("node", "")
-            if name == connected_node:
+            if name == last:
                 continue
             await client.node_command(name, command)
             print_success(f"{action} command sent to '{name}'")
             await asyncio.sleep(2)
 
-        # Connected node last
-        if connected_node:
-            console.print(
-                f"\n[bold yellow]About to {command} the connected node "
-                f"'{connected_node}'. CLI access will be lost.[/bold yellow]"
-            )
-            await client.node_command(connected_node, command)
-            print_success(f"{action} command sent to '{connected_node}'")
-        elif ordered:
-            # Could not detect connected node: send to last in order
-            last = ordered[-1].get("node", "")
+        if last:
+            if connected_node:
+                console.print(
+                    f"\n[bold yellow]About to {command} the connected node "
+                    f"'{connected_node}'. CLI access will be lost.[/bold yellow]"
+                )
             await client.node_command(last, command)
             print_success(f"{action} command sent to '{last}'")
 
@@ -1527,10 +1536,10 @@ async def _orchestrate_cluster_power(
         # back up hides a failed OSD instead of rebalancing around it.
         console.print()
         reminders = []
-        if ceph_flags_set:
+        if flags_set:
             reminders.append(
                 "Unset Ceph flags: "
-                + ", ".join(f"ceph osd unset {f}" for f in _CEPH_FLAGS)
+                + ", ".join(f"ceph osd unset {f}" for f in flags_set)
             )
         if ha_disarmed:
             reminders.append("Re-arm HA: pvecli cluster ha arm")
@@ -1552,15 +1561,13 @@ async def _orchestrate_cluster_power(
     except (KeyboardInterrupt, asyncio.CancelledError):
         console.print()
         print_warning("Interrupted!")
-        if ha_disarmed:
-            print_warning("The HA stack was disarmed. Re-arm it with: pvecli cluster ha arm")
-        if ha_disabled:
-            print_warning(f"HA resources were disabled: {', '.join(ha_disabled)}")
-            print_warning("You may need to re-enable them manually.")
-        if ceph_flags_set:
-            print_warning(f"Ceph flags were set: {', '.join(_CEPH_FLAGS)}")
-            print_warning("You may need to unset them manually.")
+        left_behind()
         raise typer.Exit(1)
+    except (typer.Exit, PVECliError):
+        # An abort on an error must say the same as an interruption: what
+        # was changed (HA disarmed, flags set) stays changed
+        left_behind()
+        raise
 
 
 @app.command("shutdown")
