@@ -74,8 +74,8 @@ from ._shared import (
 _CMD_ORDER = [
     "start", "stop", "shutdown", "reboot", "suspend", "resume",
     "lock", "unlock",
-    "add", "clone", "migrate", "edit", "remove",
-    "tag", "snapshot", "template", "ha",
+    "add", "deploy", "clone", "migrate", "edit", "remove",
+    "tag", "snapshot", "template", "ha", "cloudinit",
     "vnc", "ssh", "rdp", "exec",
     "list", "show",
 ]
@@ -3880,3 +3880,11 @@ async def migrate_vm(
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)
+
+
+# Cloud-init: settings of a VM, and deployment from a template
+from .cloudinit import app as _cloudinit_app  # noqa: E402
+from .cloudinit import deploy as _deploy  # noqa: E402
+
+app.add_typer(_cloudinit_app, name="cloudinit")
+app.command("deploy")(_deploy)
