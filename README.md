@@ -30,7 +30,8 @@
 - 🌐 **Several clusters at once** - `-p 'client-*'`, `-p @prod`: read commands, find, audit and power actions across your whole fleet
 - 🔎 **find** - Who has this IP, MAC, disk or name, on which cluster, and who can access it
 - 🩺 **audit** - Certificates, access, firewall, backups, old snapshots, orphan disks, in one read-only report
-- ☁️ **Cloud-init deploy** - A configured VM from a template in one command, plus bulk snapshots with retention
+- ☁️ **Deploy** - A configured VM or container in one command, or a whole set of VMs and containers from a YAML file, across clusters
+- 💾 **backup** - Coverage and age of every guest's backups across clusters, run, restore, prune, jobs, browse PBS backups
 - 🕸 **SDN** - Zones, vnets, subnets and DHCP, with a per-profile write lock
 - 🐙 **Ceph** - Health, OSDs, pools, flags and versions across your whole fleet
 - 📊 **Usage reporting** - Aggregate CPU, memory and provisioned disk per cluster or per pool
@@ -92,7 +93,7 @@ pvecli ct list
 | `pvecli config` | Manage cluster profiles (add, edit, remove, test, default, login) |
 | `pvecli node` | Node info, shutdown, reboot, evacuate, maintenance, updates, VNC shell, SSH |
 | `pvecli vm` | Full VM lifecycle - start, stop, deploy, cloud-init, clone, migrate, template, snapshot, HA, exec, VNC, SSH, RDP |
-| `pvecli ct` | LXC container lifecycle - start, stop, clone, migrate, template, snapshot, HA, VNC, SSH |
+| `pvecli ct` | LXC container lifecycle - start, stop, deploy, clone, migrate, template, snapshot, HA, VNC, SSH |
 | `pvecli storage` | Add and remove shared storage, listing, content management, config |
 | `pvecli pool` | Resource pool management with usage reporting and export/import |
 | `pvecli cluster` | Preflight, health, create, join, bulk guest actions, HA arm/disarm, status, usage, tasks, shutdown, reboot |
@@ -102,6 +103,8 @@ pvecli ct list
 | `pvecli find` | Find guests, IPs, MACs, disks and access across clusters |
 | `pvecli audit` | Read-only health and hygiene report |
 | `pvecli snapshot` | Snapshots across many guests: add, list, prune |
+| `pvecli deploy` | Create VMs and containers from a YAML file: validated first, planned, idempotent, parallel |
+| `pvecli backup` | Backups: list, coverage, run, restore, prune, jobs, PBS file browsing |
 
 → **[Full command reference](docs/commands.md)**
 

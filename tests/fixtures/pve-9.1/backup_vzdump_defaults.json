@@ -1,0 +1,27 @@
+{
+ "all": 0,
+ "bwlimit": 0,
+ "compress": "0",
+ "dumpdir": "/var/lib/vz/dump",
+ "fleecing": {
+  "enabled": 0
+ },
+ "ionice": 7,
+ "lockwait": 180,
+ "mailnotification": "always",
+ "mode": "snapshot",
+ "notification-mode": "auto",
+ "performance": {
+  "max-workers": 16,
+  "pbs-entries-max": 1048576
+ },
+ "pigz": 0,
+ "prune-backups": "keep-all=1",
+ "quiet": 0,
+ "remove": 1,
+ "stdexcludes": 1,
+ "stop": 0,
+ "stopwait": 10,
+ "storage": "local",
+ "zstd": 1
+}

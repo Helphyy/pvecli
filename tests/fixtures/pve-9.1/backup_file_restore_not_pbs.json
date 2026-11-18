@@ -1,0 +1,4 @@
+{
+ "__error__": "Only PBS storages supported for file-restore.",
+ "__status__": 400
+}

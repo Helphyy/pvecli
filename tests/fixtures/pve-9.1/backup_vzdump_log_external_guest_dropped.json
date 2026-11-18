@@ -1,0 +1,26 @@
+[
+ {
+  "n": 1,
+  "t": "INFO: starting new backup job: vzdump 300 919 --storage local --remove 0 --node pve-lab1"
+ },
+ {
+  "n": 2,
+  "t": "ERROR: Backup of VM 919 failed - unable to find VM '919'"
+ },
+ {
+  "n": 3,
+  "t": "INFO: Failed at 2026-11-18 15:29:27"
+ },
+ {
+  "n": 4,
+  "t": "INFO: Backup job finished with errors"
+ },
+ {
+  "n": 5,
+  "t": "INFO: notified via target `mail-to-root`"
+ },
+ {
+  "n": 6,
+  "t": "TASK ERROR: job errors"
+ }
+]

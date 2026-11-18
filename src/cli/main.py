@@ -6,8 +6,9 @@ import typer
 from rich.console import Console
 
 from .. import __version__
-from . import ceph, cluster, config, ct, node, pool, sdn, snapshot, storage, tag, vm
+from . import backup, ceph, cluster, config, ct, node, pool, sdn, snapshot, storage, tag, vm
 from .audit import audit as audit_command
+from .deploy import deploy as deploy_command
 from .find import find as find_command
 
 console = Console()
@@ -30,8 +31,10 @@ app.add_typer(ceph.app, name="ceph")
 app.add_typer(sdn.app, name="sdn")
 app.add_typer(tag.app, name="tag")
 app.add_typer(snapshot.app, name="snapshot")
+app.add_typer(backup.app, name="backup")
 app.command("find")(find_command)
 app.command("audit")(audit_command)
+app.command("deploy")(deploy_command)
 
 
 def version_callback(value: bool) -> None:

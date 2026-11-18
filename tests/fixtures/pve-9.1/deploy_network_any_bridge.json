@@ -1,0 +1,45 @@
+[
+ {
+  "active": "1",
+  "comments": "Lab VXLAN",
+  "iface": "vvxlan",
+  "ipam": 0,
+  "type": "vnet",
+  "vlanaware": 0
+ },
+ {
+  "active": 1,
+  "address": "10.199.32.51",
+  "autostart": 1,
+  "bridge_fd": "0",
+  "bridge_ports": "ens18",
+  "bridge_stp": "off",
+  "cidr": "10.199.32.51/24",
+  "families": [
+   "inet"
+  ],
+  "gateway": "10.199.32.1",
+  "iface": "vmbr0",
+  "method": "static",
+  "method6": "manual",
+  "netmask": "24",
+  "priority": 4,
+  "type": "bridge"
+ },
+ {
+  "active": "1",
+  "comments": "Lab VLAN 42",
+  "iface": "vvlan",
+  "ipam": 0,
+  "type": "vnet",
+  "vlanaware": 0
+ },
+ {
+  "active": "1",
+  "comments": "Lab simple",
+  "iface": "vsimple",
+  "ipam": 1,
+  "type": "vnet",
+  "vlanaware": 0
+ }
+]

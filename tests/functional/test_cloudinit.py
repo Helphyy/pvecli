@@ -31,6 +31,11 @@ def route_deploy(api: FakeAPI, template_cfg=None, clone_cfg=None, resources=None
     api.route("GET", "/cluster/resources", resources or fixture("pve-9.1/cluster_resources_vm"))
     api.route("GET", f"/nodes/{NODE}/qemu/9000/config", template_cfg or TEMPLATE_CFG)
     api.route("GET", "/cluster/nextid", "120")
+    # --storage is checked on the node before the clone
+    api.route("GET", f"/nodes/{NODE}/storage", [
+        {"storage": "local-lvm", "type": "lvmthin", "content": "rootdir,images", "active": 1, "enabled": 1},
+        {"storage": "ceph", "type": "rbd", "content": "images,rootdir", "active": 1, "enabled": 1, "shared": 1},
+    ])
     api.route("POST", f"/nodes/{NODE}/qemu/9000/clone", upid(NODE, "qmclone", 9000))
     api.route("GET", f"/nodes/{NODE}/qemu/120/config", clone_cfg or CLONE_CFG)
     api.route("PUT", f"/nodes/{NODE}/qemu/120/config", None)

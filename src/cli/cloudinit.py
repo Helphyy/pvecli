@@ -10,18 +10,22 @@ import ipaddress
 import os
 import re
 import time
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote, unquote
 
 import typer
+from rich.markup import escape
 from rich.table import Table
 
 from ..api.client import ProxmoxClient
-from ..api.exceptions import PVECliError
+from ..api.exceptions import APIError, PVECliError
 from ..config import ConfigManager
 from ..utils import console, print_error, print_info, print_success, print_warning
 from ..utils.helpers import async_to_sync, ordered_group
+from ._shared import bridge_choices, extract_size
 
 app = typer.Typer(
     help="Cloud-init settings of a VM",
@@ -60,12 +64,16 @@ def _read_keys(keys: list[str]) -> str:
     return "\n".join(lines)
 
 
-def _ipconfig(ip: str | None, gw: str | None, ip6: str | None, gw6: str | None) -> str | None:
+def _ipconfig(
+    ip: str | None, gw: str | None, ip6: str | None, gw6: str | None,
+    v4_keywords: tuple[str, ...] = ("dhcp",), v6_keywords: tuple[str, ...] = ("dhcp", "auto"),
+) -> str | None:
     """Build an ipconfigN value, validating the addresses on the way.
 
     PVE's format keeps the families apart (ip/gw IPv4, ip6/gw6 IPv6) and
     wants addresses in CIDR form: anything else is a 400 at creation time,
-    after the clone is made. Checked here, before anything exists.
+    after the clone is made. Checked here, before anything exists. The
+    keywords differ for a container net0 (manual is allowed there).
     """
 
     def cidr(value: str, option: str, version: int, keywords: tuple[str, ...]) -> None:
@@ -82,13 +90,13 @@ def _ipconfig(ip: str | None, gw: str | None, ip6: str | None, gw6: str | None) 
 
     parts = []
     if ip:
-        cidr(ip, "--ip", 4, ("dhcp",))
+        cidr(ip, "--ip", 4, v4_keywords)
         parts.append(f"ip={ip}")
     if gw:
         address(gw, "--gw", 4)
         parts.append(f"gw={gw}")
     if ip6:
-        cidr(ip6, "--ip6", 6, ("dhcp", "auto"))
+        cidr(ip6, "--ip6", 6, v6_keywords)
         parts.append(f"ip6={ip6}")
     if gw6:
         address(gw6, "--gw6", 6)
@@ -284,7 +292,375 @@ async def cloudinit_set(
         print_info("The VM runs: the new settings apply at its next reboot")
 
 
-# ── deploy ───────────────────────────────────────────────────────────────
+# ── deploy: shared by vm deploy, ct deploy and pvecli deploy ─────────────
+#
+# Every deployment goes through the same three steps, whatever asks for it:
+#   prepare  (no network): parse sizes, check addresses, read keys and the
+#            password from the environment
+#   validate (reads only): template, node, storage, pool, ID, all on the
+#            cluster, every problem returned at once
+#   create   (writes): clone or create, configure, start
+# so a file of twenty guests and a single command refuse the same things.
+
+# PVE's dns-name format, for VM names and CT hostnames
+_DNS_NAME = re.compile(
+    r"^(?=.{1,253}$)[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$"
+)
+_SIZE = re.compile(r"(\d+(?:\.\d+)?)([KMGT])", re.IGNORECASE)
+_CONTENT = {"images": "VM disks", "rootdir": "container disks", "vztmpl": "container templates"}
+
+
+def size_bytes(text: str) -> int:
+    """'20G' -> bytes. PVE sizes are binary: G is GiB."""
+    m = _SIZE.fullmatch(text.strip())
+    if not m:
+        raise PVECliError(f"Invalid size '{text}', use e.g. 20G")
+    return int(float(m.group(1)) * 1024 ** ("KMGT".index(m.group(2).upper()) + 1))
+
+
+@dataclass
+class GuestSpec:
+    """One guest to deploy, as asked by vm deploy, ct deploy or a file."""
+
+    kind: str  # "vm" or "ct"
+    name: str | None
+    template: str  # template VM/CT ID, or a vztmpl volume for a container
+    profile: str | None = None
+    vmid: int | None = None
+    node: str | None = None
+    storage: str | None = None
+    full: bool = False
+    cores: int | None = None
+    memory: str | None = None
+    swap: str | None = None
+    disk_size: str | None = None
+    tags: list[str] = field(default_factory=list)
+    pool: str | None = None
+    ip: str | None = None
+    gw: str | None = None
+    ip6: str | None = None
+    gw6: str | None = None
+    dns: str | None = None
+    search_domain: str | None = None
+    ssh_keys: list[str] = field(default_factory=list)
+    password_env: str | None = None
+    user: str | None = None
+    upgrade: bool | None = None
+    bridge: str | None = None
+    vlan: int | None = None
+    unprivileged: bool | None = None
+    features: str | None = None
+    start: bool = True
+    wait_ip: int = 0
+    label: str = ""  # where it comes from, for messages
+    # API values worked out by prepare, the password among them: never shown
+    params: dict[str, Any] = field(default_factory=dict, repr=False)
+    # What validate learnt about the source: node, config, clone mode
+    src: dict[str, Any] = field(default_factory=dict, repr=False)
+
+    @property
+    def what(self) -> str:
+        return "VM" if self.kind == "vm" else "CT"
+
+
+@dataclass
+class Outcome:
+    vmid: int | None = None
+    node: str | None = None
+    ip: str | None = None
+    error: str | None = None
+    # Something exists on the cluster for this guest: after a failure, it
+    # is left for the user to look at, never deleted behind their back
+    created: bool = False
+
+
+Say = Callable[[str, str], None]
+
+
+def console_say(level: str, msg: str) -> None:
+    """Progress of a single deployment, straight to the console."""
+    if level == "ok":
+        print_success(msg)
+    elif level == "warn":
+        print_warning(msg)
+    else:
+        console.print(f"[cyan]{escape(msg)}[/cyan]")
+
+
+class ClusterState:
+    """What creations running at once on one cluster must share, even
+    through two profiles pointing at it."""
+
+    def __init__(self) -> None:
+        self.reserved: set[int] = set()
+        self.id_lock = asyncio.Lock()
+        self.clone_locks: dict[int, asyncio.Lock] = {}
+
+
+class Facts:
+    """What a deployment reads from one cluster, read once per run."""
+
+    def __init__(self, client: ProxmoxClient, profile: str | None, state: ClusterState | None = None) -> None:
+        self.client = client
+        self.profile = profile
+        self.state = state or ClusterState()
+        self._cache: dict[Any, Any] = {}
+
+    async def _cached(self, key: Any, fetch: Callable[[], Awaitable[Any]]) -> Any:
+        if key not in self._cache:
+            self._cache[key] = await fetch()
+        return self._cache[key]
+
+    async def guests(self) -> list[dict[str, Any]]:
+        return await self._cached("guests", lambda: self.client.get_cluster_resources(resource_type="vm")) or []
+
+    async def nodes(self) -> dict[str, str]:
+        rows = await self._cached("nodes", self.client.get_nodes) or []
+        return {n.get("node", ""): n.get("status", "") for n in rows}
+
+    async def storages(self, node: str) -> dict[str, dict[str, Any]]:
+        rows = await self._cached(("storage", node), lambda: self.client.get_storage_list(node)) or []
+        return {s.get("storage", ""): s for s in rows}
+
+    async def bridges(self, node: str) -> set[str]:
+        rows = await self._cached(("net", node), lambda: self.client.get_network_interfaces(node)) or []
+        return set(bridge_choices(rows)[0])
+
+    async def pools(self) -> set[str]:
+        rows = await self._cached("pools", self.client.get_pools) or []
+        return {p.get("poolid", "") for p in rows}
+
+    async def volumes(self, node: str, storage: str, content: str) -> set[str]:
+        rows = await self._cached(
+            ("content", node, storage, content), lambda: self.client.get_storage_content(node, storage, content)
+        ) or []
+        return {v.get("volid", "") for v in rows}
+
+    async def config(self, node: str, kind: str, vmid: int) -> dict[str, Any]:
+        return await self._cached(
+            ("config", node, kind, vmid), lambda: self.client.get(f"/nodes/{node}/{kind}/{vmid}/config")
+        ) or {}
+
+    async def id_free(self, vmid: int) -> bool:
+        """Asked to PVE itself: /cluster/resources lags behind a creation."""
+        try:
+            await self.client.get("/cluster/nextid", params={"vmid": vmid})
+            return True
+        except APIError as e:
+            if e.status_code == 400:
+                return False
+            raise
+
+    def claim(self, vmid: int) -> None:
+        self.state.reserved.add(vmid)
+
+    async def next_id(self) -> int:
+        """A free ID that no other creation of this run holds: /cluster/nextid
+        hands the same one out until a guest really uses it."""
+        async with self.state.id_lock:
+            vmid = int(await self.client.get_next_vmid())
+            fresh = True  # straight from /cluster/nextid: free by definition
+            while vmid in self.state.reserved or not (fresh or await self.id_free(vmid)):
+                vmid += 1
+                fresh = False
+            self.state.reserved.add(vmid)
+            return vmid
+
+    def clone_lock(self, vmid: int) -> asyncio.Lock:
+        return self.state.clone_locks.setdefault(vmid, asyncio.Lock())
+
+
+# ── checks shared by VMs and containers ──
+
+
+def check_name(name: str | None, what: str) -> list[str]:
+    if name and not _DNS_NAME.match(name):
+        return [f"Invalid {what} '{name}': letters, digits, dots and dashes only"]
+    return []
+
+
+def check_dns(dns: str | None) -> list[str]:
+    errors = []
+    for server in (dns or "").replace(",", " ").split():
+        try:
+            ipaddress.ip_address(server)
+        except ValueError:
+            errors.append(f"Invalid DNS server '{server}': an IP address is expected")
+    return errors
+
+
+def read_password(env: str | None, min_length: int = 0) -> str | None:
+    """The password from the environment; never from a file nor an option,
+    and never echoed in an error."""
+    if not env:
+        return None
+    pwd = os.environ.get(env)
+    if not pwd:
+        raise PVECliError(f"Environment variable '{env}' is empty or unset")
+    if len(pwd) < min_length:
+        raise PVECliError(f"The password in '{env}' is too short: PVE wants at least {min_length} characters")
+    return pwd
+
+
+def attempt(errors: list[str], fn: Callable[[], Any]) -> Any:
+    """Run one check, keep its error with the others instead of stopping."""
+    try:
+        return fn()
+    except (PVECliError, ValueError, typer.BadParameter) as e:
+        errors.append(e.message if isinstance(e, typer.BadParameter) else str(e))
+        return None
+
+
+async def check_node(facts: Facts, node: str) -> str | None:
+    nodes = await facts.nodes()
+    if node not in nodes:
+        return f"Node '{node}' not found (nodes: {', '.join(sorted(nodes))})"
+    if nodes[node] != "online":
+        return f"Node '{node}' is {nodes[node] or 'not online'}"
+    return None
+
+
+async def check_storage(facts: Facts, node: str, storage: str, content: str, pve_default: bool = False) -> str | None:
+    st = (await facts.storages(node)).get(storage)
+    label = f"'{storage}'" + (" (PVE's default, pass --storage)" if pve_default else "")
+    if not st:
+        return f"Storage {label} not found on {node}"
+    if content not in str(st.get("content", "")).split(","):
+        return f"Storage {label} on {node} holds no {_CONTENT[content]} (content {content})"
+    if not st.get("enabled", 1) or not st.get("active", 1):
+        return f"Storage '{storage}' is not active on {node}"
+    return None
+
+
+async def check_common(facts: Facts, spec: GuestSpec) -> list[str]:
+    errors = []
+    if spec.pool and spec.pool not in await facts.pools():
+        errors.append(f"Pool '{spec.pool}' not found")
+    if spec.vmid is not None and not await facts.id_free(spec.vmid):
+        errors.append(f"ID {spec.vmid} is already taken")
+    return errors
+
+
+# ── VM ──
+
+
+def prepare_vm(spec: GuestSpec) -> list[str]:
+    """Check what needs no cluster and work out the API values."""
+    errors = check_name(spec.name, "name") + check_dns(spec.dns)
+    if not spec.template.isdigit():
+        errors.append(f"A VM template is given by its ID, got '{spec.template}'")
+    attempt(errors, lambda: _ipconfig(spec.ip, spec.gw, spec.ip6, spec.gw6))
+    if spec.ssh_keys:
+        attempt(errors, lambda: _read_keys(spec.ssh_keys))
+    attempt(errors, lambda: read_password(spec.password_env))
+    mem = attempt(errors, lambda: _parse_memory(str(spec.memory))) if spec.memory else None
+    if spec.disk_size and not re.fullmatch(r"\d+[KMGT]", spec.disk_size, re.IGNORECASE):
+        errors.append(f"Invalid --disk-size '{spec.disk_size}', use e.g. 20G")
+    if not errors:
+        spec.params = {
+            "memory": mem,
+            "ci": _ci_params(spec.user, spec.password_env, spec.ssh_keys or None, spec.ip, spec.gw, spec.ip6,
+                             spec.gw6, spec.dns, spec.search_domain, spec.upgrade, 0),
+        }
+    return errors
+
+
+async def validate_vm(facts: Facts, spec: GuestSpec) -> list[str]:
+    """Everything the cluster must offer before the clone starts."""
+    tid = int(spec.template)
+    src = next((g for g in await facts.guests() if g.get("vmid") == tid and g.get("type") == "qemu"), None)
+    if not src:
+        return [f"VM {tid} not found"]
+    node = src["node"]
+    # The config is authoritative: /cluster/resources lags a few seconds
+    # behind a conversion to template
+    cfg = await facts.config(node, "qemu", tid)
+    errors = []
+    if not cfg.get("template"):
+        errors.append(f"VM {tid} is not a template: convert it first (pvecli vm template)")
+    target = spec.node or node
+    if target != node:
+        err = await check_node(facts, target)
+        if err:
+            return errors + [err]
+        disk_storage = _boot_storage(cfg)
+        if not (await facts.storages(node)).get(disk_storage or "", {}).get("shared"):
+            errors.append(f"Template {tid} is on '{disk_storage}', local to {node}: clone it there")
+    if spec.storage:
+        err = await check_storage(facts, target, spec.storage, "images")
+        if err:
+            errors.append(err)
+    boot = _boot_disk(cfg)
+    current = extract_size(str(cfg.get(boot, ""))) if boot else ""
+    if spec.disk_size and current and size_bytes(spec.disk_size) < size_bytes(current):
+        errors.append(f"--disk-size {spec.disk_size} is smaller than the template disk ({current}): a disk can only grow")
+    errors += await check_common(facts, spec)
+    spec.src = {"node": node, "target": target}
+    return errors
+
+
+async def create_vm(facts: Facts, spec: GuestSpec, say: Say, out: Outcome) -> None:
+    """Clone, size, cloud-init, start. Raises on the first failure; `out`
+    tells what exists by then."""
+    client = facts.client
+    tid, node, target = int(spec.template), spec.src["node"], spec.src["target"]
+    newid = spec.vmid or await facts.next_id()
+    spec.vmid = out.vmid = newid
+    out.node = target
+    linked = not (spec.full or spec.storage)
+
+    upid = await client.clone_vm(
+        node, tid, newid, name=spec.name, full=not linked, pool=spec.pool, storage=spec.storage,
+        target=target if target != node else None,
+    )
+    out.created = True
+    say("step", f"Cloning template {tid} to VM {newid} ({'linked' if linked else 'full'})...")
+    await client.wait_for_task(node, upid, timeout=1800)
+
+    hw: dict[str, Any] = {}
+    if spec.cores:
+        hw["cores"] = spec.cores
+    if spec.params.get("memory"):
+        hw["memory"] = spec.params["memory"]
+    if spec.tags:
+        hw["tags"] = ";".join(spec.tags)
+    if hw:
+        await client.put(f"/nodes/{target}/qemu/{newid}/config", data=hw)
+    if spec.disk_size:
+        cfg = await client.get(f"/nodes/{target}/qemu/{newid}/config") or {}
+        boot = _boot_disk(cfg)
+        if not boot:
+            raise PVECliError(f"VM {newid} created, but no disk to resize")
+        await client.resize_vm_disk(target, newid, boot, spec.disk_size)
+    for note in await _apply(client, target, newid, spec.params.get("ci", {}), None):
+        say("info", note)
+    say("ok", f"VM {newid} ({spec.name}) created on {target}")
+
+    if spec.start:
+        upid = await client.start_vm(target, newid)
+        await client.wait_for_task(target, upid, timeout=300)
+        say("ok", f"VM {newid} started")
+        if spec.wait_ip:
+            say("step", f"Waiting up to {spec.wait_ip}s for its address from the guest agent...")
+            out.ip = await _wait_ip(client, target, newid, spec.wait_ip)
+            if out.ip:
+                say("ok", f"VM {newid} is up at {out.ip}")
+            else:
+                say("warn", "No address from the guest agent (not installed in the image, or still booting). "
+                            f"Look for it with: pvecli find {newid}")
+
+
+def split_tags(tags: str | None) -> list[str]:
+    return [t.strip() for t in (tags or "").split(",") if t.strip()]
+
+
+def fail(errors: list[str]) -> None:
+    for e in errors:
+        print_error(e)
+    raise typer.Exit(1)
+
+
+# ── vm deploy ────────────────────────────────────────────────────────────
 
 
 async def _wait_ip(client: ProxmoxClient, node: str, vmid: int, timeout: int) -> str | None:
@@ -340,62 +716,22 @@ async def deploy(
         pvecli vm deploy 9000 db01 --ip 10.0.0.31/24 --gw 10.0.0.1 --dns 10.0.0.1 \\
             --cores 4 --memory 8G --disk-size 50G --tags db,prod --wait-ip 120
     """
+    spec = GuestSpec(
+        kind="vm", name=name, template=str(template), profile=profile, vmid=vmid, storage=storage, full=full,
+        cores=cores, memory=memory, disk_size=disk_size, tags=split_tags(tags), pool=pool, user=user,
+        password_env=password_env, ssh_keys=list(ssh_key or []), ip=ip, gw=gw, ip6=ip6, gw6=gw6, dns=dns,
+        search_domain=search_domain, upgrade=upgrade, start=start, wait_ip=wait_ip,
+    )
+    errors = prepare_vm(spec)
+    if errors:
+        fail(errors)
     try:
-        ci = _ci_params(user, password_env, ssh_key, ip, gw, ip6, gw6, dns, search_domain, upgrade, 0)
-        mem = _parse_memory(memory) if memory else None
-        if disk_size and not re.fullmatch(r"\d+[KMGT]", disk_size, re.IGNORECASE):
-            raise PVECliError(f"Invalid --disk-size '{disk_size}', use e.g. 20G")
         async with ProxmoxClient(ConfigManager().get_profile(profile)) as client:
-            src = await _locate(client, template)
-            # The config is authoritative: /cluster/resources lags a few
-            # seconds behind a conversion to template
-            src_cfg = await client.get(f"/nodes/{src['node']}/qemu/{template}/config") or {}
-            if not src_cfg.get("template"):
-                raise PVECliError(f"VM {template} is not a template: convert it first (pvecli vm template)")
-            node = src["node"]
-            newid = vmid or int(await client.get_next_vmid())
-            linked = not (full or storage)
-
-            upid = await client.clone_vm(
-                node, template, newid, name=name, full=not linked, pool=pool, storage=storage,
-            )
-            console.print(f"[cyan]Cloning template {template} to VM {newid} ({'linked' if linked else 'full'})...[/cyan]")
-            await client.wait_for_task(node, upid, timeout=1800)
-
-            hw: dict[str, Any] = {}
-            if cores:
-                hw["cores"] = cores
-            if mem:
-                hw["memory"] = mem
-            if tags:
-                hw["tags"] = ";".join(t.strip() for t in tags.split(",") if t.strip())
-            if hw:
-                await client.put(f"/nodes/{node}/qemu/{newid}/config", data=hw)
-            if disk_size:
-                cfg = await client.get(f"/nodes/{node}/qemu/{newid}/config") or {}
-                boot = _boot_disk(cfg)
-                if not boot:
-                    raise PVECliError(f"VM {newid} created, but no disk to resize")
-                await client.resize_vm_disk(node, newid, boot, disk_size)
-            notes = await _apply(client, node, newid, ci, None)
-            for n in notes:
-                print_info(n)
-            print_success(f"VM {newid} ({name}) created on {node}")
-
-            if start:
-                upid = await client.start_vm(node, newid)
-                await client.wait_for_task(node, upid, timeout=300)
-                print_success(f"VM {newid} started")
-                if wait_ip:
-                    console.print(f"[cyan]Waiting up to {wait_ip}s for its address from the guest agent...[/cyan]")
-                    addr = await _wait_ip(client, node, newid, wait_ip)
-                    if addr:
-                        print_success(f"VM {newid} is up at {addr}")
-                    else:
-                        print_warning(
-                            "No address from the guest agent (not installed in the image, or still booting). "
-                            f"Look for it with: pvecli find {newid}"
-                        )
+            facts = Facts(client, profile)
+            errors = await validate_vm(facts, spec)
+            if errors:
+                fail(errors)
+            await create_vm(facts, spec, console_say, Outcome())
     except (PVECliError, ValueError) as e:
         print_error(str(e))
         raise typer.Exit(1)

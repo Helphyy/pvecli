@@ -1,0 +1,26 @@
+[
+ {
+  "endtime": 1795011133,
+  "id": "",
+  "node": "pve-lab2",
+  "pid": 198598,
+  "pstart": 2403324,
+  "starttime": 1795011133,
+  "status": "job errors",
+  "type": "vzdump",
+  "upid": "UPID:pve-lab2:000307C6:0024ABFC:6AFDB23D:vzdump::root@pam:",
+  "user": "root@pam"
+ },
+ {
+  "endtime": 1785792761,
+  "id": "300",
+  "node": "pve-lab2",
+  "pid": 96369,
+  "pstart": 1171537,
+  "starttime": 1785792761,
+  "status": "OK",
+  "type": "vzdump",
+  "upid": "UPID:pve-lab2:00017871:0011E051:6A7108F9:vzdump:300:root@pam:",
+  "user": "root@pam"
+ }
+]

@@ -1,0 +1,50 @@
+[
+ {
+  "active": 1,
+  "avail": 11028986122,
+  "content": "rootdir,images",
+  "enabled": 1,
+  "shared": 0,
+  "storage": "local-lvm",
+  "total": 12700352512,
+  "type": "lvmthin",
+  "used": 1671366390,
+  "used_fraction": 0.131599999954395
+ },
+ {
+  "active": 1,
+  "avail": 28412755968,
+  "content": "backup",
+  "enabled": 1,
+  "shared": 1,
+  "storage": "pbs-lab",
+  "total": 33342390272,
+  "type": "pbs",
+  "used": 3209760768,
+  "used_fraction": 0.0962666666011485
+ },
+ {
+  "active": 1,
+  "avail": 8259919872,
+  "content": "vztmpl,backup,iso,import",
+  "enabled": 1,
+  "shared": 0,
+  "storage": "local",
+  "total": 14513811456,
+  "type": "dir",
+  "used": 5494304768,
+  "used_fraction": 0.378556989296472
+ },
+ {
+  "active": 1,
+  "avail": 16255837184,
+  "content": "images,rootdir",
+  "enabled": 1,
+  "shared": 1,
+  "storage": "labpool",
+  "total": 16255838875,
+  "type": "rbd",
+  "used": 1691,
+  "used_fraction": 1.04024160980127e-07
+ }
+]

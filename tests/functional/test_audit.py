@@ -234,7 +234,9 @@ def test_skip_orphans_lists_no_storage(cli, api):
     r, doc = run_json(cli, "--skip-orphans")
     assert r.exit_code == 0, r.output
     assert lines(doc, "Orphan disks") == []
-    assert not api.called("GET", "/nodes/{node}/storage/{storage}/content")
+    # The backup check reads backup content only; the orphan scan lists whole storages
+    assert not [c for c in api.called("GET", "/nodes/{node}/storage/{storage}/content")
+                if (c.params or {}).get("content") != "backup"]
 
 
 def test_old_snapshot_warns(cli, api):

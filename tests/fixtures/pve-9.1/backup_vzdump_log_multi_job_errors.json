@@ -1,0 +1,82 @@
+[
+ {
+  "n": 1,
+  "t": "INFO: starting new backup job: vzdump 300 919 --node pve-lab2 --storage local --compress zstd --remove 0 --notes-template 'pvecli-test {{guestname}}' --mode snapshot"
+ },
+ {
+  "n": 2,
+  "t": "INFO: Starting Backup of VM 300 (qemu)"
+ },
+ {
+  "n": 3,
+  "t": "INFO: Backup started at 2026-11-18 15:12:13"
+ },
+ {
+  "n": 4,
+  "t": "INFO: status = stopped"
+ },
+ {
+  "n": 5,
+  "t": "INFO: backup mode: stop"
+ },
+ {
+  "n": 6,
+  "t": "INFO: ionice priority: 7"
+ },
+ {
+  "n": 7,
+  "t": "INFO: VM Name: guest-sdn"
+ },
+ {
+  "n": 8,
+  "t": "INFO: creating vzdump archive '/var/lib/vz/dump/vzdump-qemu-300-2026_11_18-15_12_13.vma.zst'"
+ },
+ {
+  "n": 9,
+  "t": "INFO: backup contains no disks"
+ },
+ {
+  "n": 10,
+  "t": "INFO: starting diskless backup"
+ },
+ {
+  "n": 11,
+  "t": "INFO: /usr/bin/vma create -v -c /var/lib/vz/dump/vzdump-qemu-300-2026_11_18-15_12_13.tmp/qemu-server.conf exec:zstd --threads=1 > /var/lib/vz/dump/vzdump-qemu-300-2026_11_18-15_12_13.vma.dat"
+ },
+ {
+  "n": 12,
+  "t": "INFO: archive file size: 0KB"
+ },
+ {
+  "n": 13,
+  "t": "INFO: adding notes to backup"
+ },
+ {
+  "n": 14,
+  "t": "INFO: Finished Backup of VM 300 (00:00:00)"
+ },
+ {
+  "n": 15,
+  "t": "INFO: Backup finished at 2026-11-18 15:12:13"
+ },
+ {
+  "n": 16,
+  "t": "ERROR: Backup of VM 919 failed - unable to find VM '919'"
+ },
+ {
+  "n": 17,
+  "t": "INFO: Failed at 2026-11-18 15:12:13"
+ },
+ {
+  "n": 18,
+  "t": "INFO: Backup job finished with errors"
+ },
+ {
+  "n": 19,
+  "t": "INFO: notified via target `mail-to-root`"
+ },
+ {
+  "n": 20,
+  "t": "TASK ERROR: job errors"
+ }
+]

@@ -3,7 +3,7 @@
 Every command supports `--profile, -p` to target a specific cluster profile.
 Most commands work **interactively** when called without arguments.
 
-Read commands, power commands, `find`, `audit`, `snapshot` and `node updates` also accept **several profiles**: `-p lab1,lab4`, `-p 'client-*'`, `-p @prod` (see [configuration](configuration.md#several-profiles-at-once)).
+Read commands, power commands, `find`, `audit`, `snapshot`, `backup`, `deploy` and `node updates` also accept **several profiles**: `-p lab1,lab4`, `-p 'client-*'`, `-p @prod` (see [configuration](configuration.md#several-profiles-at-once)).
 
 Multi-target commands accept single IDs, comma-separated lists, or ranges:
 `100`, `100,101,102`, `100-105`, `100-103,200,300-302`
@@ -209,6 +209,7 @@ pvecli ct shutdown [CTIDS]         Graceful shutdown (--timeout, --force)
 pvecli ct reboot [CTIDS]           Reboot containers
 pvecli ct add [NODE]               Create a new container (interactive wizard or CLI options)
 pvecli ct clone [CTID]             Clone a container
+pvecli ct deploy TEMPLATE          Create a ready-to-use container from a file template or a CT template
 pvecli ct migrate [CTID] [TARGET]  Migrate a container (--restart when it runs)
 pvecli ct edit [CTID]              Edit container configuration
 pvecli ct remove [CTIDS]           Delete containers (--purge, --force)
@@ -248,6 +249,18 @@ pvecli ct ha remove [CTIDS]        Remove containers from HA management (--yes)
 ```
 
 Containers cannot move live: `ct migrate` on a running container needs `--restart` (or a yes at the prompt), which stops it, moves it and starts it again, with `--timeout` for the shutdown.
+
+### ct deploy
+
+```bash
+pvecli ct deploy local:vztmpl/debian-13-standard_13.6-1_amd64.tar.zst --hostname web01 --node pve1 \
+    --storage local-lvm --disk-size 8G --ip 10.0.0.21/24 --gw 10.0.0.1 --ssh-key ~/.ssh/id_ed25519.pub
+pvecli ct deploy 920 --hostname web02 --ip dhcp --cores 2 --memory 1G --swap 0 --disk-size 8G --wait-ip 60
+```
+
+The pendant of `vm deploy` for containers. From a file template it creates the container (`POST /lxc`): root disk (`--storage`, whole GiB with `--disk-size`), network (`--ip`, `--gw`, `--ip6`, `--gw6`, `--bridge`, default `vmbr0`, `--vlan`), DNS, SSH keys for root, a root password from an environment variable (`--password-env`), `--features nesting=1`, `--unprivileged/--privileged` (unprivileged unless told otherwise, as PVE does). From the ID of a CT template it clones it (linked when its storage allows it, full with `--full` or `--storage`), then sets the same values with the config; a clone keeps the root password, SSH keys and privilege level of its template, so those options are refused there. Everything is checked before the first write (node, storages, template, pool, free ID, address families), and the command to do it again is printed, without the password. Options left out take Proxmox's own defaults (4G root disk on `local`, 512M of memory and swap).
+
+<!-- new top-level section, after "## snapshot" -->
 
 ### ct image (LXC image files)
 
@@ -665,7 +678,7 @@ pvecli audit -p '*' --problems          # only WARN and FAIL
 pvecli audit -p @prod --json            # for a cron job or a dashboard
 ```
 
-Checks: certificates expiring (`--cert-days`, default 30), expired users and tokens, tokens without privilege separation, broad Administrator grants, datacenter firewall disabled, PVE versions mixed across nodes, subscription, pending updates, guests in no backup job, snapshots older than `--snapshot-age` (default 30d), ISOs left mounted, orphan disks (volumes of guests that no longer exist, `--skip-orphans` to skip the storage scan), HA disarmed, Ceph health and maintenance flags left set.
+Checks: certificates expiring (`--cert-days`, default 30), expired users and tokens, tokens without privilege separation, broad Administrator grants, datacenter firewall disabled, PVE versions mixed across nodes, subscription, pending updates, guests in no backup job, backup freshness (last backup older than `--backup-age`, default 2d, or failed), snapshots older than `--snapshot-age` (default 30d), ISOs left mounted, orphan disks (volumes of guests that no longer exist, `--skip-orphans` to skip the storage scan), HA disarmed, Ceph health and maintenance flags left set.
 
 Exit code: 0 when nothing fails (warnings included), 2 when a check fails, 1 when the audit could not run.
 
@@ -682,6 +695,67 @@ pvecli snapshot prune --older-than 7d --name-prefix pre- --keep 1
 ```
 
 `add` skips guests that already have a snapshot with that name. `prune` always shows what it would delete and asks first; `--keep N` spares the N most recent matching snapshots of each guest.
+
+---
+
+## deploy
+
+Many VMs and containers from one YAML file, on one or several clusters.
+
+```bash
+pvecli deploy lab.yaml --dry-run                  # check everything, show the plan
+pvecli deploy lab.yaml -y --parallel 8 --wait-ip 120
+```
+
+The file has `defaults` (common keys, plus `vm:` and `ct:` sections for one type) and a list of `guests`, each `type: vm` (same steps as `vm deploy`) or `type: ct` (same steps as `ct deploy`). Keys follow the options: `name`, `template`, `id`, `node`, `storage`, `full`, `cores`, `memory`, `disk_size`, `tags`, `pool`, `ip`, `gw`, `ip6`, `gw6`, `dns`, `search_domain`, `ssh_key`, `password_env`, `power_on`; `user` and `upgrade` for a VM; `swap`, `bridge`, `vlan`, `unprivileged`, `features` for a container. `null` clears a default. A guest without `profile:` uses `-p`, then the default profile; the plan is grouped by cluster. See `examples/deploy.yaml`.
+
+- **Series**: `count: 3` with `name: web{n}` makes web1 to web3 (`start: 10` for the first number, `{n:02}` for web01), with the ID and a static address stepping by one; a series leaving its subnet is refused.
+- **Checks first**: unknown keys, a `password` key (only `password_env` is accepted), names, IDs or addresses given twice, templates, nodes, storages and pools are checked on every cluster before the first write, and every problem is listed at once.
+- **Idempotent**: a guest whose name exists on its cluster is shown as present and skipped, never overwritten; a name held by the other type, or an `id` taken by another guest, is a conflict and nothing is created. A second run creates nothing.
+- **Execution**: `--parallel N` guests at once (4 by default); free IDs come from `/cluster/nextid` and are reserved for the whole run; clones of one CT template take turns (PVE locks the template during a clone). A failure does not stop the others; the summary gives each guest's ID, cluster, address (`--wait-ip`) and error, lists what a failure left on the cluster with the command to remove it, and exits 1. Nothing is deleted automatically.
+
+---
+
+## backup
+
+Backups of every guest, through the Proxmox API only. They are found on every enabled storage holding `backup` content: a shared storage (PBS, NFS...) is read once, a local one on each node. `list`, `status` and `jobs list` take several profiles (`-p '*'`) and `--json`.
+
+```bash
+pvecli backup list --vmid 100 --storage pbs        # age, size, protection, notes
+pvecli backup status --older-than 2d --failed -p '*'
+pvecli backup run 100,101 --storage pbs            # or --tag web, --pool prod, --node pve1, --all
+pvecli backup run --tag web --mode stop --notes 'before upgrade {{guestname}}' --protected -y
+pvecli backup restore pbs:backup/vm/100/2026-11-18T02:00:00Z --vmid 900 --unique --start
+pvecli backup prune local --keep-last 3 --keep-daily 7 --dry-run
+pvecli backup files pbs:backup/ct/200/2026-11-18T02:00:00Z /root.pxar.didx/etc
+```
+
+```
+pvecli backup list                         Backups per guest (--vmid, --tag, --pool, --storage)
+pvecli backup status                       Covering job, last backup, last vzdump run (--older-than, --failed)
+pvecli backup run [IDS]                    Back up now, one vzdump per node (--storage, --mode, --compress, --notes, --protected)
+pvecli backup restore VOLID                Restore as a new guest (--vmid, --node, --storage, --start, --unique, --force)
+pvecli backup remove VOLID...              Delete backups (asks first; a protected backup is refused)
+pvecli backup protect VOLID...             Protect from pruning and removal (unprotect to undo)
+pvecli backup notes VOLID TEXT             Set the notes of a backup
+pvecli backup prune STORAGE                Preview, then prune by retention (--keep-last, --keep-daily, --keep-weekly, --keep-monthly, --keep-yearly, --vmid, --type, --dry-run)
+pvecli backup files VOLID [PATH]           Browse a PBS backup, read only
+pvecli backup jobs list                    Scheduled jobs
+pvecli backup jobs add                     New job (--schedule, --storage, --vmid | --all [--exclude] | --pool, --keep-*)
+pvecli backup jobs edit ID                 Change only the options given
+pvecli backup jobs enable ID / disable ID / remove ID
+pvecli backup jobs run ID                  Run a job now with its own options
+```
+
+`run` sends `compress=zstd` and `remove=0` unless told otherwise: PVE alone would write an uncompressed archive and prune older backups by the storage retention. A guest counts as backed up only when the task log says so and a new archive of it is on the storage: a task can end OK after dropping a guest that moved to another node. Exit code 1 when a guest was not backed up.
+
+`restore` takes the next free ID by default and refuses an existing one. With `--force` the guest must be stopped and its VMID typed again; the restore then runs on its node. A container restored without `--storage` goes back to the storage of its root disk (PVE alone would use `local`).
+
+`status` says "not checked" rather than OK when something cannot be read: a storage that does not answer, backup jobs without `Sys.Audit` on `/`, or the vzdump tasks of a node without `Sys.Audit` on that node (PVE then hides other users' tasks).
+
+`jobs run`: PVE has no "run job" endpoint, the job's options go to vzdump on each node with `job-id` (root@pam only; without it, the run is a plain backup).
+
+`audit` gains a "Backup freshness" check: guests of an enabled job whose last backup is older than `--backup-age` (default 2d) warn, a failed last run fails.
 
 ---
 

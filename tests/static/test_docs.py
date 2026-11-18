@@ -16,7 +16,7 @@ from src.cli.main import app
 
 ROOT = Path(__file__).resolve().parents[2]
 DOCS = [ROOT / "README.md", *sorted((ROOT / "docs").glob("*.md"))]
-TOP = "vm|ct|node|tag|pool|sdn|ceph|cluster|storage|config|find|audit|snapshot"
+TOP = "vm|ct|node|tag|pool|sdn|ceph|cluster|storage|config|find|audit|snapshot|backup|deploy"
 LINE = re.compile(rf"(?:^|`|\s)(pvecli\s(?:{TOP})\b[^`\n]*)")
 
 

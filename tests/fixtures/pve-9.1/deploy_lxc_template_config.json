@@ -1,0 +1,11 @@
+{
+ "arch": "amd64",
+ "hostname": "tpl920",
+ "memory": 512,
+ "net0": "name=eth0,bridge=vmbr0,hwaddr=BC:24:11:03:36:B6,ip=dhcp,type=veth",
+ "ostype": "debian",
+ "rootfs": "local-lvm:base-920-disk-0,size=2G",
+ "swap": 512,
+ "template": 1,
+ "unprivileged": 1
+}

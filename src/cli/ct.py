@@ -71,7 +71,7 @@ from .tag import _parse_color_map
 
 _CMD_ORDER = [
     "start", "stop", "shutdown", "reboot",
-    "add", "clone", "migrate", "edit", "remove",
+    "add", "deploy", "clone", "migrate", "edit", "remove",
     "tag", "snapshot", "template", "image", "ha",
     "vnc", "ssh",
     "list", "show",
@@ -3395,3 +3395,5 @@ async def migrate_ct(
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)
+
+from . import ct_deploy  # noqa: E402,F401  (registers `ct deploy` on this app)

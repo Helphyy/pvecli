@@ -1,0 +1,1 @@
+"boot: order=net0\ncores: 1\nmemory: 512\nmeta: creation-qemu=10.1.2,ctime=1785783460\nname: guest-sdn\nnet0: virtio=BC:24:11:EE:5A:C4,bridge=vsimple\nsmbios1: uuid=98ceb042-ff9f-48c5-9236-196ba63eedfd\nvmgenid: 11bde28b-67d7-4938-af35-02ab3555ad6a\n"

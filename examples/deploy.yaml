@@ -1,0 +1,86 @@
+# pvecli deploy examples/deploy.yaml --dry-run    check everything, show the plan
+# pvecli deploy examples/deploy.yaml -y           create what is missing
+#
+# Every guest is checked on its cluster before the first write (templates,
+# nodes, storages, pools, IDs, addresses). A guest whose name already exists
+# on its cluster is skipped, never overwritten: running the file again only
+# creates what is missing.
+#
+# Keys left out take Proxmox's own default, not "nothing".
+
+defaults:
+  # Profile of the guests that name none. Without it: -p, then the default
+  # profile of config.yaml.
+  profile: lab1
+  gw: 10.0.0.1
+  dns: 10.0.0.1
+  search_domain: lab.example
+  ssh_key: ~/.ssh/id_ed25519.pub     # a file or the key itself; a list for several
+  tags: [lab, deploy]
+
+  # Defaults for one type only: they override the common ones above.
+  vm:
+    template: 9000                   # ID of a cloud-init VM template
+    user: debian                     # cloud-init user
+  ct:
+    # A file template (POST /lxc) or the ID of a CT template (clone).
+    template: local:vztmpl/debian-13-standard_13.6-1_amd64.tar.zst
+    node: pve1                       # needed for a file template on a cluster
+    storage: local-lvm               # root disk; PVE's default is 'local'
+    features: {nesting: 1}           # or "nesting=1,keyctl=1"
+
+guests:
+  # A series: web1, web2, web3 at 10.0.0.21, .22, .23. The series is refused
+  # if it leaves its subnet. {n:02} gives web01, web02...
+  - type: vm
+    name: web{n}
+    count: 3
+    ip: 10.0.0.21/24
+    cores: 2
+    memory: 2G
+    disk_size: 20G                   # only grows the template disk
+    power_on: true                   # start once configured (default: true)
+
+  # Fixed ID; the others get free ones from /cluster/nextid.
+  - type: vm
+    name: db01
+    id: 930
+    ip: 10.0.0.30/24
+    memory: 8G
+    full: true                       # full clone (implied by storage:)
+    storage: local-lvm
+    pool: databases
+    # Never a password in this file: the name of a variable holding it.
+    password_env: DB01_PASSWORD
+
+  # Containers from the file template of defaults.ct.
+  - type: ct
+    name: cache{n}
+    count: 2
+    start: 1                         # first number of the series (default 1)
+    ip: 10.0.0.41/24
+    cores: 1
+    memory: 512M
+    swap: 0                          # 0 is a value: no swap
+    disk_size: 8G                    # whole GiB (PVE's default: 4G)
+    vlan: 20
+    bridge: vmbr1                    # default vmbr0 for a new NIC
+    password_env: CT_ROOT_PASSWORD   # root password, file templates only
+
+  # A clone of CT template 920: linked when its storage allows it. A clone
+  # keeps the root password, SSH keys and privilege level of its template.
+  - type: ct
+    name: proxy01
+    template: 920
+    storage: null                    # null clears a default: storage would mean a full clone
+    ssh_key: null                    # a clone takes no keys: clear the default ones
+    ip: dhcp
+    unprivileged: true               # must match the template
+
+  # Another cluster in the same run: the plan is grouped by cluster.
+  - type: ct
+    name: mon01
+    profile: lab6
+    node: pve6
+    ip: 192.168.60.10/24
+    gw: 192.168.60.1

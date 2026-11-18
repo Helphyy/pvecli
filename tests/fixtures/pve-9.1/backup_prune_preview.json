@@ -1,0 +1,9 @@
+[
+ {
+  "ctime": 1795011133,
+  "mark": "keep",
+  "type": "qemu",
+  "vmid": 300,
+  "volid": "local:backup/vzdump-qemu-300-2026_11_18-15_12_13.vma.zst"
+ }
+]

@@ -1,0 +1,94 @@
+[
+ {
+  "n": 1,
+  "t": "INFO: starting new backup job: vzdump 300 --storage pbs-lab --node pve-lab2 --mode stop --compress zstd"
+ },
+ {
+  "n": 2,
+  "t": "INFO: Starting Backup of VM 300 (qemu)"
+ },
+ {
+  "n": 3,
+  "t": "INFO: Backup started at 2026-08-03 23:32:41"
+ },
+ {
+  "n": 4,
+  "t": "INFO: status = stopped"
+ },
+ {
+  "n": 5,
+  "t": "INFO: backup mode: stop"
+ },
+ {
+  "n": 6,
+  "t": "INFO: ionice priority: 7"
+ },
+ {
+  "n": 7,
+  "t": "INFO: VM Name: guest-sdn"
+ },
+ {
+  "n": 8,
+  "t": "INFO: creating Proxmox Backup Server archive 'vm/300/2026-08-03T21:32:41Z'"
+ },
+ {
+  "n": 9,
+  "t": "INFO: backup contains no disks"
+ },
+ {
+  "n": 10,
+  "t": "INFO: starting diskless backup"
+ },
+ {
+  "n": 11,
+  "t": "INFO: /usr/bin/proxmox-backup-client backup --repository root@pam@10.199.32.70:labds --backup-type vm --backup-id 300 --backup-time 1785792761 qemu-server.conf:/var/tmp/vzdumptmp96369_300/qemu-server.conf"
+ },
+ {
+  "n": 12,
+  "t": "INFO: Starting backup: vm/300/2026-08-03T21:32:41Z    "
+ },
+ {
+  "n": 13,
+  "t": "INFO: Client name: pve-lab2    "
+ },
+ {
+  "n": 14,
+  "t": "INFO: Starting backup protocol: Mon Aug  3 23:32:41 2026    "
+ },
+ {
+  "n": 15,
+  "t": "INFO: No previous manifest available.    "
+ },
+ {
+  "n": 16,
+  "t": "INFO: Upload config file '/var/tmp/vzdumptmp96369_300/qemu-server.conf' to 'root@pam@10.199.32.70:8007:labds' as qemu-server.conf.blob    "
+ },
+ {
+  "n": 17,
+  "t": "INFO: Duration: 0.10s    "
+ },
+ {
+  "n": 18,
+  "t": "INFO: End Time: Mon Aug  3 23:32:41 2026    "
+ },
+ {
+  "n": 19,
+  "t": "INFO: Finished Backup of VM 300 (00:00:00)"
+ },
+ {
+  "n": 20,
+  "t": "INFO: Backup finished at 2026-08-03 23:32:41"
+ },
+ {
+  "n": 21,
+  "t": "INFO: Backup job finished successfully"
+ },
+ {
+  "n": 22,
+  "t": "INFO: notified via target `mail-to-root`"
+ },
+ {
+  "n": 23,
+  "t": "TASK OK"
+ }
+]

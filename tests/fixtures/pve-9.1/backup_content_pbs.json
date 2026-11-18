@@ -1,0 +1,11 @@
+[
+ {
+  "content": "backup",
+  "ctime": 1785792761,
+  "format": "pbs-vm",
+  "size": 510,
+  "subtype": "qemu",
+  "vmid": 300,
+  "volid": "pbs-lab:backup/vm/300/2026-08-03T21:32:41Z"
+ }
+]

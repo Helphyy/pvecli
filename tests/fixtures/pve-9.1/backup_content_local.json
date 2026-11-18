@@ -1,0 +1,12 @@
+[
+ {
+  "content": "backup",
+  "ctime": 1795011133,
+  "format": "vma.zst",
+  "notes": "pvecli-test guest-sdn",
+  "size": 367,
+  "subtype": "qemu",
+  "vmid": 300,
+  "volid": "local:backup/vzdump-qemu-300-2026_11_18-15_12_13.vma.zst"
+ }
+]

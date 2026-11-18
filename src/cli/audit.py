@@ -225,6 +225,56 @@ async def _guests(a: _Audit, guests: list[dict], snapshot_age: int) -> None:
         )
 
 
+async def _backup_freshness(a: _Audit, nodes: list[str], guests: list[dict], max_age: int) -> None:
+    """Guests of an enabled backup job: last backup too old, or last run failed."""
+    from .backup import collect_coverage
+
+    check = "Backup freshness"
+    try:
+        cov = await collect_coverage(a.client, guests, nodes)
+    except PVECliError as e:
+        a.unreadable(check, str(e))
+        return
+    if cov["jobs"] is None:
+        a.unreadable(check, f"backup jobs unreadable ({cov['jobs_error']})")
+        return
+    # Guests in no job at all are the "Backups" check's business
+    covered = [g for g in guests if any(not j.endswith("(disabled)") for j in cov["jobs"].get(g["vmid"], []))]
+    if not covered:
+        a.add(check, "INFO", "no guest is in an enabled backup job")
+        return
+    days = max_age // _DAY
+    label = f"{days}d" if max_age % _DAY == 0 else f"{max_age // 3600}h"
+    failed, blind, old = [], [], []
+    limit = time.time() - max_age
+    for g in sorted(covered, key=lambda x: x["vmid"]):
+        run = cov["runs"].get(g["vmid"])
+        if g.get("node") in cov["blind"]:
+            blind.append(g)
+        elif run and run["state"] == "failed":
+            failed.append(f"{g['vmid']} ({run['detail']})")
+        last = cov["last"].get(g["vmid"])
+        if not last:
+            old.append(f"{g['vmid']} (never)")
+        elif last["ctime"] < limit:
+            old.append(f"{g['vmid']} ({int((time.time() - last['ctime']) // _DAY)}d)")
+    if failed:
+        a.add(check, "FAIL", f"{len(failed)} guest(s) whose last backup run failed: " + ", ".join(failed[:10]))
+    if cov["unreadable"]:
+        # A newer backup may sit on the storage that could not be read
+        a.unreadable(check, "backup age, storage(s) unreadable: "
+                     + ", ".join(f"{k} ({v})" for k, v in list(cov["unreadable"].items())[:5]))
+    elif old:
+        a.add(check, "WARN", f"{len(old)} guest(s) in a backup job with no backup in the last {label}: "
+              + ", ".join(old[:10]) + (" ..." if len(old) > 10 else ""))
+    if blind:
+        nodes_ = sorted({g["node"] for g in blind})
+        a.unreadable(check, f"last run of {len(blind)} guest(s) on {', '.join(nodes_)} "
+                     f"({cov['blind'][nodes_[0]]})")
+    if not (failed or old or blind or cov["unreadable"]):
+        a.add(check, "OK", f"{len(covered)} guest(s) in a job, each backed up within {label}, last runs succeeded")
+
+
 async def _orphan_disks(a: _Audit, nodes: list[str], guests: list[dict]) -> None:
     """Guest volumes left on a storage after their guest was removed."""
     known = {g["vmid"] for g in guests}
@@ -279,6 +329,7 @@ async def _ha_and_ceph(a: _Audit) -> None:
 async def audit(
     cert_days: int = typer.Option(30, "--cert-days", help="Warn on certificates expiring within this many days"),
     snapshot_age: str = typer.Option("30d", "--snapshot-age", help="Warn on snapshots older than this (30d, 2w)"),
+    backup_age: str = typer.Option("2d", "--backup-age", help="Warn on guests of a backup job whose last backup is older (2d, 36h)"),
     skip_orphans: bool = typer.Option(False, "--skip-orphans", help="Skip the orphan disk scan (lists every storage)"),
     only_problems: bool = typer.Option(False, "--problems", help="Hide OK lines"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile(s): name, list, pattern ('client-*') or @group"),
@@ -295,6 +346,7 @@ async def audit(
         pvecli audit -p @prod --json
     """
     age = _parse_age(snapshot_age)
+    max_backup_age = _parse_age(backup_age)
     try:
         async with ProxmoxClient(ConfigManager().get_profile(profile)) as client:
             a = _Audit(client)
@@ -312,6 +364,7 @@ async def audit(
                 _firewall(a),
                 _versions_and_subscription(a, nodes),
                 _guests(a, guests, age),
+                _backup_freshness(a, nodes, guests, max_backup_age),
                 _ha_and_ceph(a),
             ]
             if not skip_orphans:

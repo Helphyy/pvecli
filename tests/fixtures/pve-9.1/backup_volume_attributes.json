@@ -1,0 +1,8 @@
+{
+ "format": "raw",
+ "notes": "pvecli-test guest-sdn",
+ "path": "/var/lib/vz/dump/vzdump-qemu-300-2026_11_18-15_12_13.vma.zst",
+ "protected": 0,
+ "size": 512,
+ "used": 4096
+}
