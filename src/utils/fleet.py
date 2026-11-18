@@ -86,6 +86,55 @@ def resolve_profiles(spec: str | None) -> list[str]:
     return list(dict.fromkeys(names))
 
 
+def _cluster_identity(name: str) -> tuple | str:
+    """What a profile really points at: cluster name and members, or the
+    node itself for a standalone one. On failure, the error text."""
+    import asyncio
+
+    from ..api.client import ProxmoxClient
+    from ..config import ConfigManager
+
+    async def probe() -> tuple | None:
+        try:
+            async with ProxmoxClient(ConfigManager().get_profile(name)) as client:
+                status = await client.get_cluster_status() or []
+        except Exception as e:
+            return str(e) or type(e).__name__
+        cluster = next((x for x in status if x.get("type") == "cluster"), None)
+        nodes = tuple(sorted(x.get("name", "") for x in status if x.get("type") == "node"))
+        if cluster:
+            return ("cluster", cluster.get("name"), nodes)
+        return ("node", nodes)
+
+    return asyncio.run(probe())
+
+
+def dedupe_by_cluster(names: list[str]) -> tuple[list[str], dict[str, str], dict[str, str]]:
+    """Keep one profile per cluster.
+
+    Returns (kept, {skipped: kept_twin}, {unreachable: error}). Two profiles
+    on the same cluster would make a command act twice on it (twice the same
+    exec, twice the same snapshot). An unreachable profile is reported with
+    the probe error instead of being tried a second time.
+    """
+    with ThreadPoolExecutor(max_workers=max(1, min(_MAX_PARALLEL, len(names)))) as pool:
+        identities = dict(zip(names, pool.map(_cluster_identity, names), strict=True))
+    kept: list[str] = []
+    skipped: dict[str, str] = {}
+    unreachable: dict[str, str] = {}
+    first: dict[tuple, str] = {}
+    for n in names:
+        ident = identities[n]
+        if isinstance(ident, str):
+            unreachable[n] = ident
+        elif ident in first:
+            skipped[n] = first[ident]
+        else:
+            first[ident] = n
+            kept.append(n)
+    return kept, skipped, unreachable
+
+
 def _run_one(func: Callable[..., Any], args: tuple, kwargs: dict) -> int:
     """Run the command for one profile and return its exit code."""
     try:
@@ -175,17 +224,26 @@ def fleet(func: Callable[..., Any] | None = None, *, parallel: bool = False) -> 
         except PVECliError as e:
             print_error(str(e))
             raise typer.Exit(1)
+        all_names = names
+        names, twins, unreachable = dedupe_by_cluster(names)
+        for skipped, kept in twins.items():
+            # stderr: keeps a --json stream on stdout parseable
+            err_console.print(
+                f"[yellow]Skipping profile {skipped}: same cluster as {kept}[/yellow]"
+            )
 
         json_mode = bool(kwargs.get("json_output"))
         capture = parallel or json_mode
-        results: dict[str, tuple[int, str, str]] = {}
+        results: dict[str, tuple[int, str, str]] = {
+            n: (1, "", f"Error: {err}\n") for n, err in unreachable.items()
+        }
 
         if capture:
             real_out, real_err = sys.stdout, sys.stderr
             out, err = _ThreadStream(real_out), _ThreadStream(real_err)
             sys.stdout, sys.stderr = out, err
             try:
-                workers = min(_MAX_PARALLEL, len(names)) if parallel else 1
+                workers = max(1, min(_MAX_PARALLEL, len(names))) if parallel else 1
                 with ThreadPoolExecutor(max_workers=workers) as pool:
                     futures = {
                         name: pool.submit(
@@ -200,7 +258,14 @@ def fleet(func: Callable[..., Any] | None = None, *, parallel: bool = False) -> 
 
         documents: dict[str, Any] = {}
         failed: list[str] = []
-        for name in names:
+        ordered = [n for n in all_names if n in results or n in names]
+        for name in ordered:
+            if name in unreachable and not capture:
+                console.rule(f"[bold cyan]{name}[/bold cyan]", align="left")
+                print_error(unreachable[name])
+                console.print()
+                failed.append(name)
+                continue
             if capture:
                 code, out_text, err_text = results[name]
             if json_mode:
@@ -232,7 +297,7 @@ def fleet(func: Callable[..., Any] | None = None, *, parallel: bool = False) -> 
         if failed:
             # stderr: a --json stream on stdout must stay parseable
             err_console.print(
-                f"[yellow]Failed on {len(failed)}/{len(names)} profile(s): {', '.join(failed)}[/yellow]"
+                f"[yellow]Failed on {len(failed)}/{len(ordered)} profile(s): {', '.join(failed)}[/yellow]"
             )
             raise typer.Exit(1)
         return None

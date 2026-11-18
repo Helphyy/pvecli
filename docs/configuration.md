@@ -91,7 +91,7 @@ groups:
 
 Read-only commands query the profiles in parallel; an unreachable cluster is reported in the result without stopping the others, and the command then exits 1. Commands that may ask for a confirmation run the profiles one after the other.
 
-Two profiles pointing at the same cluster make a command run twice on it: harmless for a read, not for `vm exec`. Keep one profile per cluster in groups and patterns.
+Two profiles pointing at the same cluster are detected (same cluster name and members): the command runs once, on the first of them, and the others are reported as skipped. A profile that cannot be reached is reported once, without being tried a second time.
 
 ## Managing profiles
 
