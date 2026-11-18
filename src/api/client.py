@@ -1634,6 +1634,34 @@ class ProxmoxClient:
         """
         return await self.get(f"/storage/{storage}")
 
+    @classmethod
+    def for_host(
+        cls,
+        host: str,
+        user: str,
+        password: str,
+        port: int = 8006,
+        verify_ssl: bool = False,
+        timeout: int = 30,
+    ) -> "ProxmoxClient":
+        """Client for a host that has no pvecli profile.
+
+        Forming a cluster means talking to nodes that are not part of the
+        profile's cluster yet, and reconnecting after a join because the
+        node reissues its TLS certificate. Such a client is never persisted
+        to the configuration.
+        """
+        from ..models.config import AuthConfig, ProfileConfig
+
+        profile = ProfileConfig(
+            host=host,
+            port=port,
+            verify_ssl=verify_ssl,
+            timeout=timeout,
+            auth=AuthConfig(type="password", user=user, password=password),
+        )
+        return cls(profile)
+
     # Ceph, read only. Writing is limited to the maintenance flags, which
     # cluster shutdown already uses.
 
@@ -1690,7 +1718,83 @@ class ProxmoxClient:
     # SDN. Config lives in /etc/pve/sdn, replicated to every node, and stays
     # pending until apply_sdn() regenerates the network configuration.
 
+    async def create_cluster(self, clustername: str, **params: Any) -> str:
+        """Turn the node this client talks to into the first cluster member.
+
+        Args:
+            clustername: Cluster name, which no API can ever change afterwards
+            **params: link0..link7, nodeid, votes
+
+        Returns:
+            UPID of the creation task
+        """
+        data: dict[str, Any] = {"clustername": clustername}
+        for key, value in params.items():
+            if value is not None:
+                data[key] = value
+        return await self.post("/cluster/config", data=data)
+
+    async def join_cluster(
+        self,
+        peer_host: str,
+        peer_password: str,
+        fingerprint: str,
+        **links: Any,
+    ) -> str:
+        """Make the node this client is connected to join a peer's cluster.
+
+        Args:
+            peer_host: Address of a node already in the target cluster
+            peer_password: root@pam password of that peer
+            fingerprint: TLS fingerprint of the peer
+            **links: link0..link7 addresses of the joining node
+
+        Returns:
+            UPID of the join task
+        """
+        data: dict[str, Any] = {
+            "hostname": peer_host,
+            "password": peer_password,
+            "fingerprint": fingerprint,
+        }
+        for key, value in links.items():
+            if value is not None:
+                data[key] = value
+        return await self.post("/cluster/config/join", data=data)
+
     # Cluster membership and node health, used by cluster preflight/health
+
+    async def get_node_version(self, node: str) -> dict[str, Any]:
+        """PVE version running on one node."""
+        return await self.get(f"/nodes/{node}/version")
+
+    async def get_node_time(self, node: str) -> dict[str, Any]:
+        """Node clock, as localtime, utctime and timezone."""
+        return await self.get(f"/nodes/{node}/time")
+
+    async def get_node_dns(self, node: str) -> dict[str, Any]:
+        """Resolver configuration of a node."""
+        return await self.get(f"/nodes/{node}/dns")
+
+    async def get_node_hosts(self, node: str) -> dict[str, Any]:
+        """Raw /etc/hosts of a node."""
+        return await self.get(f"/nodes/{node}/hosts")
+
+    async def get_node_services(self, node: str) -> list[dict[str, Any]]:
+        """systemd services PVE knows about, with their state."""
+        return await self.get(f"/nodes/{node}/services")
+
+    async def get_cluster_totem(self) -> dict[str, Any]:
+        """Corosync totem settings: cluster name, links, config version."""
+        return await self.get("/cluster/config/totem")
+
+    async def get_cluster_qdevice(self) -> dict[str, Any]:
+        """QDevice configuration, empty when no arbiter is set up."""
+        return await self.get("/cluster/config/qdevice")
+
+    async def get_cluster_join_info(self) -> dict[str, Any]:
+        """Information a node needs to join: nodelist, fingerprints, totem."""
+        return await self.get("/cluster/config/join")
 
     async def update_storage_config(
         self,
