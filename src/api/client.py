@@ -18,6 +18,23 @@ from .exceptions import (
 from ..models.config import ProfileConfig
 
 
+def is_not_implemented(err: Exception) -> bool:
+    """Whether the API refused a call because this PVE version lacks it.
+
+    Proxmox answers 501 "Method '...' not implemented" for an endpoint it does
+    not know. Calling a newer endpoint and falling back on this error is how
+    pvecli stays compatible with older clusters: an unknown endpoint has no
+    side effect, so the attempt is always safe.
+    """
+    return isinstance(err, APIError) and (
+        err.status_code == 501 or "not implemented" in str(err).lower()
+    )
+
+
+# Message of PVE 9 when the HA groups have been converted to HA rules
+HA_GROUPS_MIGRATED = "migrated to rules"
+
+
 def _upid_node(upid: str) -> str:
     """Extract the executing node from a UPID (format UPID:node:pid:...).
 
@@ -444,17 +461,77 @@ class ProxmoxClient:
         data = {k: v for k, v in params.items() if v is not None}
         await self.put(f"/cluster/ha/resources/{sid}", data=data)
 
-    async def delete_ha_resource(self, sid: str) -> None:
+    async def delete_ha_resource(self, sid: str, purge: bool = False) -> None:
         """Remove an HA resource.
 
         Args:
             sid: Resource SID
+            purge: Also drop it from the HA rules referencing it (PVE 9 and
+                later only: older versions reject the parameter)
         """
-        await self.delete(f"/cluster/ha/resources/{sid}")
+        await self.delete(
+            f"/cluster/ha/resources/{sid}", params={"purge": 1} if purge else None
+        )
 
     async def get_ha_groups(self) -> list[dict[str, Any]]:
         """Get list of HA groups."""
         return await self.get("/cluster/ha/groups")
+
+    async def get_ha_placement_mode(self) -> str:
+        """How this cluster pins HA resources to nodes: "groups" or "rules".
+
+        PVE 8 only has groups. PVE 9 converts them to rules once every node
+        runs 9, after which reading the groups fails with "migrated to
+        rules". A PVE 9 cluster still holding unconverted groups keeps
+        using them, so the groups endpoint is the one to ask.
+        """
+        try:
+            await self.get("/cluster/ha/groups")
+            return "groups"
+        except APIError as e:
+            if HA_GROUPS_MIGRATED in str(e) or is_not_implemented(e):
+                return "rules"
+            raise
+
+    async def get_ha_rules(
+        self, rule_type: str | None = None, resource: str | None = None
+    ) -> list[dict[str, Any]]:
+        """HA rules (PVE 9 and later), optionally filtered by type or resource."""
+        params = {"type": rule_type, "resource": resource}
+        return await self.get(
+            "/cluster/ha/rules", params={k: v for k, v in params.items() if v}
+        ) or []
+
+    async def create_ha_rule(self, rule: str, rule_type: str, **params: Any) -> None:
+        """Create an HA rule: node-affinity or resource-affinity."""
+        data: dict[str, Any] = {"rule": rule, "type": rule_type}
+        data.update({k: v for k, v in params.items() if v is not None})
+        await self.post("/cluster/ha/rules", data=data)
+
+    async def update_ha_rule(self, rule: str, rule_type: str, **params: Any) -> None:
+        """Update an HA rule. The type is required by the API to pick the schema."""
+        data: dict[str, Any] = {"type": rule_type}
+        data.update({k: v for k, v in params.items() if v is not None})
+        await self.put(f"/cluster/ha/rules/{rule}", data=data)
+
+    async def delete_ha_rule(self, rule: str) -> None:
+        """Delete an HA rule."""
+        await self.delete(f"/cluster/ha/rules/{rule}")
+
+    async def disarm_ha(self, resource_mode: str = "freeze") -> Any:
+        """Disarm the whole HA stack and release every watchdog (PVE 9.2+).
+
+        Args:
+            resource_mode: "freeze" keeps the resources where they are,
+                "ignore" lets them be managed by hand while disarmed.
+        """
+        return await self.post(
+            "/cluster/ha/status/disarm-ha", data={"resource-mode": resource_mode}
+        )
+
+    async def arm_ha(self) -> Any:
+        """Re-arm the HA stack after disarm_ha (PVE 9.2+)."""
+        return await self.post("/cluster/ha/status/arm-ha")
 
     async def create_vnc_shell(self, node: str, websocket: bool = True) -> dict[str, Any]:
         """Create a VNC shell proxy to a node.

@@ -881,12 +881,144 @@ def _state_style(state: str) -> str:
     }.get(state, "white")
 
 
+def _ha_rule_name(kind: str, resource_id: int) -> str:
+    """Name of the node-affinity rule pvecli owns for one guest."""
+    return f"pvecli-{kind}{resource_id}"
+
+
+def _rule_resources(rule: dict[str, Any]) -> list[str]:
+    """Resources a rule applies to, from its comma separated 'resources' field."""
+    return [r.strip() for r in str(rule.get("resources", "")).split(",") if r.strip()]
+
+
+async def _ha_rules_by_sid(client: ProxmoxClient) -> dict[str, list[dict[str, Any]]]:
+    """HA rules grouped by the resource they reference (rules mode only)."""
+    by_sid: dict[str, list[dict[str, Any]]] = {}
+    for rule in await client.get_ha_rules():
+        for sid in _rule_resources(rule):
+            by_sid.setdefault(sid, []).append(rule)
+    return by_sid
+
+
+def _describe_rule(rule: dict[str, Any]) -> str:
+    """One line summary of an HA rule, e.g. 'pvecli-vm100: nodes pve1:2,pve2 (strict)'."""
+    parts = [str(rule.get("rule", "?")) + ":"]
+    if rule.get("type") == "node-affinity":
+        parts.append(f"nodes {rule.get('nodes', '?')}")
+        if rule.get("strict"):
+            parts.append("(strict)")
+    else:
+        parts.append(f"{rule.get('affinity', 'positive')} affinity with {rule.get('resources', '?')}")
+    if rule.get("disable"):
+        parts.append("[disabled]")
+    return " ".join(parts)
+
+
+async def _validate_ha_nodes(client: ProxmoxClient, nodes: str) -> str:
+    """Check a '<node>[:<priority>],...' list against the cluster members."""
+    members = {n.get("node", "") for n in await client.get_nodes()}
+    cleaned: list[str] = []
+    for entry in (e.strip() for e in nodes.split(",")):
+        if not entry:
+            continue
+        name, _, prio = entry.partition(":")
+        if name not in members:
+            raise PVECliError(
+                f"Unknown node '{name}'. Cluster members: {', '.join(sorted(members))}"
+            )
+        if prio and not prio.isdigit():
+            raise PVECliError(f"Invalid priority '{prio}' for node '{name}': use a number")
+        cleaned.append(entry)
+    if not cleaned:
+        raise PVECliError("No node given")
+    return ",".join(cleaned)
+
+
+def _check_placement_option(mode: str, group: str | None, nodes: str | None) -> None:
+    """Refuse the placement option the cluster cannot honour, and say which one it can."""
+    if mode == "rules" and group:
+        raise PVECliError(
+            "HA groups were migrated to HA rules on this cluster: pin the guest "
+            "with --nodes instead (e.g. --nodes pve1:2,pve2)"
+        )
+    if mode == "groups" and nodes is not None:
+        raise PVECliError(
+            "This cluster still uses HA groups (PVE 8, or PVE 9 before the groups "
+            "were migrated to rules): use --group"
+        )
+
+
+async def _apply_node_affinity(
+    client: ProxmoxClient,
+    kind: str,
+    resource_id: int,
+    nodes: str | None,
+    strict: bool | None,
+) -> str | None:
+    """Create, update or drop the node-affinity rule pvecli owns for a guest.
+
+    nodes == "" drops the rule. A guest already pinned by a rule pvecli did not
+    create is left alone: that rule may cover other guests too.
+
+    Returns a short description of what changed, or None when nothing did.
+    """
+    sid = f"{kind}:{resource_id}"
+    own = _ha_rule_name(kind, resource_id)
+    rules = await client.get_ha_rules(rule_type="node-affinity")
+    mine = next((r for r in rules if r.get("rule") == own), None)
+    foreign = [
+        r for r in rules if r.get("rule") != own and sid in _rule_resources(r)
+    ]
+
+    if nodes == "":
+        if mine:
+            await client.delete_ha_rule(own)
+            return f"rule {own} removed"
+        return None
+
+    if foreign and (nodes is not None or strict is not None):
+        raise PVECliError(
+            f"{sid} is already placed by rule(s) "
+            + ", ".join(str(r.get("rule")) for r in foreign)
+            + ", which pvecli did not create and may cover other guests. "
+            "Edit or remove them first (web UI: Datacenter > HA > Rules)."
+        )
+
+    if nodes is None:
+        if strict is None:
+            return None
+        if not mine:
+            raise PVECliError(f"{sid} has no node rule yet: pass --nodes as well")
+        await client.update_ha_rule(own, "node-affinity", strict=int(strict))
+        return f"rule {own} strict={'yes' if strict else 'no'}"
+
+    nodes = await _validate_ha_nodes(client, nodes)
+    if mine:
+        params: dict[str, Any] = {"nodes": nodes}
+        if strict is not None:
+            params["strict"] = int(strict)
+        await client.update_ha_rule(own, "node-affinity", **params)
+        return f"rule {own} nodes={nodes}"
+    await client.create_ha_rule(
+        own,
+        "node-affinity",
+        resources=sid,
+        nodes=nodes,
+        strict=int(bool(strict)),
+        comment="Managed by pvecli",
+    )
+    return f"rule {own} created, nodes={nodes}"
+
+
 async def shared_ha_status(
     client: ProxmoxClient,
     kind: str,
     resource_id: int | None,
 ) -> None:
     """Show HA status for a VM/CT, or list all HA resources of this kind.
+
+    Placement is shown as the HA group on clusters that still use groups, and
+    as the HA rules referencing the guest on clusters that moved to rules.
 
     Args:
         client: ProxmoxClient instance.
@@ -897,12 +1029,23 @@ async def shared_ha_status(
     resources = await client.get_ha_resources()
     resources = [r for r in resources if r.get("sid", "").startswith(f"{kind}:")]
 
-    runtime = []
+    # Live state from the HA manager. Entries are keyed by 'sid' (vm:100);
+    # their 'id' is service:vm:100. Only API errors are tolerated here: a
+    # broad except used to hide a call to a method that did not exist.
     try:
-        runtime = await client.get_ha_status()
-    except Exception:
+        runtime = await client.get_cluster_ha_status() or []
+    except PVECliError:
         runtime = []
-    runtime_map = {e.get("id"): e for e in runtime if isinstance(e, dict) and e.get("id")}
+    runtime_map = {e.get("sid"): e for e in runtime if isinstance(e, dict) and e.get("sid")}
+
+    mode = await client.get_ha_placement_mode()
+    rules_by_sid = await _ha_rules_by_sid(client) if mode == "rules" else {}
+
+    def placement(res: dict[str, Any]) -> str:
+        if mode == "groups":
+            return res.get("group", "") or "-"
+        names = [str(r.get("rule")) for r in rules_by_sid.get(res.get("sid", ""), [])]
+        return ", ".join(names) or "-"
 
     if resource_id is not None:
         sid = f"{kind}:{resource_id}"
@@ -918,8 +1061,10 @@ async def shared_ha_status(
             console.print(f"  [bold]Current state:[/bold]    [{_state_style(rt['state'])}]{rt['state']}[/]")
         if rt.get("node"):
             console.print(f"  [bold]Node:[/bold]             {rt['node']}")
-        if res.get("group"):
+        if mode == "groups" and res.get("group"):
             console.print(f"  [bold]Group:[/bold]            {res['group']}")
+        for rule in rules_by_sid.get(sid, []):
+            console.print(f"  [bold]Rule:[/bold]             {_describe_rule(rule)}")
         if res.get("max_restart") is not None:
             console.print(f"  [bold]Max restart:[/bold]      {res['max_restart']}")
         if res.get("max_relocate") is not None:
@@ -937,7 +1082,7 @@ async def shared_ha_status(
     table.add_column("Configured")
     table.add_column("Current")
     table.add_column("Node")
-    table.add_column("Group")
+    table.add_column("Group" if mode == "groups" else "Rules")
     table.add_column("Restart")
     table.add_column("Relocate")
     table.add_column("Comment", overflow="fold")
@@ -952,7 +1097,7 @@ async def shared_ha_status(
             f"[{_state_style(cfg)}]{cfg}[/]",
             f"[{_state_style(cur)}]{cur}[/]" if cur != "-" else "-",
             rt.get("node", "-"),
-            r.get("group", "-") or "-",
+            placement(r),
             str(r.get("max_restart", "-")),
             str(r.get("max_relocate", "-")),
             r.get("comment", "") or "",
@@ -970,6 +1115,8 @@ async def shared_ha_add(
     max_relocate: int | None,
     comment: str | None,
     interactive: bool,
+    nodes: str | None = None,
+    strict: bool | None = None,
 ) -> None:
     """Register a VM/CT as an HA resource.
 
@@ -979,6 +1126,8 @@ async def shared_ha_add(
         resource_id: VMID/CTID.
         group, state, max_restart, max_relocate, comment: HA options (None to skip/wizard).
         interactive: If True, prompt for missing values via wizard.
+        nodes: Preferred nodes "<node>[:<priority>],..." (clusters using HA rules).
+        strict: Restrict the guest to those nodes instead of preferring them.
     """
     from rich.prompt import Confirm, IntPrompt, Prompt
 
@@ -1002,10 +1151,13 @@ async def shared_ha_add(
         print_error(f"{resource_id} is not a {label} (type={found.get('type')})")
         raise typer.Exit(1)
 
+    mode = await client.get_ha_placement_mode()
+    _check_placement_option(mode, group, nodes)
+
     if interactive:
         console.print(f"\n[bold cyan]═══ HA Add Wizard ({label} {resource_id}) ═══[/bold cyan]\n")
 
-        if group is None:
+        if mode == "groups" and group is None:
             ha_groups = await client.get_ha_groups()
             if ha_groups:
                 group_options = ["(none)"] + [g.get("group", "") for g in ha_groups]
@@ -1013,6 +1165,22 @@ async def shared_ha_add(
                 idx = select_menu(group_options, "Select HA group:")
                 if idx and idx > 0:
                     group = group_options[idx]
+        elif mode == "rules" and nodes is None:
+            members = sorted(
+                n.get("node", "") for n in await client.get_nodes() if n.get("node")
+            )
+            sel = multi_select_menu(
+                members,
+                "Preferred nodes (Space to toggle, Enter with none selected = any node):",
+            )
+            if sel:
+                nodes = ",".join(members[i] for i in sel)
+                if strict is None:
+                    strict = Confirm.ask(
+                        "[bold]Restrict it to these nodes[/bold] (stopped if none is "
+                        "available) instead of only preferring them?",
+                        default=False,
+                    )
 
         if state is None:
             state_idx = select_menu(HA_STATES, "Initial state:")
@@ -1032,7 +1200,11 @@ async def shared_ha_add(
         console.print("\n[bold cyan]═══ Configuration Summary ═══[/bold cyan]\n")
         console.print(f"[bold]Resource:[/bold]     {sid}")
         console.print(f"[bold]State:[/bold]        {state}")
-        console.print(f"[bold]Group:[/bold]        {group or '(none)'}")
+        if mode == "groups":
+            console.print(f"[bold]Group:[/bold]        {group or '(none)'}")
+        else:
+            pin = f"{nodes} ({'strict' if strict else 'preferred'})" if nodes else "(any node)"
+            console.print(f"[bold]Nodes:[/bold]        {pin}")
         console.print(f"[bold]Max restart:[/bold]  {max_restart}")
         console.print(f"[bold]Max relocate:[/bold] {max_relocate}")
         if comment:
@@ -1044,6 +1216,10 @@ async def shared_ha_add(
     else:
         if state is None:
             state = "started"
+
+    if nodes:
+        # Fail before registering anything when a node name is wrong
+        nodes = await _validate_ha_nodes(client, nodes)
 
     params: dict[str, Any] = {
         "type": kind,
@@ -1057,6 +1233,15 @@ async def shared_ha_add(
     await client.create_ha_resource(sid, **params)
     print_success(f"HA resource {sid} registered (state={state})")
 
+    if nodes:
+        try:
+            change = await _apply_node_affinity(client, kind, resource_id, nodes, strict)
+        except PVECliError as e:
+            print_error(f"{sid} is under HA, but its node rule could not be created: {e}")
+            raise typer.Exit(1)
+        if change:
+            print_success(change)
+
 
 async def shared_ha_remove(
     client: ProxmoxClient,
@@ -1064,7 +1249,7 @@ async def shared_ha_remove(
     resource_id: int,
     yes: bool,
 ) -> None:
-    """Remove a VM/CT from HA management."""
+    """Remove a VM/CT from HA management, and from the HA rules referencing it."""
     label = kind.upper()
     sid = f"{kind}:{resource_id}"
 
@@ -1077,7 +1262,12 @@ async def shared_ha_remove(
         print_cancelled()
         return
 
-    await client.delete_ha_resource(sid)
+    # On a rules cluster a rule left pointing at a removed resource is an
+    # error PVE reports forever; purge drops the reference, and the rule
+    # itself when this was its only resource. Older versions lack the
+    # parameter, so only send it where rules exist.
+    purge = await client.get_ha_placement_mode() == "rules"
+    await client.delete_ha_resource(sid, purge=purge)
     print_success(f"HA resource {sid} removed")
 
 
@@ -1090,10 +1280,13 @@ async def shared_ha_set(
     max_restart: int | None,
     max_relocate: int | None,
     comment: str | None,
+    nodes: str | None = None,
+    strict: bool | None = None,
 ) -> None:
     """Update HA settings for a VM/CT.
 
-    Pass None for a field to leave it unchanged. Use "" for comment to clear it.
+    Pass None for a field to leave it unchanged. Use "" for comment to clear
+    it, and "" for nodes to drop the node rule pvecli created.
     """
     label = kind.upper()
     sid = f"{kind}:{resource_id}"
@@ -1107,6 +1300,13 @@ async def shared_ha_set(
         print_error(f"Invalid state '{state}'. Allowed: {', '.join(HA_STATES)}")
         raise typer.Exit(1)
 
+    placement_asked = group is not None or nodes is not None or strict is not None
+    mode = await client.get_ha_placement_mode() if placement_asked else None
+    if mode:
+        _check_placement_option(mode, group, nodes)
+        if mode == "groups" and strict is not None:
+            raise PVECliError("--strict only applies to HA rules, this cluster uses groups")
+
     params: dict[str, Any] = {}
     if state is not None:
         params["state"] = state
@@ -1119,12 +1319,17 @@ async def shared_ha_set(
     if comment is not None:
         params["comment"] = comment
 
-    if not params:
+    rule_change = None
+    if mode == "rules" and (nodes is not None or strict is not None):
+        rule_change = await _apply_node_affinity(client, kind, resource_id, nodes, strict)
+
+    if not params and not rule_change:
         print_warning("Nothing to update (no fields provided)")
         return
 
-    await client.update_ha_resource(sid, **params)
-    changes = ", ".join(f"{k}={v}" for k, v in params.items())
+    if params:
+        await client.update_ha_resource(sid, **params)
+    changes = ", ".join([f"{k}={v}" for k, v in params.items()] + ([rule_change] if rule_change else []))
     print_success(f"HA resource {sid} updated ({changes})")
 
 

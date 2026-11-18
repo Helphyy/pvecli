@@ -10,7 +10,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.prompt import Prompt
 from rich.table import Table
 
-from ..api.client import ProxmoxClient
+from ..api.client import ProxmoxClient, is_not_implemented
 from ..api.exceptions import PVECliError
 from ..config import ConfigManager
 from ..utils import (
@@ -424,7 +424,14 @@ async def cluster_health(
                 ha_raw = await client.get("/cluster/ha/status/current") or []
             except PVECliError:
                 ha_raw = []
-            ha_resources = [x for x in ha_raw if x.get("type") not in ("quorum", None)]
+            # Only 'service' entries are guests: the list also holds the
+            # quorum, the CRM master and one LRM per node.
+            ha_resources = [x for x in ha_raw if x.get("type") == "service"]
+            # PVE 9.2+ can disarm the whole HA stack; older versions have no
+            # such state and never report the field.
+            ha_armed = next(
+                (x.get("armed-state") for x in ha_raw if x.get("armed-state")), None
+            )
 
             ceph_state = None
             try:
@@ -445,6 +452,7 @@ async def cluster_health(
                     "qdevice": has_qdevice,
                     "tolerance": tolerance,
                     "ha_resources": len(ha_resources),
+                    "ha_armed_state": ha_armed,
                     "ceph": ceph_state,
                 })
                 # Same exit code as the text output, so scripts can rely on it
@@ -481,11 +489,22 @@ async def cluster_health(
                 "[green]present[/green]" if has_qdevice else "[dim]none[/dim]",
                 "arbiter configured" if has_qdevice else "no arbiter",
             )
-            table.add_row(
-                "HA resources",
-                "[green]armed[/green]" if ha_resources else "[dim]none[/dim]",
-                f"{len(ha_resources)} resource(s) under HA" if ha_resources else "no HA resource",
+            ha_detail = (
+                f"{len(ha_resources)} resource(s) under HA" if ha_resources else "no HA resource"
             )
+            if ha_armed:
+                # standby: armed, but no watchdog active since nothing is under HA
+                style = {"armed": "green", "standby": "dim"}.get(ha_armed, "yellow")
+                ha_detail += (
+                    ". Re-arm with: pvecli cluster ha arm" if ha_armed == "disarmed" else ""
+                )
+                table.add_row("HA", f"[{style}]{ha_armed}[/{style}]", ha_detail)
+            else:
+                table.add_row(
+                    "HA resources",
+                    "[green]active[/green]" if ha_resources else "[dim]none[/dim]",
+                    ha_detail,
+                )
             table.add_row(
                 "Ceph",
                 {
@@ -1267,6 +1286,7 @@ async def _orchestrate_cluster_power(
 
     # Track what was done for interrupt recovery messages
     ha_disabled: list[str] = []
+    ha_disarmed = False
     ceph_flags_set = False
 
     try:
@@ -1343,7 +1363,26 @@ async def _orchestrate_cluster_power(
                 return
 
         # ── Phase 2: Disable HA ───────────────────────────────────────
+        # PVE 9.2+ disarms the whole HA stack in one call: resources are
+        # frozen where they are and every watchdog is released, so no node
+        # fences itself while its peers go down. Older versions lack the
+        # endpoint and fall back on disabling each resource.
         if not skip_ha:
+            try:
+                ha_resources = await client.get_ha_resources()
+            except PVECliError:
+                ha_resources = []  # reported by the fallback below
+            if ha_resources:
+                try:
+                    await client.disarm_ha("freeze")
+                    ha_disarmed = True
+                    print_success(
+                        f"HA stack disarmed, {len(ha_resources)} resource(s) frozen in place"
+                    )
+                except PVECliError as e:
+                    if not is_not_implemented(e):
+                        print_warning(f"Could not disarm HA ({e}), disabling resources instead")
+        if not skip_ha and not ha_disarmed:
             try:
                 ha_resources = await client.get_ha_resources()
                 active_ha = [
@@ -1484,6 +1523,8 @@ async def _orchestrate_cluster_power(
                 "Unset Ceph flags: "
                 + ", ".join(f"ceph osd unset {f}" for f in _CEPH_FLAGS)
             )
+        if ha_disarmed:
+            reminders.append("Re-arm HA: pvecli cluster ha arm")
         if ha_disabled:
             reminders.append(
                 "Re-enable HA resources: " + ", ".join(ha_disabled)
@@ -1502,6 +1543,8 @@ async def _orchestrate_cluster_power(
     except (KeyboardInterrupt, asyncio.CancelledError):
         console.print()
         print_warning("Interrupted!")
+        if ha_disarmed:
+            print_warning("The HA stack was disarmed. Re-arm it with: pvecli cluster ha arm")
         if ha_disabled:
             print_warning(f"HA resources were disabled: {', '.join(ha_disabled)}")
             print_warning("You may need to re-enable them manually.")
@@ -1529,7 +1572,7 @@ async def cluster_shutdown(
     """Shutdown the entire cluster (all nodes).
 
     Orchestrates a safe cluster shutdown:
-    1. Disables HA resources (prevents migration during shutdown)
+    1. Disarms HA (PVE 9.2+), or disables each HA resource on older versions
     2. Sets Ceph maintenance flags if Ceph is detected
     3. Stops all guests on each node
     4. Shuts down nodes (connected node last)
@@ -1573,7 +1616,7 @@ async def cluster_reboot(
     """Reboot the entire cluster (all nodes).
 
     Orchestrates a safe cluster reboot:
-    1. Disables HA resources (prevents migration during reboot)
+    1. Disarms HA (PVE 9.2+), or disables each HA resource on older versions
     2. Sets Ceph maintenance flags if Ceph is detected
     3. Stops all guests on each node
     4. Reboots nodes (connected node last)
@@ -1594,6 +1637,80 @@ async def cluster_reboot(
                 stopall_timeout=timeout,
             )
 
+    except PVECliError as e:
+        print_error(str(e))
+        raise typer.Exit(1)
+
+
+# ── cluster ha ───────────────────────────────────────────────────────────
+
+ha_app = typer.Typer(help="Arm or disarm the whole HA stack (PVE 9.2+)", no_args_is_help=True)
+app.add_typer(ha_app, name="ha")
+
+_HA_ARM_UNSUPPORTED = (
+    "Arming and disarming the HA stack needs PVE 9.2 or later. On this cluster, "
+    "disable the resources one by one instead: pvecli vm ha set <id> --state disabled"
+)
+
+
+@ha_app.command("disarm")
+@async_to_sync
+async def ha_disarm(
+    mode: str = typer.Option(
+        "freeze",
+        "--mode",
+        "-m",
+        help="freeze: keep every HA resource where it is. ignore: let them be managed by hand",
+    ),
+    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip confirmation"),
+    profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+) -> None:
+    """Disarm HA cluster wide: release every watchdog before maintenance."""
+    if mode not in ("freeze", "ignore"):
+        print_error("--mode must be 'freeze' or 'ignore'")
+        raise typer.Exit(1)
+    config_manager = ConfigManager()
+    try:
+        profile_config = config_manager.get_profile(profile)
+        async with ProxmoxClient(profile_config) as client:
+            if not yes and not confirm(
+                f"Disarm HA on this cluster (resource mode: {mode})? "
+                "No node will fence and no guest will be recovered until it is re-armed.",
+                default=False,
+            ):
+                print_cancelled()
+                return
+            try:
+                await client.disarm_ha(mode)
+            except PVECliError as e:
+                if is_not_implemented(e):
+                    print_error(_HA_ARM_UNSUPPORTED)
+                    raise typer.Exit(1)
+                raise
+            print_success(f"HA disarmed ({mode}). Re-arm it with: pvecli cluster ha arm")
+    except PVECliError as e:
+        print_error(str(e))
+        raise typer.Exit(1)
+
+
+@ha_app.command("arm")
+@async_to_sync
+async def ha_arm(
+    profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+) -> None:
+    """Re-arm HA after a disarm."""
+    config_manager = ConfigManager()
+    try:
+        profile_config = config_manager.get_profile(profile)
+        async with ProxmoxClient(profile_config) as client:
+            try:
+                await client.arm_ha()
+            except PVECliError as e:
+                if is_not_implemented(e):
+                    print_error(_HA_ARM_UNSUPPORTED)
+                    raise typer.Exit(1)
+                raise
+            print_success("HA re-armed: check its state with: pvecli cluster health")
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)

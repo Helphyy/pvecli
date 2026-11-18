@@ -1745,7 +1745,9 @@ async def ha_status(
 async def ha_add(
     ctids: str = typer.Argument(None, help="CT ID(s) - single, comma-separated, or range"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
-    group: str = typer.Option(None, "--group", "-g", help="HA group"),
+    group: str = typer.Option(None, "--group", "-g", help="HA group (clusters still using groups)"),
+    nodes: str = typer.Option(None, "--nodes", "-n", help="Preferred nodes '<node>[:<priority>],...' (clusters using HA rules, PVE 9). '' drops the pin"),
+    strict: bool = typer.Option(None, "--strict/--no-strict", help="With --nodes: restrict to those nodes instead of preferring them"),
     state: str = typer.Option(None, "--state", "-s", help="Initial state: started|stopped|enabled|disabled|ignored"),
     max_restart: int = typer.Option(None, "--max-restart", "-mr", help="Max restart attempts"),
     max_relocate: int = typer.Option(None, "--max-relocate", "-mo", help="Max relocate attempts"),
@@ -1774,7 +1776,7 @@ async def ha_add(
                 try:
                     await shared_ha_add(
                         client, "ct", ctid, group, state,
-                        max_restart, max_relocate, comment, interactive,
+                        max_restart, max_relocate, comment, interactive, nodes=nodes, strict=strict,
                     )
                     added += 1
                 except typer.Exit:
@@ -1798,7 +1800,9 @@ async def ha_set(
     ctids: str = typer.Argument(None, help="CT ID(s) - single, comma-separated, or range"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
     state: str = typer.Option(None, "--state", "-s", help="State: started|stopped|enabled|disabled|ignored"),
-    group: str = typer.Option(None, "--group", "-g", help="HA group"),
+    group: str = typer.Option(None, "--group", "-g", help="HA group (clusters still using groups)"),
+    nodes: str = typer.Option(None, "--nodes", "-n", help="Preferred nodes '<node>[:<priority>],...' (clusters using HA rules, PVE 9). '' drops the pin"),
+    strict: bool = typer.Option(None, "--strict/--no-strict", help="With --nodes: restrict to those nodes instead of preferring them"),
     max_restart: int = typer.Option(None, "--max-restart", "-mr", help="Max restart attempts"),
     max_relocate: int = typer.Option(None, "--max-relocate", "-mo", help="Max relocate attempts"),
     comment: str = typer.Option(None, "--comment", "-c", help="Comment"),
@@ -1824,7 +1828,7 @@ async def ha_set(
                 try:
                     await shared_ha_set(
                         client, "ct", ctid, state, group,
-                        max_restart, max_relocate, comment,
+                        max_restart, max_relocate, comment, nodes=nodes, strict=strict,
                     )
                     updated += 1
                 except typer.Exit:
