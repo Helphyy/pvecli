@@ -7,6 +7,7 @@ so a cron job can tell "act now" from "pvecli failed".
 """
 
 import asyncio
+import re
 import time
 from collections import Counter
 from typing import Any
@@ -30,23 +31,38 @@ class _Audit:
     def __init__(self, client: ProxmoxClient) -> None:
         self.client = client
         self.findings: list[dict[str, str]] = []
+        self.denied: dict[str, str] = {}
         self.sem = asyncio.Semaphore(16)
 
     def add(self, check: str, level: str, detail: str) -> None:
         self.findings.append({"check": check, "level": level, "detail": detail})
 
+    def unreadable(self, check: str, why: str) -> None:
+        """A source this user may not read: never reported as OK."""
+        self.add(check, "INFO", f"not checked: {why}")
+
     async def get(self, path: str, **params: Any) -> Any:
+        """None when the call fails; the reason is kept in self.denied."""
         async with self.sem:
             try:
                 return await self.client.get(path, params=params or None)
-            except PVECliError:
+            except PVECliError as e:
+                self.denied[path] = str(e)
                 return None
+
+    def reason(self, path: str, default: str) -> str:
+        text = self.denied.get(path, "")
+        m = re.search(r"Permission check failed \(([^)]*)\)", text)
+        return f"missing privilege {m.group(1)}" if m else (text or default)
 
 
 async def _certificates(a: _Audit, nodes: list[str], warn_days: int) -> None:
     now = time.time()
     problems: list[tuple[str, str]] = []
     infos = await asyncio.gather(*(a.get(f"/nodes/{n}/certificates/info") for n in nodes))
+    blind = [n for n, c in zip(nodes, infos, strict=True) if c is None]
+    if blind:
+        a.unreadable("Certificates", f"{', '.join(blind)} ({a.reason(f'/nodes/{blind[0]}/certificates/info', 'unreadable')})")
     for node, certs in zip(nodes, infos, strict=True):
         for c in certs or []:
             left = ((c.get("notafter") or 0) - now) / _DAY
@@ -57,7 +73,7 @@ async def _certificates(a: _Audit, nodes: list[str], warn_days: int) -> None:
                 problems.append(("FAIL", f"{name} expires in {int(left)} day(s)"))
             elif left < warn_days:
                 problems.append(("WARN", f"{name} expires in {int(left)} day(s)"))
-    if not problems:
+    if not problems and len(blind) < len(nodes):
         a.add("Certificates", "OK", f"no certificate expires within {warn_days} days")
     for level, detail in problems:
         a.add("Certificates", level, detail)
@@ -65,7 +81,10 @@ async def _certificates(a: _Audit, nodes: list[str], warn_days: int) -> None:
 
 async def _users_and_tokens(a: _Audit) -> None:
     now = time.time()
-    users = await a.get("/access/users", full=1) or []
+    users = await a.get("/access/users", full=1)
+    if users is None:
+        a.unreadable("Users and tokens", a.reason("/access/users", "unreadable"))
+        return
     found = False
     for u in users:
         uid = u.get("userid", "?")
@@ -89,7 +108,10 @@ async def _users_and_tokens(a: _Audit) -> None:
 
 
 async def _acl(a: _Audit) -> None:
-    acls = await a.get("/access/acl") or []
+    acls = await a.get("/access/acl")
+    if acls is None:
+        a.unreadable("ACL", a.reason("/access/acl", "unreadable"))
+        return
     broad = [
         x for x in acls
         if x.get("roleid") == "Administrator" and x.get("path") in ("/", "/vms", "/nodes", "/storage")
@@ -117,7 +139,9 @@ async def _firewall(a: _Audit) -> None:
 async def _versions_and_subscription(a: _Audit, nodes: list[str]) -> None:
     versions = await asyncio.gather(*(a.get(f"/nodes/{n}/version") for n in nodes))
     seen = {n: (v or {}).get("version", "?") for n, v in zip(nodes, versions, strict=True)}
-    if len(set(seen.values())) > 1:
+    if "?" in seen.values():
+        a.unreadable("PVE versions", "version of " + ", ".join(n for n, v in seen.items() if v == "?") + " unreadable")
+    elif len(set(seen.values())) > 1:
         a.add("PVE versions", "WARN", "mixed: " + ", ".join(f"{n}={v}" for n, v in sorted(seen.items())))
     else:
         a.add("PVE versions", "OK", f"all on {next(iter(seen.values()), '?')}")
@@ -130,6 +154,10 @@ async def _versions_and_subscription(a: _Audit, nodes: list[str]) -> None:
     else:
         a.add("Subscription", "INFO", ", ".join(f"{k}: {v} node(s)" for k, v in states.items()))
     updates = await asyncio.gather(*(a.get(f"/nodes/{n}/apt/update") for n in nodes))
+    if any(u is None for u in updates):
+        blind = [n for n, u in zip(nodes, updates, strict=True) if u is None]
+        a.unreadable("Updates", f"{', '.join(blind)} ({a.reason(f'/nodes/{blind[0]}/apt/update', 'unreadable')})")
+        return
     pending = {n: len(u or []) for n, u in zip(nodes, updates, strict=True)}
     if any(pending.values()):
         a.add(
@@ -157,10 +185,13 @@ async def _guests(a: _Audit, guests: list[dict], snapshot_age: int) -> None:
 
     # Snapshots and mounted ISOs, from each guest
     limit = time.time() - snapshot_age
+    unread: list[int] = []
 
     async def inspect(g: dict) -> tuple[list[str], str | None]:
         base = f"/nodes/{g['node']}/{g['type']}/{g['vmid']}"
         snaps, cfg = await asyncio.gather(a.get(f"{base}/snapshot"), a.get(f"{base}/config"))
+        if snaps is None:
+            unread.append(g["vmid"])
         old = [s["name"] for s in snaps or [] if s.get("name") != "current" and (s.get("snaptime") or 0) < limit]
         iso = next(
             (str(v).split(",")[0] for k, v in (cfg or {}).items()
@@ -182,6 +213,8 @@ async def _guests(a: _Audit, guests: list[dict], snapshot_age: int) -> None:
             + ", ".join(f"{g['vmid']} ({len(o)})" for g, o in old_snaps[:10])
             + f". List them with: pvecli find --old-snapshots {label}",
         )
+    elif unread:
+        a.unreadable("Snapshots", f"{len(unread)} guest(s) unreadable by this user")
     else:
         a.add("Snapshots", "OK", f"none older than {label}")
     if isos:
@@ -204,6 +237,7 @@ async def _orphan_disks(a: _Audit, nodes: list[str], guests: list[dict]) -> None
         for n in targets:
             jobs.append((n, st["storage"]))
     contents = await asyncio.gather(*(a.get(f"/nodes/{n}/storage/{s}/content") for n, s in jobs))
+    unread = [f"{s}@{n}" for (n, s), c in zip(jobs, contents, strict=True) if c is None]
     orphans: dict[str, str] = {}
     for (node, _), items in zip(jobs, contents, strict=True):
         for it in items or []:
@@ -216,6 +250,8 @@ async def _orphan_disks(a: _Audit, nodes: list[str], guests: list[dict]) -> None
             f"{len(orphans)} volume(s) belong to no existing guest: "
             + ", ".join(sorted(orphans)[:8]) + (" ..." if len(orphans) > 8 else ""),
         )
+    elif unread:
+        a.unreadable("Orphan disks", f"storage(s) unreadable: {', '.join(unread[:5])}")
     else:
         a.add("Orphan disks", "OK", "every guest volume belongs to an existing guest")
 
