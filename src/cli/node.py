@@ -526,8 +526,19 @@ async def node_updates(
             if unknown:
                 raise PVECliError(f"Node(s) not online: {', '.join(unknown)}. Online: {', '.join(online)}")
             if refresh:
-                upids = await asyncio.gather(*(client.post(f"/nodes/{n}/apt/update") for n in nodes))
-                await asyncio.gather(*(client.wait_for_task(n, u, timeout=600) for n, u in zip(nodes, upids, strict=True)))
+                async def refresh_one(n: str) -> None:
+                    try:
+                        upid = await client.post(f"/nodes/{n}/apt/update")
+                        await client.wait_for_task(n, upid, timeout=600)
+                    except PVECliError as e:
+                        # One broken repository must not hide the others
+                        print_warning(
+                            f"{n}: apt update failed ({e}). The list below is the previous "
+                            "one. Check its repositories (an enterprise repository without "
+                            "subscription fails like this)"
+                        )
+
+                await asyncio.gather(*(refresh_one(n) for n in nodes))
             lists = await asyncio.gather(*(client.get(f"/nodes/{n}/apt/update") for n in nodes))
     except PVECliError as e:
         print_error(str(e))
@@ -553,7 +564,17 @@ async def node_updates(
         pve = [p for p in pkgs if p["origin"] == "Proxmox"]
         # A new kernel arrives as a new package (no previous version), an
         # update of the meta package as an upgrade: either counts
-        kernels = [p["to"] for p in pkgs if str(p["package"]).startswith("proxmox-kernel-")]
+        # Only real kernels: proxmox-kernel-6.17.13-2-pve-signed carries the
+        # version in its name, the proxmox-kernel-6.17 meta package in its
+        # own version. proxmox-kernel-helper is a tool, not a kernel.
+        kernels = []
+        for p in pkgs:
+            name = str(p["package"])
+            m = re.match(r"^proxmox-kernel-(\d+\.\d+\.\d+-\d+)-pve", name)
+            if m:
+                kernels.append(m.group(1))
+            elif re.fullmatch(r"proxmox-kernel-\d+\.\d+", name):
+                kernels.append(str(p["to"]))
         kernel = max(kernels, key=lambda v: [int(x) if x.isdigit() else 0 for x in re.split(r"[.-]", v)], default=None)
         table.add_row(n, str(len(pkgs)), str(len(pve)), kernel or "-")
     console.print(table)
