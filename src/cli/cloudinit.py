@@ -133,10 +133,11 @@ def _ci_params(
     return params
 
 
-# The volume of a cloud-init drive: <storage>:vm-<id>-cloudinit[.qcow2], or
+# The volume of a cloud-init drive: <storage>:vm-<id>-cloudinit (block storage),
+# <storage>:<id>/vm-<id>-cloudinit.qcow2 (file storage: dir, NFS, CIFS), or
 # <storage>:cloudinit when asked for. A storage merely named "cloudinit-nfs"
 # holding a real disk must not match.
-_CI_VOLUME = re.compile(r"^[^:,]+:(vm-\d+-)?cloudinit(\.\w+)?$")
+_CI_VOLUME = re.compile(r"^[^:,]+:(\d+/)?(vm-\d+-)?cloudinit(\.\w+)?$")
 
 
 def _cloudinit_drive(cfg: dict[str, Any]) -> str | None:

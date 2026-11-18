@@ -10,6 +10,8 @@ import pytest
 from tests.fake_api import FakeAPI, fixture
 
 NOW = 1_800_000_000.0  # FakeClock start
+ROOT_PRIVS = ("Sys.Audit", "User.Modify", "VM.Audit", "VM.Config.Disk", "VM.Backup", "Datastore.Audit",
+              "Datastore.Allocate", "Datastore.AllocateSpace")
 DAY = 86400
 
 
@@ -58,6 +60,8 @@ def lab(api: FakeAPI, version: str = "pve-9.1") -> list[dict]:
         ]
 
     api.route("GET", "/nodes/{node}/storage/{storage}/content", content)
+    # root@pam: every privilege everywhere
+    api.route("GET", "/access/permissions", lambda c: {c.params["path"]: dict.fromkeys(ROOT_PRIVS, 1)})
     return guests
 
 
@@ -227,6 +231,89 @@ def test_shared_storage_is_listed_once(cli, api):
     assert len(api.called("GET", "/nodes/{node}/storage/labpool/content")) == 1
     # local-lvm is per node: every online node is listed
     assert len(api.called("GET", "/nodes/{node}/storage/local-lvm/content")) == 5
+
+
+def test_storage_restricted_to_some_nodes_is_only_listed_there(cli, api):
+    # Seen on the lab: a dir storage limited to pve-lab1 was listed on the
+    # four other nodes, PVE refused, and the whole check read "not checked"
+    lab(api)
+    restricted = {"storage": "localdir", "type": "dir", "content": "images,rootdir",
+                  "nodes": "pve-lab1", "path": "/var/lib/vz/localdir", "digest": "x"}
+    api.route("GET", "/storage", _load("pve-9.1", "storage") + [restricted])
+
+    def answer(call):
+        if call.match["node"] != "pve-lab1":
+            raise api.error(500, f"storage 'localdir' is not available on node '{call.match['node']}'")
+        return []
+
+    api.route("GET", "/nodes/{node}/storage/localdir/content", answer)
+    r, doc = run_json(cli)
+    assert r.exit_code == 0, r.output
+    assert levels(doc, "Orphan disks") == {"OK"}
+    assert [c.match["node"] for c in api.called("GET", "/nodes/{node}/storage/localdir/content")] == ["pve-lab1"]
+
+
+def test_orphans_hidden_from_an_auditor_are_not_reported_ok(cli, api):
+    # PVE lists an images/rootdir volume only to a user holding VM.Config.Disk
+    # on its guest (or Datastore.Allocate on the storage), and drops the others
+    # without an error: a PVEAuditor got "OK" from a scan that saw no volume
+    lab(api)
+    auditor = {"Datastore.Audit": 1, "VM.Audit": 1, "Sys.Audit": 1, "Pool.Audit": 1}
+    api.route("GET", "/access/permissions", lambda c: {c.params["path"]: auditor})
+    api.route("GET", "/nodes/{node}/storage/{storage}/content", [])
+    r, doc = run_json(cli)
+    assert r.exit_code == 0, r.output
+    orphans = lines(doc, "Orphan disks")
+    assert [f["level"] for f in orphans] == ["INFO"], orphans
+    assert "not checked" in orphans[0]["detail"] and "VM.Config.Disk" in orphans[0]["detail"]
+
+
+def test_orphans_found_elsewhere_still_name_the_unreadable_storages(cli, api):
+    lab(api)
+    orphan = {"volid": "local-lvm:vm-999-disk-0", "vmid": 999, "content": "images", "format": "raw", "size": 1}
+    api.route("GET", "/nodes/pve-lab1/storage/local-lvm/content", [orphan])
+    api.route("GET", "/nodes/{node}/storage/labpool/content",
+              lambda c: api.forbidden("/storage/labpool", "Datastore.Audit"))
+    r, doc = run_json(cli)
+    assert {f["level"] for f in lines(doc, "Orphan disks")} == {"WARN", "INFO"}
+    assert any("labpool" in f["detail"] for f in lines(doc, "Orphan disks") if f["level"] == "INFO")
+
+
+def test_pool_limited_auditor_gets_no_ok_from_filtered_lists(cli, api):
+    # Seen on the lab with PVEAuditor on /pool/x only: PVE silently filters
+    # the ACL, user, guest and storage lists, and the audit read the empty
+    # remainder as "0 ACL entries", "0 user(s)" and "OK" everywhere
+    guests = lab(api)
+    pool = [g for g in guests if g["vmid"] == guests[0]["vmid"]]
+    pool_privs = {"VM.Audit": 1, "Datastore.Audit": 1, "Pool.Audit": 1}
+    api.route("GET", "/access/permissions",
+              lambda c: {c.params["path"]: pool_privs if c.params["path"].startswith("/pool") else {}})
+    api.route("GET", "/cluster/resources", pool)
+    api.route("GET", "/access/acl", [])
+    api.route("GET", "/access/users", [])
+    api.route("GET", "/storage", [])
+    r, doc = run_json(cli)
+    assert r.exit_code == 0, r.output
+    expected = {
+        "ACL": "Sys.Audit on /access",
+        "Users and tokens": "Sys.Audit or User.Modify on /access/groups",
+        "Snapshots": "VM.Audit on /vms",
+        "Orphan disks": "VM.Audit on /vms",
+    }
+    for check, missing in expected.items():
+        found = lines(doc, check)
+        assert "OK" not in {f["level"] for f in found}, (check, found)
+        assert any("not checked" in f["detail"] and missing in f["detail"] for f in found), (check, found)
+
+
+def test_auditor_on_root_keeps_its_ok_lines(cli, api):
+    # PVEAuditor on / reads the full lists: no needless "not checked"
+    lab(api)
+    auditor = {"Sys.Audit": 1, "VM.Audit": 1, "Datastore.Audit": 1, "Pool.Audit": 1}
+    api.route("GET", "/access/permissions", lambda c: {c.params["path"]: auditor})
+    r, doc = run_json(cli)
+    for check in ("ACL", "Users and tokens", "Snapshots"):
+        assert levels(doc, check) == {"OK"}, (check, lines(doc, check))
 
 
 def test_skip_orphans_lists_no_storage(cli, api):

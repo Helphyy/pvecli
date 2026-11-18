@@ -210,3 +210,13 @@ def test_status_single_guest_shows_current_state_and_node(cli, api):
     assert "Current state:" in r.stdout and "migrate" in r.stdout
     assert "Node:" in r.stdout and "pve3" in r.stdout
     assert "g1" in r.stdout
+
+
+def test_add_without_a_terminal_says_to_pass_yes(cli, api, monkeypatch):
+    from src.utils import menu
+    monkeypatch.setattr(menu, "_interactive", lambda: False)
+    setup(api, "rules")
+    r = cli("vm", "ha", "add", "100", "-p", "p1")
+    assert r.exit_code == 1
+    assert "pass -y" in r.output
+    assert api.writes() == []

@@ -23,6 +23,7 @@ def setup(api, live: dict[int, str] | None = None) -> None:
     api.route("DELETE", "/nodes/{node}/lxc/{vmid}", lambda c: upid(c.match["node"], "vzdestroy", c.match["vmid"]))
     api.route("POST", "/nodes/{node}/lxc/{vmid}/status/stop", lambda c: upid(c.match["node"], "vzstop", c.match["vmid"]))
     api.route("POST", "/nodes/{node}/lxc/{vmid}/template", None)
+    api.route("GET", "/nodes/{node}/tasks", [])
 
 
 # ── remove ──────────────────────────────────────────────────────────────
@@ -158,6 +159,15 @@ def test_template_running_container_is_not_converted(cli, api):
     assert api.writes() == []
 
 
+def test_template_refuses_a_running_container_before_asking(cli, api, ui):
+    setup(api)
+    r = cli("ct", "template", "201", "-p", "p1")
+    assert r.exit_code == 1
+    assert "stop it first" in r.output
+    assert ui.asked == []
+    assert api.writes() == []
+
+
 def test_template_refused_conversion_exits_non_zero(cli, api):
     setup(api)
     r = cli("ct", "template", "201", "-y", "-p", "p1")
@@ -205,3 +215,45 @@ def test_template_asks_confirmation_before_irreversible_conversion(cli, api, ui)
     ui.confirm(False)
     cli("ct", "template", "200", "-p", "p1")
     assert api.writes() == []
+
+
+# PVE answers POST /lxc/{id}/template with null but forks a vztemplate worker
+# that holds the CT lock until the volumes are converted (seen on the lab:
+# a clone sent right after "converted" failed with "can't lock file
+# pve-config-975.lock", and a failed worker would still read as a success).
+OLD_TASK = upid("pve1", "vztemplate", 200)
+NEW_TASK = "UPID:pve1:0000CCCC:0000DDDD:6AFD1111:vztemplate:200:root@pam:"
+
+
+def _template_worker(api, exitstatus: str = "OK") -> None:
+    posted: list[bool] = []
+
+    def post(call):
+        posted.append(True)
+        return None
+
+    api.route("POST", "/nodes/{node}/lxc/{vmid}/template", post)
+    # An older conversion of a reused ID is still in the task archive
+    api.route("GET", "/nodes/{node}/tasks",
+              lambda c: [{"upid": NEW_TASK}, {"upid": OLD_TASK}] if posted else [{"upid": OLD_TASK}])
+    api.route("GET", "/nodes/{node}/tasks/{upid}/status",
+              lambda c: {"status": "stopped",
+                         "exitstatus": exitstatus if NEW_TASK in c.path else "OK"})
+
+
+def test_template_waits_for_the_conversion_worker(cli, api):
+    setup(api)
+    _template_worker(api)
+    r = cli("ct", "template", "200", "-y", "-p", "p1")
+    assert r.exit_code == 0, r.output
+    polled = [c.path for c in api.called("GET", "/nodes/{node}/tasks/{upid}/status")]
+    assert any(NEW_TASK in p for p in polled), polled
+    assert not any(OLD_TASK in p for p in polled), polled
+
+
+def test_template_failed_conversion_worker_is_not_a_success(cli, api):
+    setup(api)
+    _template_worker(api, exitstatus="unable to create template")
+    r = cli("ct", "template", "200", "-y", "-p", "p1")
+    assert r.exit_code == 1, r.output
+    assert "converted to template" not in r.output

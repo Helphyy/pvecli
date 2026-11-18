@@ -1,0 +1,32 @@
+[
+ {
+  "cpu": 0.0289637952559301,
+  "disk": 10173239296,
+  "id": "node/pve8a",
+  "level": "",
+  "maxcpu": 4,
+  "maxdisk": 42058584064,
+  "maxmem": 5158895616,
+  "mem": 2745188352,
+  "node": "pve8a",
+  "ssl_fingerprint": "46:74:E5:9A:B6:5C:D7:11:4B:6E:A5:6A:21:25:F7:30:7E:9B:AD:57:77:97:13:A4:DE:85:F0:AA:52:85:ED:90",
+  "status": "online",
+  "type": "node",
+  "uptime": 2849
+ },
+ {
+  "cpu": 0.00951188986232791,
+  "disk": 4448985088,
+  "id": "node/pve8b",
+  "level": "",
+  "maxcpu": 4,
+  "maxdisk": 42058584064,
+  "maxmem": 5158891520,
+  "mem": 1643212800,
+  "node": "pve8b",
+  "ssl_fingerprint": "B6:B5:79:BB:0D:89:0D:6C:23:E0:25:10:FA:B5:F0:56:64:2D:46:B5:6F:B1:E7:9C:E2:EC:E9:F4:05:E0:CA:D8",
+  "status": "online",
+  "type": "node",
+  "uptime": 2844
+ }
+]

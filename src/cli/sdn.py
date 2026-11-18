@@ -29,7 +29,7 @@ from ..utils import (
 )
 from ..utils.fleet import fleet
 from ..utils.helpers import async_to_sync, ordered_group
-from ..utils.menu import select_menu
+from ..utils.menu import require_terminal, select_menu
 
 app = typer.Typer(
     help="Manage SDN (zones, vnets, subnets)",
@@ -1256,6 +1256,12 @@ async def sdn_vnet_add(
             tag_range = _TAG_RANGE.get(zone_type or "")
             if tag is None and tag_range:
                 low, high = tag_range
+                try:
+                    require_terminal()
+                except PVECliError:
+                    # Without a terminal the question below only ends in "Aborted."
+                    print_error(f"--tag is required for a {zone_type} zone ({low}-{high})")
+                    raise typer.Exit(1)
                 tag = _ask_int(
                     f"  {'VXLAN VNI' if zone_type in ('vxlan', 'evpn') else 'VLAN tag'}"
                     f" ({low}-{high})",

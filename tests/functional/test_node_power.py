@@ -444,3 +444,13 @@ def test_ssh_goes_to_the_named_node(cli, cluster, ssh):
     assert r.exit_code == 0
     [args] = ssh
     assert args[-1] in ("root@10.199.32.52", "root@pve-lab2")
+
+
+def test_node_list_is_sorted_by_name(cli, api):
+    # PVE returns the nodes in no stable order
+    api.route("GET", "/nodes", [{"node": n, "status": "online", "cpu": 0.1, "maxcpu": 4, "mem": 1,
+                                 "maxmem": 2, "disk": 1, "maxdisk": 2, "uptime": 60}
+                                for n in ("pve3", "pve1", "pve2")])
+    r = cli("node", "list", "-p", "p1")
+    assert r.exit_code == 0, r.output
+    assert r.stdout.index("pve1") < r.stdout.index("pve2") < r.stdout.index("pve3")

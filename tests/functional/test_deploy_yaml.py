@@ -379,6 +379,39 @@ def test_a_failure_does_not_stop_the_others_and_is_reported(cli, api, tmp_path):
     assert not [c for c in api.writes() if c.method == "DELETE"]
 
 
+def test_a_creation_task_rolled_back_by_pve_is_not_reported_as_left_over(cli, api, tmp_path):
+    # Seen on lab6 (PVE 9): the template disappeared between the plan and the
+    # creation. POST /lxc answers a UPID, the task fails ("volume ... does not
+    # exist") and PVE removes the half-made CT: config and disk are gone, the
+    # ID is free again. Telling the user to `ct remove` it only gets "not found".
+    h1, _ = two_clusters(api)
+    task = h1.task
+
+    def failing(call):
+        if ":vzcreate:121:" in call.match["upid"]:
+            h1.guests = [g for g in h1.guests if g["vmid"] != 121]
+            return {"status": "stopped", "exitstatus": "unable to create CT 121 - volume "
+                    f"'{TPL}' does not exist"}
+        return task(call)
+
+    api.route("GET", "/nodes/pve-lab1/tasks/{upid}/status", failing, host="h1")
+    f = write(tmp_path, f"""
+        defaults: {{node: pve-lab1, storage: local-lvm, template: "{TPL}"}}
+        guests:
+          - {{type: ct, name: a, id: 120}}
+          - {{type: ct, name: b, id: 121}}
+    """)
+
+    r = cli("deploy", f, "-y", "-p", "p1")
+
+    assert r.exit_code == 1
+    out = " ".join(r.output.split())
+    assert "unable to create CT 121" in out
+    assert "ct remove 121" not in out
+    assert "left as is" not in out
+    assert "nothing of it is left" in out
+
+
 def test_wait_ip_shows_the_address_in_the_summary(cli, api, tmp_path):
     two_clusters(api)
     f = write(tmp_path, """

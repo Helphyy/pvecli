@@ -1,0 +1,8 @@
+[
+ {
+  "digest": "dec565396ca6ffe17c312ee1cbbc63cd11f49ac3",
+  "group": "prefa",
+  "nodes": "pve8a:2,pve8b:1",
+  "type": "group"
+ }
+]

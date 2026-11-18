@@ -197,3 +197,15 @@ def test_refused_vzdump_on_one_node_does_not_stop_the_other(cli, api, lab):
     assert r.exit_code == 1
     assert "Datastore.AllocateSpace" in r.output
     assert "1/2 guest(s) backed up" in r.output
+
+
+@pytest.mark.parametrize("listed", ["", "VM 100"])
+def test_a_guest_created_seconds_ago_is_named_from_its_config(cli, api, lab, ui, listed):
+    # The cluster list has no name yet for a brand new guest, or the
+    # placeholder "VM 100" (seen on lab1, PVE 9.1.1, right after a clone)
+    from tests.functional._backup_cluster import GUESTS
+    api.route("GET", "/cluster/resources", [{**g, "name": listed} if g["vmid"] == 100 else g for g in GUESTS])
+    api.route("GET", "/nodes/{node}/qemu/{vmid}/config", {"name": "fresh-vm"})
+    ui.confirm(False)
+    r = cli("backup", "run", "100", "--storage", "local", "-p", "p1")
+    assert "100 (fresh-vm)" in r.output

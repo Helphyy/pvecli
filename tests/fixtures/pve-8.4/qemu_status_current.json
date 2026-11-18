@@ -1,0 +1,21 @@
+{
+ "agent": 1,
+ "balloon_min": 536870912,
+ "cpu": 0,
+ "cpus": 1,
+ "disk": 0,
+ "ha": {
+  "managed": 0
+ },
+ "maxdisk": 2147483648,
+ "maxmem": 536870912,
+ "mem": 0,
+ "name": "vm110",
+ "netin": 0,
+ "netout": 0,
+ "qmpstatus": "stopped",
+ "shares": 1000,
+ "status": "stopped",
+ "uptime": 0,
+ "vmid": 110
+}

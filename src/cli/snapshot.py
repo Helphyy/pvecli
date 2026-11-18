@@ -32,6 +32,7 @@ from ..utils import (
 )
 from ..utils.fleet import fleet
 from ..utils.helpers import async_to_sync, ordered_group
+from ..utils.output import err_console
 from .find import _parse_age
 
 app = typer.Typer(
@@ -78,6 +79,19 @@ async def _guests(
     return sorted(out, key=lambda g: g["vmid"])
 
 
+async def _guests_hidden(client: ProxmoxClient) -> bool:
+    """True when PVE may leave guests out of /cluster/resources for this user.
+
+    It drops the guests a user may not audit without an error: an empty
+    answer then says nothing about them.
+    """
+    try:
+        perms = await client.get("/access/permissions", params={"path": "/vms"}) or {}
+    except PVECliError:
+        return True
+    return not perms.get("/vms", {}).get("VM.Audit")
+
+
 def _base(g: dict) -> str:
     return f"/nodes/{g['node']}/{g['type']}/{g['vmid']}"
 
@@ -92,8 +106,10 @@ async def _snapshots(client: ProxmoxClient, guests: list[dict]) -> list[dict]:
                 snaps = await client.get(f"{_base(g)}/snapshot") or []
             except PVECliError as e:
                 # Said, not swallowed: an empty list here would let `add`
-                # miss a duplicate and `list` show a guest without snapshots
-                print_warning(f"Snapshots of {g['vmid']} ({g.get('name', '')}) unreadable: {e}")
+                # miss a duplicate and `list` show a guest without snapshots.
+                # On stderr: a --json answer stays parseable
+                err_console.print(f"[bold yellow]Warning:[/bold yellow] Snapshots of "
+                                  f"{g['vmid']} ({g.get('name', '')}) unreadable: {e}")
                 return []
         rows = [
             {"vmid": g["vmid"], "name": g.get("name", ""), "type": "VM" if g["type"] == "qemu" else "CT",
@@ -219,6 +235,9 @@ async def snapshot_list(
         async with ProxmoxClient(ConfigManager().get_profile(profile)) as client:
             guests = await _guests(client, vms, tag, pool, node, True)
             rows = await _snapshots(client, guests)
+            if await _guests_hidden(client):
+                err_console.print("[bold yellow]Warning:[/bold yellow] guests outside your pools "
+                                  "are not listed (VM.Audit on /vms missing)")
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)

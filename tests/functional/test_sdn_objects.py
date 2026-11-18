@@ -428,6 +428,21 @@ def test_vnet_add_empty_tag_answer_cancels(cli, api, ui):
     assert api.writes() == []
 
 
+@pytest.mark.parametrize(("zone", "label"), [("zvlan", "1-4094"), ("zvxlan", "1-16777215")])
+def test_vnet_add_without_terminal_names_the_missing_tag(cli, api, monkeypatch, zone, label):
+    # Seen on the lab: a script got a bare "Aborted." from the tag question
+    from src.utils import menu
+
+    monkeypatch.setattr(menu, "_interactive", lambda: False)
+    route_sdn(api)
+
+    r = cli("sdn", "vnet", "add", "vv2", "--zone", zone, "-y", "-p", "p1")
+
+    assert r.exit_code == 1
+    assert "--tag" in r.output and label in r.output
+    assert api.writes() == []
+
+
 @pytest.mark.parametrize("name", ["v", "9net", "v-net", "vnet12345"])
 def test_vnet_add_refuses_an_invalid_identifier(cli, api, name):
     route_sdn(api)

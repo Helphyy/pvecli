@@ -1,0 +1,10 @@
+[
+ {
+  "content": "vztmpl,snippets,iso,backup,import,rootdir,images",
+  "digest": "8795200b16ab2d5511517bf6ed8e9ae9ae9befed",
+  "path": "/var/lib/vz",
+  "prune-backups": "keep-all=1",
+  "storage": "local",
+  "type": "dir"
+ }
+]

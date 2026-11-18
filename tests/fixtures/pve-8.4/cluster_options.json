@@ -1,0 +1,9 @@
+{
+ "allowed-tags": [
+  "db",
+  "test",
+  "web"
+ ],
+ "description": "",
+ "mac_prefix": "BC:24:11"
+}

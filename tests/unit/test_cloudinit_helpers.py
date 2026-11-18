@@ -210,6 +210,21 @@ def test_cloudinit_drive_ignores_storage_named_cloudinit():
     assert _cloudinit_drive(cfg) == "ide2"
 
 
+def test_cloudinit_drive_on_a_file_storage():
+    # Real config of a clone on a dir storage (PVE 8.4 lab): the volume
+    # carries the <vmid>/ directory and the format extension. Missing it made
+    # `vm deploy` add a second drive and fail ("already attached at 'ide2'").
+    cfg = {
+        "ide2": "local:120/vm-120-cloudinit.qcow2,media=cdrom,size=4M",
+        "scsi0": "local:9000/base-9000-disk-0.qcow2/120/vm-120-disk-0.qcow2,size=4G",
+    }
+    assert _cloudinit_drive(cfg) == "ide2"
+    assert _cloudinit_drive({"ide0": "nfs:7/vm-7-cloudinit.raw,media=cdrom"}) == "ide0"
+    # A real disk in a directory is not a cloud-init drive
+    assert _cloudinit_drive({"scsi0": "local:120/vm-120-disk-0.qcow2,size=4G"}) is None
+    assert _boot_storage(cfg) == "local"
+
+
 def test_boot_storage_is_the_first_real_disk():
     assert _boot_storage(CFG) == "local-lvm"
     assert _boot_storage({"virtio0": "ceph-rbd:vm-1-disk-0,size=8G", "ide2": "none,media=cdrom"}) == "ceph-rbd"

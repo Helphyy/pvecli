@@ -43,6 +43,7 @@ def setup(api, snaps: dict[int, list[dict]] | None = None, guests: list[dict] | 
               lambda c: upid(c.match["node"], "qmsnapshot", c.match["vmid"]))
     api.route("DELETE", "/nodes/{node}/{type}/{vmid}/snapshot/{snapname}",
               lambda c: upid(c.match["node"], "qmdelsnapshot", c.match["vmid"]))
+    api.route("GET", "/access/permissions", lambda c: {c.params["path"]: {"VM.Audit": 1}})
 
 
 # ── guest selection ─────────────────────────────────────────────────────
@@ -199,3 +200,26 @@ def test_prune_nothing_to_do(cli, api):
     assert r.exit_code == 0, r.output
     assert "Nothing to prune" in r.output
     assert api.writes() == []
+
+
+# ── what could not be read ──────────────────────────────────────────────
+
+
+def test_list_names_the_guests_a_pool_limited_user_cannot_see(cli, api):
+    # Seen on the lab with PVEAuditor on one pool: "No snapshot found",
+    # while the guests outside the pool were never looked at
+    setup(api)
+    api.route("GET", "/access/permissions", lambda c: {c.params["path"]: {}})
+    r = cli("snapshot", "list", "-p", "p1", "--json")
+    assert r.exit_code == 0, r.output
+    assert json.loads(r.stdout) == []
+    assert "VM.Audit on /vms" in r.stderr
+
+
+def test_list_json_stays_valid_when_a_guest_is_unreadable(cli, api):
+    setup(api, {301: [snap("a", 1)]})
+    api.route("GET", "/nodes/pve-lab2/qemu/300/snapshot", lambda c: api.error(500, "node pve-lab2 offline"))
+    r = cli("snapshot", "list", "-p", "p1", "--json")
+    assert r.exit_code == 0, r.output
+    assert [x["vmid"] for x in json.loads(r.stdout)] == [301]
+    assert "300" in r.stderr and "unreadable" in r.stderr

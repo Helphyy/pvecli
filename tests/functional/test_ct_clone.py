@@ -184,6 +184,9 @@ def test_wizard_none_tags_removes_source_tags(cli, api, ui):
     assert r.exit_code == 0, r.output
     [put] = api.called("PUT", "/nodes/{node}/lxc/{vmid}/config")
     assert put.data.get("delete") == "tags"
+    # The menu says, in English like every message, what an empty choice does
+    [question] = [q for kind, q in ui.asked if kind == "multi"]
+    assert "nothing = keep the source tags" in question
 
 
 def test_wizard_custom_tag(cli, api, ui):

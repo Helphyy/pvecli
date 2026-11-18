@@ -49,6 +49,10 @@ def _options_writes(api) -> list[dict]:
 
 def _routes(api, resources=RES, style=None) -> None:
     api.route("GET", "/cluster/resources", resources)
+    # Each guest's own config: what a removal rewrites from
+    by_id = {r["vmid"]: r for r in resources}
+    api.route("GET", "/nodes/{node}/{kind}/{vmid}/config",
+              lambda c: {k: v for k, v in by_id[int(c.match["vmid"])].items() if k == "tags"})
     api.route("GET", "/cluster/options", {"keyboard": "fr", **({"tag-style": style} if style else {})})
     api.route("PUT", "/cluster/options", None)
     api.route("PUT", "/nodes/{node}/{kind}/{vmid}/config", None)
@@ -329,6 +333,8 @@ def test_remove_two_tags_carried_by_the_same_guest(cli, api):
     # VM 101 has "db;web": after the command it must carry neither
     last = [c.data for c in api.writes() if c.path == "/nodes/pve1/qemu/101/config"][-1]
     assert last == {"delete": "tags"}
+    # Three guests carried them (seen on the lab: 2 guests read "from 4 resource(s)")
+    assert "from 3 resource(s)" in r.output
 
 
 def test_remove_refused_by_proxmox_reports_the_error(cli, api):
@@ -447,3 +453,14 @@ def test_import_empty_file(cli, api, tmp_path):
     assert r.exit_code == 0
     assert "No tags found in file" in r.output
     assert api.calls == []
+
+
+def test_remove_keeps_a_tag_added_after_the_cluster_list_was_built(cli, api):
+    # /cluster/resources lags: VM 101 got 'new' seconds ago, its config has it
+    _routes(api)
+    api.route("GET", "/nodes/{node}/{kind}/{vmid}/config",
+              lambda c: {"tags": "db;new;web"} if c.match["vmid"] == "101" else
+              {"tags": {"100": "web", "200": "web;prod"}[c.match["vmid"]]})
+    r = cli("tag", "remove", "web", "-y", "-p", "p1")
+    assert r.exit_code == 0, r.output
+    assert _guest_writes(api)["/nodes/pve1/qemu/101/config"] == {"tags": "db;new"}

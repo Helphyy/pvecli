@@ -2043,7 +2043,7 @@ def clone_vm(
             tag_list = sorted(known_tags)
             entries = ["(none)"] + tag_list + ["+ Add custom tag"]
             console.print("\n[bold]Tags:[/bold]")
-            sel = multi_select_menu(entries, "  Tags (Space/toggle, Enter/confirm, rien = copier source):")
+            sel = multi_select_menu(entries, "  Tags (Space/toggle, Enter/confirm, nothing = keep the source tags):")
             if not sel:
                 # Nothing selected → copy source tags
                 if source_tags:
@@ -3148,7 +3148,7 @@ def create_vm(
             tag_list = sorted(known_tags)
             entries = tag_list + ["+ Add custom tag"]
             console.print("\n[bold]Tags:[/bold]")
-            sel = multi_select_menu(entries, "  Tags (Space/toggle, Enter/confirm, rien = pas de tag):")
+            sel = multi_select_menu(entries, "  Tags (Space/toggle, Enter/confirm, nothing = no tags):")
             if sel:
                 chosen = [entries[i] for i in sel]
                 result_tags = [t for t in chosen if t != "+ Add custom tag"]
@@ -3853,27 +3853,38 @@ async def convert_vm_template(
             else:
                 vmid_list = parse_id_list(vmids, "VM")
 
-            # A template cannot be turned back into a VM: ask first
-            if not confirm_action(vmid_list, "Convert to template", "VM", yes):
-                return
-
-            converted = 0
+            # Check every VM before asking: a running one is refused at once,
+            # read from its node (the cluster list lags behind a stop)
+            ready: list[tuple[int, str]] = []
             for vmid in vmid_list:
                 try:
-                    node, status = await _get_vm_node(client, vmid)
-                    if status == "running":
-                        print_error(f"VM {vmid} is running, stop it first")
-                        continue
-                    await run_with_spinner(
-                        client, node,
-                        f"Converting VM {vmid} to template...",
-                        client.convert_vm_to_template(node, vmid),
-                        f"Waiting for VM {vmid}...",
-                    )
-                    print_success(f"VM {vmid} converted to template")
-                    converted += 1
+                    node, _ = await _get_vm_node(client, vmid)
+                    status = (await client.get_vm_status(node, vmid)).get("status")
                 except PVECliError as e:
                     print_error(f"VM {vmid}: {e}")
+                    continue
+                if status == "running":
+                    print_error(f"VM {vmid} is running, stop it first")
+                    continue
+                ready.append((vmid, node))
+
+            # A template cannot be turned back into a VM: ask first
+            converted = 0
+            if ready and confirm_action([v for v, _ in ready], "Convert to template", "VM", yes):
+                for vmid, node in ready:
+                    try:
+                        await run_with_spinner(
+                            client, node,
+                            f"Converting VM {vmid} to template...",
+                            client.convert_vm_to_template(node, vmid),
+                            f"Waiting for VM {vmid}...",
+                        )
+                        print_success(f"VM {vmid} converted to template")
+                        converted += 1
+                    except PVECliError as e:
+                        print_error(f"VM {vmid}: {e}")
+            elif ready:
+                return
 
             if len(vmid_list) > 1:
                 print_info(f"Summary: {converted}/{len(vmid_list)} converted")

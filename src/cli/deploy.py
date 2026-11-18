@@ -342,6 +342,19 @@ def _file_order(problem: str) -> int:
     return int(m.group(1)) if m else -1
 
 
+async def _rolled_back(facts: Facts, out: Outcome) -> None:
+    """A creation or clone task that fails is undone by PVE itself (config
+    and disks removed, seen on 9.1): then nothing is left to clean up."""
+    assert out.vmid is not None
+    try:
+        free = await facts.id_free(out.vmid)
+    except PVECliError:
+        return  # unknown: keep the advice to look at it
+    if free:
+        out.created = False
+        out.error = f"{out.error} (PVE undid it: nothing of it is left)"
+
+
 async def _execute(rows: list[_Row], facts: dict[str | None, Facts], parallel: int) -> dict[int, Outcome]:
     sem = asyncio.Semaphore(max(1, parallel))
 
@@ -360,6 +373,8 @@ async def _execute(rows: list[_Row], facts: dict[str | None, Facts], parallel: i
                 out.error = str(e)
                 console.print(f"[bold]{escape(spec.name or '')}[/bold]: [bold red]failed:[/bold red] {escape(str(e))}",
                               highlight=False)
+                if out.created and out.vmid is not None:
+                    await _rolled_back(facts[spec.profile], out)
         return id(spec), out
 
     return dict(await asyncio.gather(*(one(r.spec) for r in rows)))

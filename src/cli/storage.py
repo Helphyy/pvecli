@@ -1129,7 +1129,7 @@ async def download_content(
     storage: str = typer.Argument(None, help="Storage ID"),
     url: str = typer.Option(None, "--url", "-u", help="URL to download from"),
     filename: str = typer.Option(None, "--filename", "-f", help="Target filename (default: extracted from URL)"),
-    content_type: str = typer.Option(None, "--type", "-t", help="Content type: iso or vztmpl"),
+    content_type: str = typer.Option(None, "--type", "-t", help="Content type: iso, vztmpl or import"),
     checksum: str = typer.Option(None, "--checksum", "-c", help="Expected checksum"),
     checksum_algorithm: str | None = typer.Option(
         None, "--checksum-algorithm", "-ca", help="Checksum algorithm (md5, sha1, sha256, sha512)"
@@ -1167,7 +1167,9 @@ async def download_content(
             url_filename = unquote(parsed.path.rsplit("/", 1)[-1]) if parsed.path else ""
 
             if not filename:
-                if url_filename:
+                if url_filename and yes:
+                    filename = url_filename
+                elif url_filename:
                     filename = prompt("  Filename", default=url_filename)
                 else:
                     filename = prompt("  Filename")
@@ -1177,12 +1179,15 @@ async def download_content(
                     filename = filename.strip()
 
             # Auto-detect content type from filename
-            valid_types = ["iso", "vztmpl"]
+            # import: disk images for import-from (PVE 8.4 and later accept it)
+            valid_types = ["iso", "vztmpl", "import"]
             if not content_type:
                 if filename.endswith((".iso", ".img")):
                     guessed = "iso"
                 elif filename.endswith((".tar.gz", ".tar.xz", ".tar.zst")):
                     guessed = "vztmpl"
+                elif filename.endswith((".qcow2", ".raw", ".vmdk", ".ova")):
+                    guessed = "import"
                 else:
                     guessed = None
 

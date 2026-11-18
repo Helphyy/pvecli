@@ -7,7 +7,7 @@ import json
 import pytest
 
 from tests.fake_api import upid
-from tests.functional._backup_cluster import CONTENT, cluster, enc, recorded
+from tests.functional._backup_cluster import CONTENT, cluster, enc, log, recorded
 
 VM_VOL = CONTENT[("pve1", "local")][0]["volid"]
 PROTECTED_VOL = CONTENT[("pve1", "local")][1]["volid"]
@@ -87,6 +87,41 @@ def test_remove_waits_for_the_delete_task(cli, api, lab):
     r = cli("backup", "remove", VM_VOL, "-y", "-p", "p1")
     assert r.exit_code == 1
     assert "rm failed" in r.output
+
+
+def test_remove_of_a_locked_pbs_snapshot_says_why(cli, api, lab):
+    # Seen on lab1 (PVE 9 + PBS 4) right after `backup files` on a VM backup:
+    # the file-restore VM keeps the snapshot locked for a while. The task ends
+    # with a truncated status, the cause is only in its log.
+    api.route("GET", "/nodes/{node}/tasks/{upid}/status",
+              {"status": "stopped", "exitstatus": "proxmox-backup-client failed: }"})
+    api.route("GET", "/nodes/{node}/tasks/{upid}/log", log(
+        "Error: failed to delete snapshot - Error {",
+        '    context: "while destroying snapshot \'BackupDir { store: \\"labds\\" }\'",',
+        "    source: Error {",
+        '        context: "unable to acquire snapshot lock \\"/run/proxmox-backup/locks/labds/vm-953-x\\"",',
+        '        source: "Unable to acquire lock - Resource temporarily unavailable (os error 11)",',
+        "    },",
+        "TASK ERROR: proxmox-backup-client failed: }",
+    ))
+    r = cli("backup", "remove", PBS_VOL, "-y", "-p", "p1")
+    assert r.exit_code == 1
+    out = " ".join(r.output.split())
+    assert "in use" in out and "retry" in out
+    # nothing was deleted: not a success line
+    assert "\u2713 0/1" not in out
+
+
+def test_remove_failure_shows_the_error_line_of_the_task_log(cli, api, lab):
+    api.route("GET", "/nodes/{node}/tasks/{upid}/status",
+              {"status": "stopped", "exitstatus": "proxmox-backup-client failed: }"})
+    api.route("GET", "/nodes/{node}/tasks/{upid}/log", log(
+        "Error: failed to delete snapshot - permission denied on datastore",
+        "TASK ERROR: proxmox-backup-client failed: }",
+    ))
+    r = cli("backup", "remove", PBS_VOL, "-y", "-p", "p1")
+    assert r.exit_code == 1
+    assert "permission denied on datastore" in " ".join(r.output.split())
 
 
 def test_not_a_backup_volume_is_refused(cli, api, lab):

@@ -1,0 +1,30 @@
+[
+ {
+  "id": "cluster",
+  "name": "pve8lab",
+  "nodes": 2,
+  "quorate": 1,
+  "type": "cluster",
+  "version": 2
+ },
+ {
+  "id": "node/pve8a",
+  "ip": "10.199.32.90",
+  "level": "",
+  "local": 1,
+  "name": "pve8a",
+  "nodeid": 1,
+  "online": 1,
+  "type": "node"
+ },
+ {
+  "id": "node/pve8b",
+  "ip": "10.199.32.91",
+  "level": "",
+  "local": 0,
+  "name": "pve8b",
+  "nodeid": 2,
+  "online": 1,
+  "type": "node"
+ }
+]

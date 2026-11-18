@@ -1289,8 +1289,11 @@ async def _orchestrate_cluster_power(
     skip_ceph: bool,
     skip_ha: bool,
     stopall_timeout: int,
+    profile: str | None = None,
 ) -> None:
     """Orchestrate a full cluster shutdown or reboot."""
+    # Flags are cleared through the API, never by SSH to a node
+    on_profile = f" -p {profile}" if profile else ""
     action = "Shutdown" if command == "shutdown" else "Reboot"
 
     # Track what was done for interrupt recovery messages
@@ -1308,7 +1311,7 @@ async def _orchestrate_cluster_power(
             print_warning("You may need to re-enable them manually.")
         if flags_set:
             print_warning(f"Ceph flags were set: {', '.join(flags_set)}")
-            print_warning("Unset them with: " + ", ".join(f"ceph osd unset {f}" for f in flags_set))
+            print_warning(f"Unset them with: pvecli ceph unset {','.join(flags_set)}{on_profile}")
 
     try:
         # ── Phase 0: Gather info ──────────────────────────────────────
@@ -1505,7 +1508,25 @@ async def _orchestrate_cluster_power(
                 await client.wait_for_task(
                     name, upid, timeout=stopall_timeout + 60
                 )
-            print_success(f"All guests stopped on '{name}'")
+            # stopall ends OK even when a guest did not stop (an HA guest
+            # restarted by its manager, a refused shutdown): ask the node
+            try:
+                still = sorted(
+                    int(g.get("vmid") or 0) for g in [
+                        *(await client.get_vms(name) or []),
+                        *(await client.get_containers(name) or []),
+                    ] if g.get("status") == "running"
+                )
+            except PVECliError as e:
+                print_warning(f"Could not check the guests left on '{name}': {e}")
+                continue
+            if still:
+                print_warning(
+                    f"Still running on '{name}': {', '.join(map(str, still))} "
+                    f"(the {command} stops them)"
+                )
+            else:
+                print_success(f"All guests stopped on '{name}'")
 
         # ── Phase 5: Shutdown/reboot nodes ────────────────────────────
         console.print(f"\n[bold cyan]── Sending {command} to nodes ──[/bold cyan]")
@@ -1538,8 +1559,7 @@ async def _orchestrate_cluster_power(
         reminders = []
         if flags_set:
             reminders.append(
-                "Unset Ceph flags: "
-                + ", ".join(f"ceph osd unset {f}" for f in flags_set)
+                f"Unset Ceph flags: pvecli ceph unset {','.join(flags_set)}{on_profile}"
             )
         if ha_disarmed:
             reminders.append("Re-arm HA: pvecli cluster ha arm")
@@ -1556,7 +1576,10 @@ async def _orchestrate_cluster_power(
                 console.print(f"  • {reminder}")
             console.print()
 
-        print_success(f"Cluster {command} complete.")
+        # Only the commands are sent here: the nodes are still going down
+        print_success(f"{action} sent to every node")
+        if command == "reboot":
+            print_info("Follow their return with: pvecli cluster health")
 
     except (KeyboardInterrupt, asyncio.CancelledError):
         console.print()
@@ -1607,6 +1630,7 @@ async def cluster_shutdown(
                 skip_ceph=skip_ceph,
                 skip_ha=skip_ha,
                 stopall_timeout=timeout,
+                profile=profile,
             )
 
     except PVECliError as e:
@@ -1651,6 +1675,7 @@ async def cluster_reboot(
                 skip_ceph=skip_ceph,
                 skip_ha=skip_ha,
                 stopall_timeout=timeout,
+                profile=profile,
             )
 
     except PVECliError as e:
@@ -1908,7 +1933,9 @@ async def _finish_bulk(
 
     # A bulk task ends OK even when it skipped guests (locked, HA-managed,
     # already in the target state...): check every guest really got there.
-    missed = await _bulk_missed(client, action, guests, cluster_params.get("target"))
+    # HA shuts a guest down with its own timeout once the task has ended
+    ha_timeout = int(cluster_params.get("timeout") or 180) + 120
+    missed = await _bulk_missed(client, action, guests, cluster_params.get("target"), ha_timeout)
     if missed:
         print_warning(
             f"{describe}: {len(guests) - len(missed)}/{len(guests)} guest(s) done. "
@@ -1919,8 +1946,38 @@ async def _finish_bulk(
     print_success(f"{describe}: done for {len(guests)} guest(s)")
 
 
+async def _wait_ha_state(
+    client: ProxmoxClient, sid: str, want: str, timeout: int, start_grace: int = 60
+) -> None:
+    """Follow an HA service until it is 'started' or 'stopped' (want).
+
+    The opposite request ('request_stop' when a start is wanted) means HA is
+    taking it the other way: reported at once. A service still settled in the
+    opposite state after start_grace seconds was not acted on.
+    """
+    opposite = "stopped" if want == "started" else "started"
+    against = {"started": ("request_stop",), "stopped": ("request_start", "starting")}[want]
+    started = time.time()
+    state = None
+    while time.time() - started < timeout:
+        try:
+            entries = await client.get_cluster_ha_status() or []
+        except PVECliError:
+            entries = []
+        state = next((e for e in entries if e.get("sid") == sid), {}).get("state")
+        if state == want:
+            return
+        if state in against or state == "error":
+            raise PVECliError(f"HA state '{state}': the HA manager takes it the other way")
+        if state == opposite and time.time() - started >= start_grace:
+            raise PVECliError(f"HA state still '{state}': the HA manager did not act on it")
+        await asyncio.sleep(3)
+    raise PVECliError(f"HA state still '{state}' after {timeout}s")
+
+
 async def _bulk_missed(
-    client: ProxmoxClient, action: str, guests: list[dict], target: str | None
+    client: ProxmoxClient, action: str, guests: list[dict], target: str | None,
+    ha_timeout: int = 300,
 ) -> list[str]:
     """Guests not in the state the bulk action promised, read live."""
 
@@ -1942,14 +1999,15 @@ async def _bulk_missed(
             return None
         return f"{g['vmid']} ({status}{', locked ' + lock if lock else ''})"
 
-    if action != "migrate":
+    if action == "suspend":
         results = await asyncio.gather(*(check(g) for g in guests))
         return [r for r in results if r]
 
-    # An HA-managed guest is only queued by the bulk task and moved by the
-    # HA manager afterwards. Its config can reach the target while the HA
-    # state is still 'migrate', and a new request sent then is ignored:
-    # follow the HA state itself until the guest is settled on the target.
+    # An HA-managed guest is only queued by the bulk task and moved, started
+    # or stopped by the HA manager afterwards (stopall/startall only change
+    # its requested state and end at once). Its live status lags behind, and
+    # a migrated config can reach the target while the HA state is still
+    # 'migrate': follow the HA state itself until the guest is settled.
     from ._shared import _wait_ha_migration
 
     try:
@@ -1962,7 +2020,10 @@ async def _bulk_missed(
         if sid not in ha_sids:
             return await check(g)
         try:
-            await _wait_ha_migration(client, sid, target or "", timeout=600)
+            if action == "migrate":
+                await _wait_ha_migration(client, sid, target or "", timeout=600)
+            else:
+                await _wait_ha_state(client, sid, "started" if action == "start" else "stopped", ha_timeout)
             return None
         except PVECliError as e:
             return f"{g['vmid']} ({e})"

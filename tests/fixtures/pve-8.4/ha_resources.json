@@ -1,0 +1,17 @@
+[
+ {
+  "digest": "ae0927cc0fe87781e3c2faf207206113bcb5c4d8",
+  "group": "prefa",
+  "sid": "vm:125",
+  "state": "started",
+  "type": "vm"
+ },
+ {
+  "digest": "ae0927cc0fe87781e3c2faf207206113bcb5c4d8",
+  "group": "prefa",
+  "max_restart": 2,
+  "sid": "vm:120",
+  "state": "started",
+  "type": "vm"
+ }
+]

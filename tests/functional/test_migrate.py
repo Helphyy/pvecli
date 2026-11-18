@@ -191,6 +191,24 @@ def test_ha_request_ignored_fails_fast(cli, api, clock):
     assert clock.now - start < 120
 
 
+def test_ha_migration_that_ends_back_on_the_source_fails_fast(cli, api, clock):
+    """Seen on PVE 8.4: an HA migration that aborts (linked clone on a local
+    storage) or that HA undoes at once (failback to the group's preferred
+    node) goes 'migrate' then 'started' on the source again. Waiting for the
+    600 s timeout told nothing: say it at once."""
+    _ha_cluster(api)
+    base = fixture("pve-9.1/ha_status_current")
+    seq = iter([_ha_entry("migrate", VM_NODE), _ha_entry("migrate", VM_NODE)])
+    api.route("GET", "/cluster/ha/status/current",
+              lambda _c: base + [next(seq, _ha_entry("started", VM_NODE))])
+    start = clock.now
+    r = cli("vm", "migrate", "300", TARGET, "-y", "-p", "p1")
+    assert r.exit_code == 1
+    out = " ".join(r.output.split())
+    assert f"back on {VM_NODE}" in out
+    assert clock.now - start < 120
+
+
 def test_hamigrate_task_followed_even_if_ha_resources_unreadable(cli, api, clock):
     """The UPID kind alone shows the request went through the HA manager."""
     _ha_cluster(api)
@@ -208,3 +226,54 @@ def test_migrating_to_the_current_node_is_refused(cli, api):
     r = cli("vm", "migrate", "300", VM_NODE, "-y", "-p", "p1")
     assert r.exit_code == 1
     assert api.writes() == []
+
+
+# ── PVE 8.4 (recorded on the pve8lab cluster) ──────────────────────────
+
+
+def _pve8_vm110_on_pve8b(api: Any, pre: dict[str, Any]) -> None:
+    """VM 110 (stopped) as recorded on pve8b, a CD-ROM image of 'local'
+    still attached and referenced by snapshot pre1."""
+    resources = fixture("pve-8.4/cluster_resources_vm")
+    for g in resources:
+        if g["vmid"] == 110:
+            g["node"] = "pve8b"
+    api.route("GET", "/cluster/resources", resources)
+    api.route("GET", "/nodes", fixture("pve-8.4/nodes"))
+    api.route("GET", "/nodes/pve8b/qemu/110/status/current", fixture("pve-8.4/qemu_status_current"))
+    api.route("GET", "/nodes/pve8b/qemu/110/migrate", pre)
+    api.route("GET", "/cluster/ha/resources", fixture("pve-8.4/ha_resources"))
+    api.route("POST", "/nodes/pve8b/qemu/110/migrate", upid("pve8b", "qmigrate", 110))
+
+
+def test_local_cdrom_image_is_refused_before_anything_moves(cli, api):
+    """PVE aborts every migration of a VM holding a CD-ROM image of a local
+    storage ("can't migrate local cdrom image"), and the task only ends with
+    "migration aborted". The preconditions already say it (cdrom: 1, shared: 0):
+    refuse with the volume and the way out, without starting a task."""
+    _pve8_vm110_on_pve8b(api, fixture("pve-8.4/qemu_migrate_preconditions_local_cdrom"))
+    for extra in ([], ["--with-local-disks"]):
+        r = cli("vm", "migrate", "110", "pve8a", *extra, "-y", "-p", "p1")
+        assert r.exit_code == 1
+        out = " ".join(r.output.split())
+        assert "local:iso/alpine-virt-3.24.4-x86_64.iso" in out
+        assert "ide2" in out
+    assert api.writes() == []
+
+
+def test_cdrom_on_shared_storage_or_none_does_not_block(cli, api):
+    pre = fixture("pve-8.4/qemu_migrate_preconditions_local_cdrom")
+    pre["local_disks"] = [d for d in pre["local_disks"] if not d.get("cdrom")]
+    _pve8_vm110_on_pve8b(api, pre)
+    r = cli("vm", "migrate", "110", "pve8a", "-y", "-p", "p1")
+    assert r.exit_code == 0, r.output
+    assert [c.data for c in _migrate_posts(api)] == [{"target": "pve8a"}]
+
+
+def test_cloudinit_drive_does_not_block(cli, api):
+    """A cloud-init drive is a local CD-ROM too, but PVE regenerates it on the target."""
+    pre = fixture("pve-8.4/qemu_migrate_preconditions_local_cdrom")
+    pre["local_disks"][0]["volid"] = "local:110/vm-110-cloudinit.qcow2"
+    _pve8_vm110_on_pve8b(api, pre)
+    r = cli("vm", "migrate", "110", "pve8a", "-y", "-p", "p1")
+    assert r.exit_code == 0, r.output

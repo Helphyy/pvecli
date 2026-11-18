@@ -217,3 +217,5 @@ def test_wizard_none_tag_gives_a_clone_without_tags(cli, api, ui):
     assert r.exit_code == 0, r.output
     puts = api.called("PUT", "/nodes/pve-lab1/qemu/401/config")
     assert any("tags" in str((p.data or {}).get("delete", "")).split(",") for p in puts)
+    [question] = [q for kind, q in ui.asked if kind == "multi"]
+    assert "nothing = keep the source tags" in question

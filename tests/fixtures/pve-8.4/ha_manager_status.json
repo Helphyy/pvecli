@@ -1,0 +1,59 @@
+{
+ "lrm_status": {
+  "pve8a": {
+   "mode": "active",
+   "results": {
+    "03hlL/i/LmMKSD1nKOAjPA": {
+     "exit_code": 0,
+     "sid": "vm:125",
+     "state": "started"
+    },
+    "0N4BhiujYA2lt7JeFX2R3g": {
+     "exit_code": 0,
+     "sid": "vm:120",
+     "state": "started"
+    }
+   },
+   "state": "active",
+   "timestamp": 1795017894
+  },
+  "pve8b": {
+   "mode": "active",
+   "results": {
+    "3pRBtiTWcRbng7Y6rKUfOg": {
+     "exit_code": 0,
+     "sid": "vm:125",
+     "state": "migrate"
+    }
+   },
+   "state": "wait_for_agent_lock",
+   "timestamp": 1795017900
+  }
+ },
+ "manager_status": {
+  "master_node": "pve8b",
+  "node_status": {
+   "pve8a": "online",
+   "pve8b": "online"
+  },
+  "service_status": {
+   "vm:120": {
+    "node": "pve8a",
+    "running": 1,
+    "state": "started",
+    "uid": "/3KKySa3t3ht55sVYo4ifA"
+   },
+   "vm:125": {
+    "node": "pve8a",
+    "running": 1,
+    "state": "started",
+    "uid": "HTk2Mwn0auygzvQImat55A"
+   }
+  },
+  "timestamp": 1795017901
+ },
+ "quorum": {
+  "node": "pve8a",
+  "quorate": "1"
+ }
+}

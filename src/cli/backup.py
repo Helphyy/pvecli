@@ -124,6 +124,21 @@ def parse_vzdump_log(lines: list[str]) -> dict[int, tuple[str, str]]:
     return out
 
 
+def task_failure(lines: list[str]) -> str | None:
+    """The cause of a failed task, from its log, when its status hides it.
+
+    A PBS task ends with 'proxmox-backup-client failed: }' (its error is a
+    multi-line structure cut at the first line); the real reason is above.
+    """
+    if any("unable to acquire snapshot lock" in line for line in lines):
+        return ("the backup is in use on the Proxmox Backup Server (a restore, a verification, "
+                "or a recent 'backup files' browse holds its lock): retry in a few minutes")
+    for line in lines:
+        if line.startswith("Error:"):
+            return line.split(":", 1)[1].strip()
+    return None
+
+
 def upid_start(upid: str) -> int:
     """Start time embedded in a UPID (5th field, hex), 0 if unreadable."""
     try:
@@ -225,15 +240,47 @@ def _row(item: dict, st: dict, node: str | None) -> dict[str, Any]:
     }
 
 
+async def _lacks(client: ProxmoxClient, path: str, privilege: str) -> str | None:
+    """None when the user holds `privilege` on `path`, else why not, read
+    from its effective permissions (a 403 is never raised for what PVE
+    drops from a list)."""
+    try:
+        have = await client.get("/access/permissions", params={"path": path}) or {}
+    except PVECliError as e:
+        return f"privileges on {path} unreadable ({_why(e)})"
+    return None if (have.get(path) or {}).get(privilege) else f"missing privilege {path}, {privilege}"
+
+
+async def hidden_guests(client: ProxmoxClient, vmids: list[int]) -> dict[int, str]:
+    """vmid -> why its backups are hidden from this user (VM.Backup lacking).
+
+    PVE lists a backup only with VM.Backup on its guest (and
+    Datastore.AllocateSpace on its storage), and drops the others silently.
+    """
+    sem = asyncio.Semaphore(_CONCURRENCY)
+
+    async def one(vmid: int) -> str | None:
+        async with sem:
+            return await _lacks(client, f"/vms/{vmid}", "VM.Backup")
+
+    found = await asyncio.gather(*(one(v) for v in vmids))
+    return {v: why for v, why in zip(vmids, found, strict=True) if why}
+
+
 async def _inventory(
     client: ProxmoxClient, storages: list[dict], nodes: list[str],
 ) -> tuple[list[dict], dict[str, str], int]:
     """Every backup on these storages.
 
-    Returns (rows, {'storage' or 'storage@node': error}, number of reads).
-    An unreadable storage is returned as such, never as an empty one.
+    Returns (rows, {'storage' or 'storage@node': error}, number of sources).
+    An unreadable storage is returned as such, never as an empty one; so is
+    one whose backups PVE hides from this user (no Datastore.AllocateSpace).
     """
-    reads = [(st, n) for st in storages for n in _readers(st, nodes)]
+    blind = await asyncio.gather(*(_lacks(client, f"/storage/{st['storage']}", "Datastore.AllocateSpace")
+                                   for st in storages))
+    unreadable: dict[str, str] = {st["storage"]: f"backups hidden, {why}"
+                                  for st, why in zip(storages, blind, strict=True) if why}
+    reads = [(st, n) for st in storages if st["storage"] not in unreadable for n in _readers(st, nodes)]
     sem = asyncio.Semaphore(_CONCURRENCY)
 
     async def read(st: dict, node: str) -> Any:
@@ -246,14 +293,13 @@ async def _inventory(
 
     results = await asyncio.gather(*(read(st, n) for st, n in reads))
     rows: list[dict] = []
-    unreadable: dict[str, str] = {}
     for (st, node), res in zip(reads, results, strict=True):
         shared = bool(st.get("shared"))
         if isinstance(res, Exception):
             unreadable[st["storage"] if shared else f"{st['storage']}@{node}"] = _why(res)
             continue
         rows += [_row(it, st, None if shared else node) for it in res if it.get("content", "backup") == "backup"]
-    return rows, unreadable, len(reads)
+    return rows, unreadable, len(reads) + sum(1 for why in blind if why)
 
 
 async def _locate(
@@ -391,14 +437,16 @@ async def collect_coverage(client: ProxmoxClient, guests: list[dict], nodes: lis
     """Everything `status` and the audit need, each source read once.
 
     Keys: jobs (vmid -> labels, or None), jobs_error, last (vmid -> newest
-    backup row), unreadable (storage -> error), runs (vmid -> last run),
-    blind (node -> why its tasks cannot be read).
+    backup row), unreadable (storage -> error), hidden (vmid -> why PVE
+    hides its backups from this user), runs (vmid -> last run), blind
+    (node -> why its tasks cannot be read).
     """
     storages = await _backup_storages(client)
-    (jobs, jobs_error), (rows, unreadable, _), node_runs = await asyncio.gather(
+    (jobs, jobs_error), (rows, unreadable, _), node_runs, hidden = await asyncio.gather(
         _job_coverage(client, [g["vmid"] for g in guests]),
         _inventory(client, storages, nodes),
         asyncio.gather(*(_node_runs(client, n) for n in nodes)),
+        hidden_guests(client, [g["vmid"] for g in guests]),
     )
     last: dict[int, dict] = {}
     for r in rows:
@@ -414,7 +462,20 @@ async def collect_coverage(client: ProxmoxClient, guests: list[dict], nodes: lis
             if run["time"] >= runs.get(vmid, {}).get("time", -1):
                 runs[vmid] = run
     return {"jobs": jobs, "jobs_error": jobs_error, "last": last, "unreadable": unreadable,
-            "runs": runs, "blind": blind}
+            "hidden": hidden, "runs": runs, "blind": blind}
+
+
+def backup_unknown(vmid: int, cov: dict[str, Any]) -> str | None:
+    """Why the absence of a backup of this guest proves nothing (its backups
+    are hidden, or a storage could not be read), None when it is real."""
+    if vmid in cov["last"]:
+        return None
+    reasons = [cov["hidden"][vmid]] if vmid in cov["hidden"] else []
+    if cov["unreadable"]:
+        label, why = next(iter(cov["unreadable"].items()))
+        more = f" (+{len(cov['unreadable']) - 1} more)" if len(cov["unreadable"]) > 1 else ""
+        reasons.append(f"{label}: {why}{more}")
+    return "; ".join(reasons) or None
 
 
 def _status_rows(guests: list[dict], cov: dict[str, Any]) -> list[dict]:
@@ -434,6 +495,7 @@ def _status_rows(guests: list[dict], cov: dict[str, Any]) -> list[dict]:
             "jobs_detail": cov["jobs_error"] if jobs is None else "",
             "last_backup": last["ctime"] if last else None,
             "last_volid": last["volid"] if last else None,
+            "last_backup_hidden": backup_unknown(vmid, cov),
             "last_run": run,
         })
     return rows
@@ -468,22 +530,30 @@ async def backup_list(
             storages = await _backup_storages(client, storage)
             guests = await _guests(client)
             rows, unreadable, reads = await _inventory(client, storages, nodes)
+            wanted: set[int] | None = set(parse_id_list(vmid, "guest")) if vmid else None
+            if tag or pool:
+                picked = {g["vmid"] for g in guests
+                          if (not tag or tag in parse_tags(g.get("tags", "") or ""))
+                          and (not pool or g.get("pool") == pool)}
+                wanted = picked if wanted is None else wanted & picked
+            # PVE drops the backups of a guest without VM.Backup on it, silently
+            hidden = await hidden_guests(client, sorted(
+                g["vmid"] for g in guests if wanted is None or g["vmid"] in wanted))
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)
     for label, why in unreadable.items():
-        _warn(f"Backups on {label} unreadable: {why}", json_output)
+        _warn(f"Backups on {label} not checked: {why}", json_output)
     if reads and len(unreadable) == reads:
         print_error("No backup storage could be read")
         raise typer.Exit(1)
+    if hidden:
+        ids = sorted(hidden)
+        _warn(f"Backups of {len(ids)} guest(s) not checked: {', '.join(map(str, ids[:20]))}"
+              + (" ..." if len(ids) > 20 else "") + f" ({hidden[ids[0]]}"
+              + (", and the same for the others)" if len(ids) > 1 else ")"), json_output)
 
     by_id = {g["vmid"]: g for g in guests}
-    wanted: set[int] | None = set(parse_id_list(vmid, "guest")) if vmid else None
-    if tag or pool:
-        picked = {g["vmid"] for g in guests
-                  if (not tag or tag in parse_tags(g.get("tags", "") or ""))
-                  and (not pool or g.get("pool") == pool)}
-        wanted = picked if wanted is None else wanted & picked
     if wanted is not None:
         rows = [r for r in rows if r["vmid"] in wanted]
     for r in rows:
@@ -494,7 +564,10 @@ async def backup_list(
         emit_json(rows)
         return
     if not rows:
-        print_info("No backup found")
+        if hidden or unreadable:
+            print_warning("No backup listed, but some were not checked (see above)")
+        else:
+            print_info("No backup found")
         return
     table = Table(title=f"{len(rows)} backup(s)", header_style="bold cyan")
     columns: tuple[tuple[str, dict[str, Any]], ...] = (
@@ -580,11 +653,12 @@ async def backup_status(
             "failed": f"[red]FAILED[/red] {_age(run['time'])}",
             "not checked": "[yellow]not checked[/yellow]",
         }.get(run["state"], "-")
-        table.add_row(
-            str(r["vmid"]), r["name"], "VM" if r["type"] == "qemu" else "CT", jobs,
-            _age(r["last_backup"]) if r["last_backup"] else "[yellow]never[/yellow]",
-            state, run["detail"],
-        )
+        if r["last_backup"]:
+            last = _age(r["last_backup"])
+        else:
+            last = "[yellow]not checked[/yellow]" if r["last_backup_hidden"] else "[yellow]never[/yellow]"
+        detail = "; ".join(x for x in (run["detail"], r["last_backup_hidden"]) if x)
+        table.add_row(str(r["vmid"]), r["name"], "VM" if r["type"] == "qemu" else "CT", jobs, last, state, detail)
     console.print(table)
 
 
@@ -622,6 +696,17 @@ async def _targets(
         out.append(g)
     if not out:
         raise PVECliError("No guest matches these filters")
+    # The cluster list has no name yet for a guest created seconds ago, or
+    # the placeholder "VM <id>" (a real name never holds a space): its
+    # config has it (hostname for a CT)
+    nameless = [g for g in out if " " in f"{g.get('name') or ' '}" and g.get("node")]
+    configs = await asyncio.gather(
+        *(client.get(f"/nodes/{g['node']}/{g['type']}/{g['vmid']}/config") for g in nameless),
+        return_exceptions=True,
+    )
+    for g, cfg in zip(nameless, configs, strict=True):
+        if isinstance(cfg, dict):
+            g["name"] = cfg.get("name") or cfg.get("hostname") or ""
     return sorted(out, key=lambda g: g["vmid"])
 
 
@@ -1010,20 +1095,24 @@ async def backup_remove(
                     return
             done = 0
             for v, n in doomed:
+                upid: Any = None
                 try:
                     upid = await client.delete(_volume_path(n, v))
                     if isinstance(upid, str) and upid.startswith("UPID:"):
                         await client.wait_for_task(n, upid, timeout=_TASK_TIMEOUT)
                     done += 1
                 except PVECliError as e:
-                    msg = f"{v}: {e}"
+                    why = str(e)
+                    if isinstance(upid, str) and upid.startswith("UPID:"):
+                        why = task_failure(await _task_log(client, n, upid) or []) or why
+                    msg = f"{v}: {why}"
                     print_error(msg)
                     failures.append(msg)
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)
     if doomed:
-        print_success(f"{done}/{len(doomed)} backup(s) deleted")
+        (print_success if done == len(doomed) else print_warning)(f"{done}/{len(doomed)} backup(s) deleted")
     if failures:
         raise typer.Exit(1)
 
@@ -1291,7 +1380,8 @@ async def jobs_list(profile: str = _PROFILE, json_output: bool = JSON_OPTION) ->
             j.get("id", ""), "yes" if _enabled(j) else "no", str(j.get("schedule", "")), _selection(j),
             str(j.get("storage", "")), str(j.get("mode", "snapshot")),
             property_string(j["prune-backups"]) if j.get("prune-backups") else "storage",
-            _when(j.get("next-run")), str(j.get("comment", "")),
+            # PVE still computes a next-run for a disabled job, which never runs
+            _when(j.get("next-run")) if _enabled(j) else "disabled", str(j.get("comment", "")),
         )
     console.print(table)
 

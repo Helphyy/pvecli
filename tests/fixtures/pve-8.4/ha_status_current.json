@@ -1,0 +1,56 @@
+[
+ {
+  "id": "quorum",
+  "node": "pve8a",
+  "quorate": 1,
+  "status": "OK",
+  "type": "quorum"
+ },
+ {
+  "id": "master",
+  "node": "pve8b",
+  "status": "pve8b (active, Wed Nov 18 16:05:01 2026)",
+  "timestamp": 1795017901,
+  "type": "master"
+ },
+ {
+  "id": "lrm:pve8a",
+  "node": "pve8a",
+  "status": "pve8a (active, Wed Nov 18 16:04:54 2026)",
+  "timestamp": 1795017894,
+  "type": "lrm"
+ },
+ {
+  "id": "lrm:pve8b",
+  "node": "pve8b",
+  "status": "pve8b (idle, Wed Nov 18 16:05:00 2026)",
+  "timestamp": 1795017900,
+  "type": "lrm"
+ },
+ {
+  "crm_state": "started",
+  "group": "prefa",
+  "id": "service:vm:120",
+  "max_relocate": 1,
+  "max_restart": 2,
+  "node": "pve8a",
+  "request_state": "started",
+  "sid": "vm:120",
+  "state": "started",
+  "status": "vm:120 (pve8a, started)",
+  "type": "service"
+ },
+ {
+  "crm_state": "started",
+  "group": "prefa",
+  "id": "service:vm:125",
+  "max_relocate": 1,
+  "max_restart": 1,
+  "node": "pve8a",
+  "request_state": "started",
+  "sid": "vm:125",
+  "state": "started",
+  "status": "vm:125 (pve8a, started)",
+  "type": "service"
+ }
+]

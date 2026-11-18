@@ -1,0 +1,47 @@
+[
+ {
+  "name": "deb12-tpl",
+  "type": "qemu",
+  "vmid": 9000
+ },
+ {
+  "name": "vm110",
+  "type": "qemu",
+  "vmid": 140
+ },
+ {
+  "name": "ct101",
+  "type": "lxc",
+  "vmid": 141
+ },
+ {
+  "name": "vm125",
+  "type": "qemu",
+  "vmid": 125
+ },
+ {
+  "name": "vm120",
+  "type": "qemu",
+  "vmid": 120
+ },
+ {
+  "name": "ct101",
+  "type": "lxc",
+  "vmid": 101
+ },
+ {
+  "name": "vm110",
+  "type": "qemu",
+  "vmid": 110
+ },
+ {
+  "name": "vm130",
+  "type": "qemu",
+  "vmid": 130
+ },
+ {
+  "name": "vm111",
+  "type": "qemu",
+  "vmid": 111
+ }
+]

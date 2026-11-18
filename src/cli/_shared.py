@@ -7,6 +7,7 @@ Each function takes callbacks/labels so it works for both resource types.
 """
 
 import asyncio
+import re
 import time
 from collections.abc import Callable, Coroutine
 from typing import Any
@@ -54,6 +55,7 @@ from ..utils import (
     prompt,
     usage_bar,
 )
+from ..utils import menu as menu_mod
 from ..utils.menu import multi_select_menu, require_terminal, select_menu
 from ..utils.network import resolve_node_host
 from ..utils.output import err_console
@@ -802,83 +804,6 @@ async def shared_delete_snapshot(
 
 
 # ---------------------------------------------------------------------------
-# VNC command
-# ---------------------------------------------------------------------------
-
-async def shared_vnc(
-    client: ProxmoxClient,
-    resource_id: int,
-    label: str,
-    profile_config: Any,
-    get_resources: Callable[..., Coroutine],
-    create_vncproxy: Callable[..., Coroutine],
-    api_type: str,
-    generate_password: bool = False,
-) -> None:
-    """Open a VNC console for a VM or container.
-
-    Args:
-        client: ProxmoxClient instance.
-        resource_id: VMID or CTID.
-        label: "VM" or "CT".
-        profile_config: Profile configuration.
-        get_resources: Async callable returning list of resources.
-        create_vncproxy: Async callable returning VNC proxy data.
-        api_type: "qemu" or "lxc".
-        generate_password: Whether VNC proxy generates a password.
-    """
-    from ..utils import open_browser_window
-    from ..utils.network import find_free_port
-    from ..vnc.server import VNCProxyServer
-
-    resources = await get_resources()
-    resource = next((r for r in resources if r.get("vmid") == resource_id), None)
-
-    if not resource:
-        print_error(f"{label} {resource_id} not found")
-        raise typer.Exit(1)
-
-    node = resource.get("node")
-    resource_name = resource.get("name", "").strip()
-    resource_status = resource.get("status", "unknown")
-
-    if resource_status != "running":
-        print_error(
-            f"{label} {resource_id} ({resource_name}) is not running (status: {resource_status}). "
-            f"Start the {label.lower()} before opening a VNC console."
-        )
-        raise typer.Exit(1)
-
-    vnc_data = await create_vncproxy()
-
-    host = resolve_node_host(profile_config)
-
-    # PVE 9.1.9+ (PSA-2026-00014-1) returns a dedicated VNC password, which
-    # the official client prefers; older hosts only return the ticket.
-    vnc_password = vnc_data.get("password") or vnc_data["ticket"]
-
-    assert client._headers is not None  # the caller hands over a connected client
-    server_config = {
-        "proxmox_host": host,
-        "proxmox_port": profile_config.port,
-        "ws_path": f"/api2/json/nodes/{node}/{api_type}/{resource_id}/vncwebsocket",
-        "vncticket": vnc_data["ticket"],
-        "pve_port": int(vnc_data["port"]),
-        "auth_headers": dict(client._headers),
-        "local_port": find_free_port(),
-        "verify_ssl": profile_config.verify_ssl,
-        "vnc_password": vnc_password,
-    }
-
-    server = VNCProxyServer(**server_config)
-    url = server.get_browser_url()
-    print_success(f"Opening VNC console for {label} {resource_id} ({resource_name})...")
-    console.print("[dim]Press Enter to stop the server[/dim]")
-    open_browser_window(url)
-    await server.run()
-
-
-# ---------------------------------------------------------------------------
 # SSH command
 # ---------------------------------------------------------------------------
 
@@ -1222,6 +1147,11 @@ async def shared_ha_add(
     _check_placement_option(mode, group, nodes)
 
     if interactive:
+        if not menu_mod._interactive():
+            raise PVECliError(
+                "No terminal available for the HA wizard: pass -y to use the "
+                "defaults for the fields not given"
+            )
         console.print(f"\n[bold cyan]═══ HA Add Wizard ({label} {resource_id}) ═══[/bold cyan]\n")
 
         if mode == "groups" and group is None:
@@ -1457,6 +1387,13 @@ async def _wait_ha_migration(
             seen_moving = True
         elif node == target and state in ("started", "stopped"):
             return
+        elif seen_moving and node and state in ("started", "stopped"):
+            # Moved, then settled elsewhere: the migration aborted, or HA
+            # took it straight back (failback to its group's preferred node)
+            raise PVECliError(
+                f"{sid} is back on {node} ('{state}'): the migration failed or HA "
+                "moved it back (failback). The task log says why: pvecli cluster tasks"
+            )
         elif not seen_moving and time.time() - started >= start_grace:
             raise PVECliError(
                 f"The HA manager did not act on the request: {sid} is still "
@@ -1555,6 +1492,21 @@ async def shared_migrate(
     mode = "offline"
     if kind == "vm":
         local_disks = pre.get("local_disks") or []
+        # PVE aborts any migration holding a CD-ROM image of a local storage
+        # (QemuMigrate: "local cdrom image"), the task only says "migration
+        # aborted". A cloud-init drive is regenerated on the target: no block.
+        cdroms = [
+            d for d in local_disks
+            if d.get("cdrom") and not d.get("shared")
+            and not re.search(r"vm-\d+-cloudinit", str(d.get("volid", "")))
+        ]
+        if cdroms:
+            listed = ", ".join(f"{d.get('drivename') or '?'}: {d.get('volid')}" for d in cdroms)
+            raise PVECliError(
+                f"VM {guest_id} holds a CD-ROM image of a local storage ({listed}), "
+                "which Proxmox cannot migrate: eject it (or move the image to a "
+                "shared storage), and delete the snapshots that still reference it"
+            )
         if running:
             if online is False:
                 raise PVECliError(

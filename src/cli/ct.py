@@ -1475,7 +1475,7 @@ def clone_container(
             tag_list = sorted(known_tags)
             entries = ["(none)"] + tag_list + ["+ Add custom tag"]
             console.print("\n[bold]Tags:[/bold]")
-            sel = multi_select_menu(entries, "  Tags (Space/toggle, Enter/confirm, rien = copier source):")
+            sel = multi_select_menu(entries, "  Tags (Space/toggle, Enter/confirm, nothing = keep the source tags):")
             if not sel:
                 # Nothing selected → copy source tags
                 if source_tags:
@@ -2492,7 +2492,7 @@ def create_container(
             tag_list = sorted(known_tags)
             entries = tag_list + ["+ Add custom tag"]
             console.print("\n[bold]Tags:[/bold]")
-            sel = multi_select_menu(entries, "  Tags (Space/toggle, Enter/confirm, rien = pas de tag):")
+            sel = multi_select_menu(entries, "  Tags (Space/toggle, Enter/confirm, nothing = no tags):")
             if sel:
                 chosen = [entries[i] for i in sel]
                 result_tags = [t for t in chosen if t != "+ Add custom tag"]
@@ -3332,22 +3332,33 @@ async def convert_ct_template(
 
             cts = await validate_resources(client, ctid_list, "lxc", "Container")
 
-            # A template cannot be turned back into a container
-            if not confirm_action(ctid_list, "Convert to template (cannot be undone):", "container", yes):
-                return
-
-            converted = 0
+            # Check every CT before asking: a running one is refused at once,
+            # read from its node (the cluster list lags behind a stop)
+            ready: list[tuple[int, str]] = []
             for ct_info in cts:
-                ctid, node, status = ct_info["id"], ct_info["node"], ct_info["status"]
+                ctid, node = ct_info["id"], ct_info["node"]
                 try:
-                    if status == "running":
-                        print_warning(f"CT {ctid} is running - stop it first")
-                        continue
-                    await client.convert_container_to_template(node, ctid)
-                    print_success(f"CT {ctid} converted to template")
-                    converted += 1
+                    status = (await client.get_container_status(node, ctid)).get("status")
                 except PVECliError as e:
                     print_error(f"CT {ctid}: {e}")
+                    continue
+                if status == "running":
+                    print_error(f"CT {ctid} is running, stop it first")
+                    continue
+                ready.append((ctid, node))
+
+            # A template cannot be turned back into a container
+            converted = 0
+            if ready and confirm_action([c for c, _ in ready], "Convert to template (cannot be undone):", "container", yes):
+                for ctid, node in ready:
+                    try:
+                        await client.convert_container_to_template(node, ctid)
+                        print_success(f"CT {ctid} converted to template")
+                        converted += 1
+                    except PVECliError as e:
+                        print_error(f"CT {ctid}: {e}")
+            elif ready:
+                return
 
             if len(ctid_list) > 1:
                 print_info(f"Summary: {converted}/{len(ctid_list)} converted")

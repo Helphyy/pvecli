@@ -70,12 +70,35 @@ CONTENT: dict[tuple[str, str], list[dict[str, Any]]] = {
 }
 
 
+# What root holds, as far as the backup commands look
+ROOT = {"Sys.Audit": 1, "VM.Audit": 1, "VM.Backup": 1, "Datastore.Audit": 1, "Datastore.AllocateSpace": 1}
+# PVEAuditor (privileges read on lab1, PVE 9.1): it may read a storage, but
+# not see the backups on it
+AUDITOR = {"Sys.Audit": 1, "VM.Audit": 1, "Datastore.Audit": 1, "Pool.Audit": 1, "SDN.Audit": 1,
+           "Mapping.Audit": 1}
+
+
+def grants(api: FakeAPI, per_path: dict[str, dict[str, int]], default: dict[str, int] | None = None) -> None:
+    """Route /access/permissions: these privileges on these paths, `default` elsewhere."""
+    api.route("GET", "/access/permissions",
+              lambda c: {c.params["path"]: per_path.get(c.params["path"], default or {})})
+
+
+def _holds(api: FakeAPI, host: str, path: str, privilege: str) -> bool:
+    try:
+        have = api.handle(host, "GET", "/access/permissions", {"path": path}, None) or {}
+    except Exception:
+        return False
+    return bool((have.get(path) or {}).get(privilege))
+
+
 def cluster(api: FakeAPI, content: dict[tuple[str, str], list[dict]] | None = None) -> FakeAPI:
     """Route the reads every backup command starts with."""
     data = CONTENT if content is None else content
     api.route("GET", "/nodes", NODES)
     api.route("GET", "/cluster/resources", GUESTS)
     api.route("GET", "/storage", STORAGES)
+    grants(api, {}, ROOT)
 
     def listing(call: Any) -> Any:
         node, storage = call.match["node"], call.match["storage"]
@@ -83,7 +106,12 @@ def cluster(api: FakeAPI, content: dict[tuple[str, str], list[dict]] | None = No
             return api.error(595, "no route to host")
         items = data.get((node, storage), data.get(("*", storage), []))
         vmid = (call.params or {}).get("vmid")
-        return [i for i in items if vmid is None or i["vmid"] == int(vmid)]
+        # As PVE::Storage::check_volume_access: a backup is listed only with
+        # Datastore.AllocateSpace on its storage and VM.Backup on its guest,
+        # the others are dropped without an error
+        return [i for i in items if (vmid is None or i["vmid"] == int(vmid))
+                and _holds(api, call.host, f"/storage/{storage}", "Datastore.AllocateSpace")
+                and _holds(api, call.host, f"/vms/{i['vmid']}", "VM.Backup")]
 
     api.route("GET", "/nodes/{node}/storage/{storage}/content", listing)
     return api

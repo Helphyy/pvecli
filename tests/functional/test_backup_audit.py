@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from tests.fake_api import FakeAPI
-from tests.functional._backup_cluster import DAY, NOW, log
+from tests.functional._backup_cluster import AUDITOR, DAY, NOW, ROOT, grants, log
 from tests.functional.test_audit import lab, lines, run_json
 
 U_LAB1 = f"UPID:pve-lab1:0000AAAA:0000BBBB:{NOW - 7200:08X}:vzdump::root@pam:"
@@ -20,7 +20,7 @@ def backups(api: FakeAPI, ages: dict[int, int], failed: dict[int, str] | None = 
     api.route("GET", "/cluster/backup", [{"id": "nightly", "type": "vzdump", "enabled": 1,
                                          "schedule": "02:00", "vmid": job_vmids, "storage": "local"}])
     api.route("GET", "/cluster/backup/nightly/included_volumes", included)
-    api.route("GET", "/access/permissions", lambda c: {c.params["path"]: {"Sys.Audit": 1}})
+    grants(api, {}, ROOT)
     by_node = {g["vmid"]: g["node"] for g in guests}
 
     def content(call):
@@ -94,7 +94,7 @@ def test_guests_outside_any_job_are_left_to_the_backups_check(cli, api):
 
 def test_tasks_hidden_without_sys_audit_are_not_checked(cli, api):
     backups(api, {300: 3600, 301: 3600})
-    api.route("GET", "/access/permissions", lambda c: {c.params["path"]: {"VM.Audit": 1}})
+    grants(api, {}, {k: v for k, v in ROOT.items() if k != "Sys.Audit"})
     r, doc = run_json(cli)
     found = lines(doc, CHECK)
     assert "OK" not in {f["level"] for f in found}
@@ -120,3 +120,25 @@ def test_backup_storage_unreadable_is_not_checked(cli, api):
     found = lines(doc, CHECK)
     assert "OK" not in {f["level"] for f in found}
     assert any("not checked" in f["detail"] and "local" in f["detail"] for f in found)
+
+
+def test_backups_hidden_from_the_user_are_not_checked_never_never(cli, api):
+    # A role limited to the pool of 300: PVE drops 301's backups from the
+    # listing without an error. "never" would be a false alarm.
+    backups(api, {300: 3600})
+    pool = {k: v for k, v in ROOT.items() if k != "VM.Backup"}
+    grants(api, {"/vms/300": ROOT}, pool)
+    r, doc = run_json(cli)
+    found = lines(doc, CHECK)
+    assert not any("301 (never)" in f["detail"] for f in found), found
+    assert any("not checked" in f["detail"] and "/vms/301, VM.Backup" in f["detail"] for f in found), found
+    assert "OK" not in {f["level"] for f in found}
+
+
+def test_auditor_backups_are_not_checked(cli, api):
+    backups(api, {})
+    grants(api, {}, AUDITOR)
+    r, doc = run_json(cli)
+    found = lines(doc, CHECK)
+    assert not any("never" in f["detail"] for f in found), found
+    assert any("not checked" in f["detail"] and "Datastore.AllocateSpace" in f["detail"] for f in found), found

@@ -200,6 +200,16 @@ def test_template_failed_task_is_a_failure(cli, api, ui):
     assert r.exit_code != 0
 
 
+def test_template_refuses_a_running_vm_before_asking(cli, api, ui):
+    # The cluster list still says stopped: the node says running
+    setup(api, live={300: RUNNING})
+    r = cli("vm", "template", "300", "-p", "p1")
+    assert r.exit_code == 1
+    assert "stop it first" in r.output
+    assert ui.asked == []
+    assert api.writes() == []
+
+
 def test_template_asks_before_an_irreversible_conversion(cli, api, ui):
     setup(api)
     ui.confirm(False)

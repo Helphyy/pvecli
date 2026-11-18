@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 
 from tests.fake_api import FakeAPI
-from tests.functional._backup_cluster import DAY, NOW, cluster, log
+from tests.functional._backup_cluster import AUDITOR, DAY, NOW, ROOT, cluster, grants, log
 
 U1 = f"UPID:pve1:0000AAAA:0000BBBB:{NOW - 3700:08X}:vzdump::root@pam:"
 U2 = f"UPID:pve2:0000AAAA:0000BBBB:{NOW - 2 * DAY:08X}:vzdump:101:root@pam:"
@@ -28,8 +28,7 @@ def status_cluster(api: FakeAPI) -> FakeAPI:
     api.route("GET", "/cluster/backup/backup-daily/included_volumes", _included(100, 101))
     api.route("GET", "/cluster/backup/backup-off/included_volumes", _included(100, 200))
     api.route("GET", "/cluster/backup-info/not-backed-up", [{"vmid": 9000, "name": "tpl", "type": "qemu"}])
-    api.route("GET", "/access/permissions",
-              lambda c: {c.params["path"]: {"Sys.Audit": 1, "VM.Backup": 1}})
+    grants(api, {}, ROOT)
     tasks = {
         "pve1": [{"upid": U1, "id": "", "type": "vzdump", "status": "job errors", "starttime": NOW - 3700,
                   "endtime": NOW - 3600, "node": "pve1"}],
@@ -119,9 +118,7 @@ def test_table_output(cli, api):
 def test_tasks_hidden_without_sys_audit_are_not_checked_never_ok(cli, api):
     status_cluster(api)
     # Without Sys.Audit on a node, PVE silently lists only the user's own tasks
-    api.route("GET", "/access/permissions",
-              lambda c: {c.params["path"]: {"VM.Backup": 1}} if c.params["path"] == "/nodes/pve2"
-              else {c.params["path"]: {"Sys.Audit": 1}})
+    grants(api, {"/nodes/pve2": {k: v for k, v in ROOT.items() if k != "Sys.Audit"}}, ROOT)
     rows = _doc(cli)
     assert rows[101]["last_run"]["state"] == "not checked"
     assert "Sys.Audit" in rows[101]["last_run"]["detail"] and "/nodes/pve2" in rows[101]["last_run"]["detail"]
@@ -161,3 +158,31 @@ def test_unreadable_storage_does_not_claim_never(cli, api):
     # 100 still has a local backup; the PBS could hold a newer one: said on stderr
     assert rows[100]["last_backup"] == NOW - DAY
     assert "pbs" in r.stderr and "cannot connect" in r.stderr
+
+
+# ── what PVE hides from a restricted user ───────────────────────────────
+
+
+def test_auditor_last_backup_is_not_checked_never_never(cli, api):
+    # Seen on lab1 with PVEAuditor on /: "never" for VM 300, root sees its backup
+    status_cluster(api)
+    grants(api, {}, AUDITOR)
+    rows = _doc(cli)
+    assert rows[100]["last_backup"] is None
+    assert "Datastore.AllocateSpace" in rows[100]["last_backup_hidden"]
+    r = cli("backup", "status", "-p", "p1")
+    row = next(line for line in r.stdout.splitlines() if " web1 " in line)
+    assert "never" not in row and "not checked" in row
+
+
+def test_pool_role_hides_the_other_guests_backups(cli, api):
+    status_cluster(api)
+    pool = {k: v for k, v in ROOT.items() if k != "VM.Backup"}
+    grants(api, {"/vms/100": ROOT, "/vms/200": ROOT}, pool)
+    rows = _doc(cli)
+    assert rows[100]["last_backup"] is not None and rows[100]["last_backup_hidden"] is None
+    assert rows[101]["last_backup"] is None
+    assert "/vms/101, VM.Backup" in rows[101]["last_backup_hidden"]
+    r = cli("backup", "status", "-p", "p1")
+    row = next(line for line in r.stdout.splitlines() if " web2 " in line)
+    assert "never" not in row and "not checked" in row

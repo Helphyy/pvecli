@@ -21,6 +21,7 @@ import typer
 from rich.table import Table
 
 from ..api.client import ProxmoxClient
+from ..api.exceptions import PermissionError as PVEPermissionError
 from ..api.exceptions import PVECliError
 from ..config import ConfigManager
 from ..utils import (
@@ -121,13 +122,36 @@ class _Finder:
         self.sem = asyncio.Semaphore(_CONCURRENCY)
         self._guests: list[dict] | None = None
         self._configs: dict[int, dict] = {}
+        self.denied: dict[str, str] = {}
 
-    async def _get(self, path: str, **params: Any) -> Any:
+    async def _get(self, endpoint: str, **params: Any) -> Any:
         async with self.sem:
             try:
-                return await self.client.get(path, params=params or None)
+                return await self.client.get(endpoint, params=params or None)
+            except PVEPermissionError as e:
+                self.denied[endpoint] = str(e)
+                return None
             except PVECliError:
                 return None
+
+    async def not_searched(self) -> list[str]:
+        """What this user could not see, so an empty answer is not read as "nowhere".
+
+        PVE leaves out of /cluster/resources the guests a user may not audit,
+        without an error, and refuses some sources outright.
+        """
+        notes = []
+        perms = await self._get("/access/permissions", path="/vms")
+        if not (perms or {}).get("/vms", {}).get("VM.Audit"):
+            notes.append("guests outside your pools (VM.Audit on /vms missing)")
+        if self.denied:
+            configs = [p for p in self.denied if re.fullmatch(r"/nodes/[^/]+/(qemu|lxc)/\d+/config", p)]
+            others = [p for p in self.denied if p not in configs]
+            first = next(iter(self.denied.values()))
+            m = re.search(r"Permission check failed \(([^)]*)\)", first)
+            parts = ([f"{len(configs)} guest config(s)"] if configs else []) + others[:4]
+            notes.append(", ".join(parts) + (f" (missing privilege {m.group(1)})" if m else ""))
+        return notes
 
     async def guests(self) -> list[dict]:
         if self._guests is None:
@@ -567,6 +591,9 @@ async def find(
                     unique.append(r)
             if tasks:
                 await _add_tasks(finder, unique)
+            # On stderr: a --json answer stays parseable
+            for note in await finder.not_searched():
+                err_console.print(f"[bold yellow]Warning:[/bold yellow] not searched: {note}")
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)

@@ -1,0 +1,26 @@
+{
+ "allowed_nodes": [
+  "pve8b"
+ ],
+ "local_disks": [
+  {
+   "cdrom": 0,
+   "drivename": "virtio0",
+   "is_attached": 1,
+   "is_tpmstate": 0,
+   "is_unused": 0,
+   "is_vmstate": 0,
+   "replicate": 1,
+   "shared": 0,
+   "size": 2147483648,
+   "volid": "local:110/vm-110-disk-0.qcow2"
+  }
+ ],
+ "local_resources": [],
+ "mapped-resource-info": {},
+ "mapped-resources": [],
+ "not_allowed_nodes": {
+  "pve8b": {}
+ },
+ "running": 0
+}

@@ -1,0 +1,19 @@
+{
+ "agent": "1",
+ "balloon": 512,
+ "boot": "order=virtio0;ide2;net0",
+ "cores": 1,
+ "cpu": "host",
+ "digest": "6ecf9f1c5bb16d9c22b2dd49cc98efbe33616b15",
+ "ide2": "none,media=cdrom",
+ "memory": "512",
+ "meta": "creation-qemu=9.2.0,ctime=1795016027",
+ "name": "vm110",
+ "net0": "virtio=BC:24:11:DC:C8:5A,bridge=vmbr0,tag=55",
+ "onboot": 0,
+ "ostype": "l26",
+ "smbios1": "uuid=be6fec99-7b8d-4eab-9be7-feb551657794",
+ "sockets": 1,
+ "virtio0": "local:110/vm-110-disk-0.qcow2,size=2G",
+ "vmgenid": "02adfebc-80fc-4dd7-82ff-50cfba3d4d6c"
+}

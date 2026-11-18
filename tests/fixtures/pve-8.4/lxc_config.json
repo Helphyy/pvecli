@@ -1,0 +1,14 @@
+{
+ "arch": "amd64",
+ "cores": 1,
+ "digest": "7f66e3017635f06b484d2d2df92b9c2448d41708",
+ "hostname": "ct101",
+ "memory": 512,
+ "nameserver": "10.199.31.1",
+ "net0": "name=eth0,bridge=vmbr0,gw=10.199.32.1,hwaddr=BC:24:11:6E:DA:40,ip=10.199.32.92/24,type=veth",
+ "ostype": "debian",
+ "rootfs": "local:101/vm-101-disk-0.raw,size=4G",
+ "swap": 512,
+ "tags": "db;test",
+ "unprivileged": 1
+}

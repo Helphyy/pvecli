@@ -1,6 +1,7 @@
 """Global tag management commands."""
 
 import json
+import re
 from pathlib import Path
 from typing import cast
 
@@ -506,7 +507,6 @@ async def remove_tag(
                     print_cancelled()
                     return
             else:
-                import re
                 selected_tags = [t.strip() for t in re.split(r"[,;]", tag) if t.strip()]
 
             # Collect affected resources and color info for all selected tags
@@ -572,12 +572,20 @@ async def remove_tag(
             for r, removed in to_remove.values():
                 node = r.get("node", "")
                 vmid = cast(int, r.get("vmid"))
-                tags = [x.strip() for x in r.get("tags", "").split(";") if x.strip() and x.strip() not in removed]
+                # Rewrite from the guest's config, not from the cluster list:
+                # it lags behind, and a tag added seconds ago would be lost
+                qemu = r.get("type") == "qemu"
+                config = await (client.get_vm_config(node, vmid) if qemu
+                                else client.get_container_config(node, vmid))
+                current = str(config.get("tags") or "")
+                tags = [x.strip() for x in re.split(r"[;, ]", current) if x.strip() and x.strip() not in removed]
                 new_tags = ";".join(tags)
+                if new_tags == ";".join(x.strip() for x in re.split(r"[;, ]", current) if x.strip()):
+                    continue
                 # An empty value leaves "tags: " in the config: drop the key
                 change = {"tags": new_tags} if new_tags else {"delete": "tags"}
 
-                if r.get("type") == "qemu":
+                if qemu:
                     await client.update_vm_config(node, vmid, **change)
                 else:
                     await client.update_container_config(node, vmid, **change)
@@ -592,7 +600,8 @@ async def remove_tag(
             else:
                 names = ", ".join(t for t, _, _ in actionable)
                 suffix = f" + {color_removed} color mapping(s)" if color_removed else ""
-                print_success(f"{len(actionable)} tags removed ({names}) from {total_removed} resource(s){suffix}")
+                # Guests, not tag hits: a guest carrying both tags counts once
+                print_success(f"{len(actionable)} tags removed ({names}) from {len(to_remove)} resource(s){suffix}")
 
     except KeyboardInterrupt:
         console.print()

@@ -1,0 +1,16 @@
+[
+ {
+  "enable": 1,
+  "expire": 0,
+  "groups": "",
+  "realm-type": "pam",
+  "tokens": [
+   {
+    "expire": 0,
+    "privsep": 0,
+    "tokenid": "pvecli"
+   }
+  ],
+  "userid": "root@pam"
+ }
+]

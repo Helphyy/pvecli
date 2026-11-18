@@ -227,3 +227,52 @@ def test_ok_task_with_a_guest_left_behind_is_listed(cli, api):
     assert r.exit_code == 1
     assert "1/2" in r.output
     assert "101" in r.output and "backup" in r.output
+
+
+# ── HA-managed guests (seen on PVE 8.4, stopall/startall fallback) ───────
+# stopall/startall only change the requested HA state of an HA guest and end
+# "TASK OK" at once; the HA manager stops or starts it afterwards. Reading
+# status/current right after the task reported a shutdown as missed, and a
+# start as done although HA was about to stop the guest (request_stop).
+
+
+def ha_setup(api: FakeAPI, ha_states: list[str], state: dict) -> None:
+    setup(api, bulk=False, state=state)
+    api.route("GET", "/cluster/ha/resources", [{"sid": "vm:100", "state": "stopped", "type": "vm"}])
+    seq = iter(ha_states)
+    last = ha_states[-1]
+
+    def ha_status(_call):
+        return [{"id": "quorum", "type": "quorum", "status": "OK"},
+                {"sid": "vm:100", "id": "service:vm:100", "type": "service", "node": "pve1",
+                 "state": next(seq, last)}]
+
+    api.route("GET", "/cluster/ha/status/current", ha_status)
+
+
+def test_ha_guest_shutdown_waits_for_the_ha_manager(cli, api, clock):
+    ha_setup(api, ["request_stop", "request_stop", "stopped"],
+             {100: {"status": "running"}, 101: {"status": "stopped"}})
+    r = cli("cluster", "guests", "shutdown", "--vms", "100,101", "-y", "-p", "p1")
+    assert r.exit_code == 0, r.output
+    assert "done for 2 guest(s)" in r.output
+    assert len(api.called("GET", "/cluster/ha/status/current")) >= 3
+
+
+def test_ha_guest_started_while_ha_stops_it_is_not_done(cli, api, clock):
+    ha_setup(api, ["request_stop"], {100: {"status": "running"}, 101: {"status": "running"}})
+    start = clock.now
+    r = cli("cluster", "guests", "start", "--vms", "100,101", "-y", "-p", "p1")
+    assert r.exit_code == 1
+    out = " ".join(r.output.split())
+    assert "1/2" in out
+    assert "100" in out and "request_stop" in out
+    assert clock.now - start < 120
+
+
+def test_ha_guest_start_waits_for_the_ha_manager(cli, api, clock):
+    ha_setup(api, ["stopped", "request_start", "starting", "started"],
+             {100: {"status": "running"}, 101: {"status": "running"}})
+    r = cli("cluster", "guests", "start", "--vms", "100,101", "-y", "-p", "p1")
+    assert r.exit_code == 0, r.output
+    assert len(api.called("GET", "/cluster/ha/status/current")) >= 4

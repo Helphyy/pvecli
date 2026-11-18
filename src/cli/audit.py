@@ -33,6 +33,7 @@ class _Audit:
         self.findings: list[dict[str, str]] = []
         self.denied: dict[str, str] = {}
         self.sem = asyncio.Semaphore(16)
+        self._privileges: dict[str, dict | None] = {}
 
     def add(self, check: str, level: str, detail: str) -> None:
         self.findings.append({"check": check, "level": level, "detail": detail})
@@ -41,14 +42,28 @@ class _Audit:
         """A source this user may not read: never reported as OK."""
         self.add(check, "INFO", f"not checked: {why}")
 
-    async def get(self, path: str, **params: Any) -> Any:
+    async def get(self, endpoint: str, **params: Any) -> Any:
         """None when the call fails; the reason is kept in self.denied."""
         async with self.sem:
             try:
-                return await self.client.get(path, params=params or None)
+                return await self.client.get(endpoint, params=params or None)
             except PVECliError as e:
-                self.denied[path] = str(e)
+                self.denied[endpoint] = str(e)
                 return None
+
+    async def missing(self, path: str, *privileges: str) -> str | None:
+        """None when the user holds one of these privileges on path, else what lacks.
+
+        PVE drops from a list what the user may not see, without an error:
+        a check built on such a list says so instead of reading it as complete.
+        """
+        if path not in self._privileges:
+            data = await self.get("/access/permissions", path=path)
+            self._privileges[path] = None if data is None else (data.get(path) or {})
+        have = self._privileges[path]
+        if have is not None and any(have.get(p) for p in privileges):
+            return None
+        return f"{' or '.join(privileges)} on {path}"
 
     def reason(self, path: str, default: str) -> str:
         text = self.denied.get(path, "")
@@ -104,7 +119,10 @@ async def _users_and_tokens(a: _Audit) -> None:
                     f"{tid} has privilege separation off: it holds every right of {uid}",
                 )
                 found = True
-    if not found:
+    hidden = await a.missing("/access/groups", "Sys.Audit", "User.Modify")
+    if hidden:
+        a.unreadable("Users and tokens", f"users hidden without {hidden}")
+    elif not found:
         a.add("Users and tokens", "OK", f"{len(users)} user(s), nothing expired or over-privileged")
 
 
@@ -123,7 +141,10 @@ async def _acl(a: _Audit) -> None:
             f"{x.get('type')} {x.get('ugid')} is Administrator on {x.get('path')}"
             + (" (propagated)" if x.get("propagate", 1) else ""),
         )
-    if not broad:
+    hidden = await a.missing("/access", "Sys.Audit")
+    if hidden:
+        a.unreadable("ACL", f"entries hidden without {hidden}")
+    elif not broad:
         a.add("ACL", "OK", f"{len(acls)} ACL entries, no broad Administrator grant")
 
 
@@ -214,9 +235,12 @@ async def _guests(a: _Audit, guests: list[dict], snapshot_age: int) -> None:
             + ", ".join(f"{g['vmid']} ({len(o)})" for g, o in old_snaps[:10])
             + f". List them with: pvecli find --old-snapshots {label}",
         )
-    elif unread:
+    hidden = await a.missing("/vms", "VM.Audit")
+    if unread:
         a.unreadable("Snapshots", f"{len(unread)} guest(s) unreadable by this user")
-    else:
+    if hidden:
+        a.unreadable("Snapshots", f"guests hidden without {hidden}, {len(guests)} visible")
+    if not (old_snaps or unread or hidden):
         a.add("Snapshots", "OK", f"none older than {label}")
     if isos:
         a.add(
@@ -245,7 +269,7 @@ async def _backup_freshness(a: _Audit, nodes: list[str], guests: list[dict], max
         return
     days = max_age // _DAY
     label = f"{days}d" if max_age % _DAY == 0 else f"{max_age // 3600}h"
-    failed, blind, old = [], [], []
+    failed, blind, old, unseen = [], [], [], []
     limit = time.time() - max_age
     for g in sorted(covered, key=lambda x: x["vmid"]):
         run = cov["runs"].get(g["vmid"])
@@ -254,7 +278,10 @@ async def _backup_freshness(a: _Audit, nodes: list[str], guests: list[dict], max
         elif run and run["state"] == "failed":
             failed.append(f"{g['vmid']} ({run['detail']})")
         last = cov["last"].get(g["vmid"])
-        if not last:
+        if not last and g["vmid"] in cov["hidden"]:
+            # PVE drops its backups from the listing for this user: unknown
+            unseen.append(g["vmid"])
+        elif not last:
             old.append(f"{g['vmid']} (never)")
         elif last["ctime"] < limit:
             old.append(f"{g['vmid']} ({int((time.time() - last['ctime']) // _DAY)}d)")
@@ -271,20 +298,45 @@ async def _backup_freshness(a: _Audit, nodes: list[str], guests: list[dict], max
         nodes_ = sorted({g["node"] for g in blind})
         a.unreadable(check, f"last run of {len(blind)} guest(s) on {', '.join(nodes_)} "
                      f"({cov['blind'][nodes_[0]]})")
-    if not (failed or old or blind or cov["unreadable"]):
+    if unseen:
+        a.unreadable(check, f"last backup of {len(unseen)} guest(s), hidden from this user: "
+                     + ", ".join(map(str, unseen[:10])) + f" ({cov['hidden'][unseen[0]]})")
+    if not (failed or old or blind or unseen or cov["unreadable"]):
         a.add(check, "OK", f"{len(covered)} guest(s) in a job, each backed up within {label}, last runs succeeded")
 
 
 async def _orphan_disks(a: _Audit, nodes: list[str], guests: list[dict]) -> None:
     """Guest volumes left on a storage after their guest was removed."""
+    # A volume is an orphan only against the full guest list, and only a
+    # full storage list tells that no storage was left out
+    scope = [m for m in [await a.missing("/vms", "VM.Audit"),
+                         await a.missing("/storage", "Datastore.Audit", "Datastore.Allocate")] if m]
+    if scope:
+        a.unreadable("Orphan disks", f"guests or storages hidden without {', '.join(scope)}")
+        return
     known = {g["vmid"] for g in guests}
-    storages = await a.get("/storage") or []
+    storages = [
+        st for st in await a.get("/storage") or []
+        if not st.get("disable") and any(c in str(st.get("content", "")) for c in ("images", "rootdir"))
+    ]
+    # PVE lists a guest volume only to who holds VM.Config.Disk on its guest
+    # (an orphan's guest is gone: /vms decides) or Datastore.Allocate on the
+    # storage, and silently drops the others: an empty list proves nothing
+    disk = await a.missing("/vms", "VM.Config.Disk")
+    allocate = await asyncio.gather(*(a.missing(f"/storage/{st['storage']}", "Datastore.Allocate") for st in storages))
+    hidden: list[str] = []
     jobs = []
-    for st in storages:
-        if st.get("disable") or not any(c in str(st.get("content", "")) for c in ("images", "rootdir")):
+    for st, no_allocate in zip(storages, allocate, strict=True):
+        if disk and no_allocate:
+            hidden.append(st["storage"])
             continue
+        # A storage limited to some nodes does not exist on the others,
+        # which refuse to list it: never ask them
+        allowed = {n.strip() for n in str(st.get("nodes") or "").split(",") if n.strip()}
+        targets = [n for n in nodes if not allowed or n in allowed]
         # A shared storage answers the same from every node: ask once
-        targets = nodes[:1] if st.get("shared") else nodes
+        if st.get("shared"):
+            targets = targets[:1]
         for n in targets:
             jobs.append((n, st["storage"]))
     contents = await asyncio.gather(*(a.get(f"/nodes/{n}/storage/{s}/content") for n, s in jobs))
@@ -301,9 +353,12 @@ async def _orphan_disks(a: _Audit, nodes: list[str], guests: list[dict]) -> None
             f"{len(orphans)} volume(s) belong to no existing guest: "
             + ", ".join(sorted(orphans)[:8]) + (" ..." if len(orphans) > 8 else ""),
         )
-    elif unread:
+    if hidden:
+        a.unreadable("Orphan disks", "volumes hidden without VM.Config.Disk on /vms or "
+                     f"Datastore.Allocate on the storage: {', '.join(hidden[:5])}")
+    if unread:
         a.unreadable("Orphan disks", f"storage(s) unreadable: {', '.join(unread[:5])}")
-    else:
+    if not (orphans or hidden or unread):
         a.add("Orphan disks", "OK", "every guest volume belongs to an existing guest")
 
 

@@ -164,7 +164,8 @@ async def list_nodes(
         profile_name = profile or config_manager.get().default_profile
 
         async with ProxmoxClient(profile_config) as client:
-            nodes = await client.get_nodes()
+            # PVE returns the nodes in no stable order
+            nodes = sorted(await client.get_nodes() or [], key=lambda n: str(n.get("node", "")))
 
             if json_output:
                 # Raw /nodes entries plus the percentages the table would compute:

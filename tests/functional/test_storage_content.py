@@ -333,3 +333,30 @@ def test_download_checksum_never_sent_without_its_algorithm(cli, lab):
         assert posts[0].data.get("checksum-algorithm") == "sha256"
     else:
         assert r.exit_code != 0
+
+
+# Found on a PVE 8.4 lab: `-y` still prompted for the filename (a script
+# aborted on it), and `import` was refused although PVE 8.4 and 9 accept it
+# for download-url (the way to fetch a cloud image for import-from).
+
+def test_download_yes_takes_the_url_filename_without_asking(cli, lab):
+    lab.route("POST", "/nodes/{node}/storage/{storage}/download-url", upid("pve1", "download", ""))
+    r = cli("storage", "content", "download", "pve1", "local", "-u", URL, "-y", "-p", "p1")
+    assert r.exit_code == 0, r.output
+    assert lab.writes()[0].data["filename"] == "debian-13.2.0-amd64-netinst.iso"
+
+
+@pytest.mark.parametrize("name", ["debian-12-genericcloud-amd64.qcow2", "disk.raw", "disk.vmdk", "appliance.ova"])
+def test_download_disk_image_is_detected_as_import(cli, lab, name):
+    lab.route("POST", "/nodes/{node}/storage/{storage}/download-url", upid("pve1", "download", ""))
+    r = cli("storage", "content", "download", "pve1", "local", "-u", f"https://x.org/{name}", "-y", "-p", "p1")
+    assert r.exit_code == 0, r.output
+    assert lab.writes()[0].data == {"url": f"https://x.org/{name}", "filename": name, "content": "import"}
+
+
+def test_download_import_type_is_accepted(cli, lab):
+    lab.route("POST", "/nodes/{node}/storage/{storage}/download-url", upid("pve1", "download", ""))
+    r = cli("storage", "content", "download", "pve1", "local", "-u", "https://x.org/get?id=3",
+            "-f", "img.qcow2", "-t", "import", "-y", "-p", "p1")
+    assert r.exit_code == 0, r.output
+    assert lab.writes()[0].data["content"] == "import"

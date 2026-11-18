@@ -1,0 +1,4 @@
+{
+ "__error__": "binary not installed: /usr/bin/ceph-mon\n",
+ "__status__": 500
+}

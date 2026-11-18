@@ -4,7 +4,17 @@ from __future__ import annotations
 
 import json
 
-from tests.functional._backup_cluster import CONTENT, DAY, NOW, cluster, recorded, vol
+from tests.functional._backup_cluster import (
+    AUDITOR,
+    CONTENT,
+    DAY,
+    NOW,
+    ROOT,
+    cluster,
+    grants,
+    recorded,
+    vol,
+)
 
 
 def _reads(api, storage: str) -> list[str]:
@@ -124,6 +134,7 @@ def test_recorded_lab_answers(cli, api):
     ])
     api.route("GET", "/nodes/{node}/storage/local/content", lambda c: local if c.match["node"] == "pve-lab2" else [])
     api.route("GET", "/nodes/{node}/storage/pbs-lab/content", pbs)
+    grants(api, {}, ROOT)
     r = cli("backup", "list", "-p", "p1", "--json")
     doc = json.loads(r.stdout)
     assert {d["volid"] for d in doc} == {x["volid"] for x in local + pbs}
@@ -150,3 +161,33 @@ def test_fleet_json_gathers_profiles(cli, api):
     doc = json.loads(r.stdout)
     assert set(doc) == {"p1", "p2"}
     assert {d["vmid"] for d in doc["p2"]} == {7}
+
+
+# ── what PVE hides from a restricted user ───────────────────────────────
+# Seen on lab1 (PVE 9.1) with PVEAuditor on /: the listing of every backup
+# storage answers [] without an error, while root sees the backups. PVE lists
+# a backup only with Datastore.AllocateSpace on its storage and VM.Backup on
+# its guest.
+
+
+def test_auditor_is_told_the_backups_are_not_checked_never_none_found(cli, api):
+    cluster(api)
+    grants(api, {}, AUDITOR)
+    r = cli("backup", "list", "-p", "p1")
+    out = " ".join(r.output.split())
+    assert "No backup found" not in out
+    assert "not checked" in out and "Datastore.AllocateSpace" in out
+    assert r.exit_code == 1
+
+
+def test_role_limited_to_a_pool_names_the_guests_it_cannot_see(cli, api):
+    # Pool P holds 100 and 200: VM.Backup on them only, AllocateSpace on the storages
+    cluster(api)
+    pool = {k: v for k, v in ROOT.items() if k != "VM.Backup"}
+    grants(api, {"/vms/100": ROOT, "/vms/200": ROOT}, pool)
+    r = cli("backup", "list", "-p", "p1", "--json")
+    assert r.exit_code == 0, r.output
+    assert {row["vmid"] for row in json.loads(r.stdout)} == {100, 200}
+    err = " ".join(r.stderr.split())
+    assert "not checked" in err and "/vms/101, VM.Backup" in err
+    assert "200," not in err and "100," not in err

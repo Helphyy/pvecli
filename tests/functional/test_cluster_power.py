@@ -38,6 +38,9 @@ def setup(api: FakeAPI, ceph: Any = None, running: dict[str, int] | None = None)
     api.route("PUT", "/cluster/ceph/flags/{flag}", None)
     api.route("POST", "/nodes/{node}/stopall", lambda c: upid(c.match["node"], "stopall"))
     api.route("POST", "/nodes/{node}/status", None)
+    # After stopall, the nodes report every guest stopped
+    api.route("GET", "/nodes/{node}/qemu", [])
+    api.route("GET", "/nodes/{node}/lxc", [])
 
 
 def ceph_absent(api: FakeAPI) -> Any:
@@ -68,8 +71,15 @@ def test_full_sequence_flags_then_guests_then_nodes_connected_last(cli, api, com
     assert api.called("GET", "/nodes/pve2/ceph/status")
     # Flags are recalled for the way back up, one unset per flag
     for f in FLAGS:
-        assert f"ceph osd unset {f}" in r.output
-    assert f"Cluster {command} complete" in r.output
+        assert f in r.output
+    # Cleared through the API, no SSH to a node
+    assert "pvecli ceph unset noout,nobackfill,norecover,norebalance -p p1" in r.output
+    # Only the commands were sent: the nodes are still going down. Seen on
+    # the PVE 8.4 lab, "Cluster reboot complete" came before any node rebooted.
+    assert "complete" not in r.output
+    assert f"{command.capitalize()} sent to every node" in " ".join(r.output.split())
+    if command == "reboot":
+        assert "pvecli cluster health" in r.output
 
 
 def test_stopall_waits_for_the_task(cli, api):
@@ -94,7 +104,7 @@ def test_ceph_absent_sets_no_flag(cli, api):
     assert r.exit_code == 0, r.output
     assert "Ceph not detected" in r.output
     assert not api.called("PUT", "/cluster/ceph/flags/{flag}")
-    assert "ceph osd unset" not in r.output
+    assert "pvecli ceph unset" not in r.output
 
 
 def test_skip_ceph_does_not_even_look(cli, api):
@@ -137,8 +147,8 @@ def test_flag_failure_names_the_flags_already_set(cli, api):
     r = cli("cluster", "shutdown", "-y", "-p", "p1")
     assert r.exit_code == 1
     # noout and nobackfill really are set on the cluster now
-    assert "ceph osd unset noout" in r.output
-    assert "ceph osd unset nobackfill" in r.output
+    # noout and nobackfill only: norecover failed, nothing after it was set
+    assert "pvecli ceph unset noout,nobackfill -p p1" in r.output
 
 
 def test_abort_after_ha_disarm_says_to_rearm(cli, api):
@@ -266,3 +276,16 @@ def test_connected_node_unknown_sends_each_node_once(cli, api, monkeypatch):
     paths = [c.path for c in api.called("POST", "/nodes/{node}/status")]
     # Every node exactly once
     assert sorted(paths) == ["/nodes/pve1/status", "/nodes/pve2/status", "/nodes/pve3/status"]
+
+
+def test_a_guest_still_running_after_stopall_is_named_not_reported_stopped(cli, api):
+    # stopall ends OK while an HA guest is started again by its manager
+    setup(api)
+    api.route("GET", "/nodes/{node}/qemu", lambda c: [
+        {"vmid": 110, "status": "running"}] if c.match["node"] == "pve1" else [])
+    r = cli("cluster", "shutdown", "-y", "-t", "120", "-p", "p1")
+    assert r.exit_code == 0, r.output
+    assert "Still running on 'pve1': 110" in r.output
+    assert "All guests stopped on 'pve1'" not in r.output
+    assert "All guests stopped on 'pve2'" in r.output
+    assert ("POST", "/nodes/pve1/status") in writes(api)

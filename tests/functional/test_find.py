@@ -53,6 +53,7 @@ def lab(api):
     api.route("GET", "/cluster/firewall/aliases", fixture("pve-9.1/firewall_aliases"))
     api.route("GET", "/cluster/firewall/ipset", [])
     api.route("GET", "/cluster/backup-info/not-backed-up", fixture("pve-9.1/backup_not_backed_up"))
+    api.route("GET", "/access/permissions", lambda c: {c.params["path"]: {"VM.Audit": 1, "Sys.Audit": 1}})
     return api
 
 
@@ -317,3 +318,24 @@ def test_json_is_one_valid_document(cli, lab):
     doc = json.loads(r.stdout)
     assert isinstance(doc, list) and doc
     assert set(doc[0]) == {"type", "vmid", "name", "node", "status", "match", "source"}
+
+
+# ── what this user could not search ──────────────────────────────────
+
+
+def test_pool_limited_user_is_told_what_was_not_searched(cli, lab):
+    # Seen on the lab with PVEAuditor on one pool: the node address and a
+    # guest outside the pool both gave a bare "Nothing found"
+    lab.route("GET", "/access/permissions", lambda c: {c.params["path"]: {}})
+    lab.route("GET", "/cluster/status", lambda c: lab.forbidden("/", "Sys.Audit"))
+    r = cli("find", "10.199.32.51", "-p", "p1", "--json")
+    assert r.exit_code == 0, r.output
+    assert json.loads(r.stdout) == []
+    assert "VM.Audit on /vms" in r.stderr
+    assert "/cluster/status" in r.stderr and "Sys.Audit" in r.stderr
+
+
+def test_full_reader_gets_no_scope_warning(cli, lab):
+    r = cli("find", "10.20.3.14", "-p", "p1")
+    assert r.exit_code == 0, r.output
+    assert "not searched" not in r.stderr.lower()

@@ -1,0 +1,4 @@
+{
+ "data": "127.0.0.1 localhost\n10.199.32.90 pve8a.sdnlab.local pve8a\n::1 localhost ip6-localhost ip6-loopback\nff02::1 ip6-allnodes\nff02::2 ip6-allrouters\n",
+ "digest": "78566aabff61825cff8f340599d6851aaa50c824"
+}

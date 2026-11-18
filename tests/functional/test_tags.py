@@ -49,6 +49,9 @@ def test_ct_removing_last_tag_deletes_the_key(cli, api):
 def test_cluster_tag_remove_deletes_key_on_guests_left_without_tags(cli, api):
     api.route("GET", "/cluster/resources", RES)
     api.route("GET", "/cluster/options", {"keyboard": "fr"})
+    by_id = {g["vmid"]: g for g in RES}
+    api.route("GET", "/nodes/{node}/{kind}/{vmid}/config",
+              lambda c: {"tags": by_id[int(c.match["vmid"])].get("tags", "")})
     api.route("PUT", "/nodes/{node}/{kind}/{vmid}/config", None)
     r = cli("tag", "remove", "web", "-y", "-p", "p1")
     assert r.exit_code == 0, r.output

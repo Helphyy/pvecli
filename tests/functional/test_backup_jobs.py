@@ -49,6 +49,23 @@ def test_list_json(cli, api, lab):
     assert [j["id"] for j in doc] == ["backup-daily", "weekly"]
 
 
+def test_list_disabled_job_shows_no_next_run(cli, api, lab):
+    # Seen on PVE 9 (lab1): a disabled job still carries a next-run, but the
+    # scheduler skips it, so the date must not be shown as if it would run
+    when = 1795312800
+    api.route("GET", "/cluster/backup", [{
+        "id": "agenta-test", "type": "vzdump", "enabled": 0, "schedule": "sun 03:00", "storage": "local",
+        "vmid": "950", "mode": "snapshot", "compress": "zstd", "next-run": when,
+        "prune-backups": {"keep-last": "3"}, "comment": "agentA test",
+    }])
+    r = cli("backup", "jobs", "list", "-p", "p1")
+    assert r.exit_code == 0, r.output
+    import time
+    assert time.strftime("%Y-%m-%d", time.localtime(when)) not in r.stdout
+    row = next(line for line in r.stdout.splitlines() if "agenta-test" in line)
+    assert "disabled" in row
+
+
 def test_list_recorded_empty(cli, api, lab):
     api.route("GET", "/cluster/backup", recorded("backup_jobs"))
     r = cli("backup", "jobs", "list", "-p", "p1")

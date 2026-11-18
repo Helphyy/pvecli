@@ -1478,9 +1478,20 @@ class ProxmoxClient:
         """Remove the lock from a container."""
         await self.put(f"/nodes/{node}/lxc/{vmid}/config", data={"delete": "lock"})
 
-    async def convert_container_to_template(self, node: str, vmid: int) -> None:
-        """Convert a container to a template."""
+    async def convert_container_to_template(self, node: str, vmid: int, timeout: int = 600) -> None:
+        """Convert a container to a template and wait until it is one.
+
+        PVE answers null but forks a vztemplate worker that converts the
+        volumes and holds the CT lock meanwhile: wait for that worker, so
+        a failure is reported and the next action does not hit the lock.
+        """
+        params = {"vmid": vmid, "typefilter": "vztemplate", "source": "all", "limit": 5}
+        before = {t.get("upid") for t in await self.get(f"/nodes/{node}/tasks", params=params) or []}
         await self.post(f"/nodes/{node}/lxc/{vmid}/template")
+        tasks = await self.get(f"/nodes/{node}/tasks", params=params) or []
+        worker = next((t["upid"] for t in tasks if t.get("upid") and t["upid"] not in before), None)
+        if worker:
+            await self.wait_for_task(node, worker, timeout=timeout)
 
     async def resize_container_disk(self, node: str, vmid: int, disk: str, size: str) -> None:
         """Resize a container disk.
