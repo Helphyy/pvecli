@@ -43,6 +43,7 @@ pvecli config login                Open Proxmox web UI in browser
 ```
 pvecli node shutdown [NODE]        Shutdown a node (stops all guests, then powers off)
 pvecli node reboot [NODE]          Reboot a node (stops all guests, then reboots)
+pvecli node evacuate NODE TARGET   Move every guest off a node before maintenance
 pvecli node vnc [NODES]            Open VNC shell(s) as browser tabs (--split for windows)
 pvecli node ssh [NODE]             SSH into a node (--user, --port, --key, --command)
 pvecli node list                   List all cluster nodes
@@ -66,6 +67,7 @@ pvecli vm lock [VMID] [TYPE]       Lock a VM (requires root@pam)
 pvecli vm unlock [VMID]            Unlock a VM (requires root@pam)
 pvecli vm add [NODE]               Create a new VM (interactive wizard or CLI options)
 pvecli vm clone [VMID]             Clone a VM
+pvecli vm migrate [VMID] [TARGET]  Migrate a VM to another node (live when it runs)
 pvecli vm edit [VMID]              Edit VM configuration interactively
 pvecli vm remove [VMIDS]           Delete VMs (--purge, --force)
 pvecli vm template [VMIDS]         Convert VMs to templates
@@ -119,15 +121,35 @@ pvecli vm ha set [VMIDS]           Modify HA configuration
 pvecli vm ha remove [VMIDS]        Remove VMs from HA management (--yes)
 ```
 
-Common options for `add` / `set`: `--group/-g`, `--state/-s` (started|stopped|enabled|disabled|ignored), `--max-restart/-mr`, `--max-relocate/-mo`, `--comment/-c`.
+Common options for `add` / `set`: `--state/-s` (started|stopped|enabled|disabled|ignored), `--max-restart/-mr`, `--max-relocate/-mo`, `--comment/-c`, and the placement options below.
+
+#### Placement: HA groups or HA rules
+
+PVE 9 replaces HA groups with HA rules, and converts the groups once every node runs 9. pvecli detects which one the cluster uses and refuses the other with a clear message:
+
+- **Clusters still using groups** (PVE 8, or PVE 9 before the conversion): `--group/-g <group>`.
+- **Clusters using rules**: `--nodes/-n <node>[:<priority>],...` creates a node-affinity rule named `pvecli-vm<ID>` for the guest, `--strict/--no-strict` restricts it to those nodes instead of preferring them, and `--nodes ''` drops the rule. A guest already placed by a rule pvecli did not create is left alone, since that rule may cover other guests.
 
 ```bash
-pvecli vm ha add 100-105 --group prod --state started
+pvecli vm ha add 100 --nodes pve1:2,pve2 --strict      # rules
+pvecli vm ha add 100-105 --group prod --state started  # groups
+pvecli vm ha set 100 --nodes pve3
 pvecli vm ha set 100,101 --state stopped
-pvecli vm ha remove 100 --yes
+pvecli vm ha remove 100 --yes                          # also drops it from the rules
 ```
 
-Without flags, `vm ha add` opens an interactive wizard prompting for the HA group, initial state, restart/relocate limits and comment.
+`vm ha status` shows the group or the rules of each guest, with its live state and node. Without flags, `vm ha add` opens a wizard: the HA group on a groups cluster, the preferred nodes on a rules cluster.
+
+### vm migrate
+
+```bash
+pvecli vm migrate 100 pve2                     # live when the VM runs, offline otherwise
+pvecli vm migrate 100 pve2 --with-local-disks  # copy local disks during a live migration
+pvecli vm migrate 100 pve2 --target-storage ceph-rbd
+pvecli vm migrate 100                          # pick the target in a menu
+```
+
+The target is checked first: a node missing a storage, local resources or a mapped device is refused with its reason before anything moves. An HA-managed VM moves through the HA manager, and pvecli only reports success once the VM really runs on the target.
 
 ---
 
@@ -140,6 +162,7 @@ pvecli ct shutdown [CTIDS]         Graceful shutdown (--timeout, --force)
 pvecli ct reboot [CTIDS]           Reboot containers
 pvecli ct add [NODE]               Create a new container (interactive wizard or CLI options)
 pvecli ct clone [CTID]             Clone a container
+pvecli ct migrate [CTID] [TARGET]  Migrate a container (--restart when it runs)
 pvecli ct edit [CTID]              Edit container configuration
 pvecli ct remove [CTIDS]           Delete containers (--purge, --force)
 pvecli ct template [CTIDS]         Convert containers to templates
@@ -176,6 +199,8 @@ pvecli ct ha add [CTIDS]           Register containers as HA resources (wizard i
 pvecli ct ha set [CTIDS]           Modify HA configuration
 pvecli ct ha remove [CTIDS]        Remove containers from HA management (--yes)
 ```
+
+Containers cannot move live: `ct migrate` on a running container needs `--restart` (or a yes at the prompt), which stops it, moves it and starts it again, with `--timeout` for the shutdown.
 
 ### ct image (LXC image files)
 
@@ -264,7 +289,25 @@ pvecli cluster usage               Show node load, guest workload, overhead, poo
 pvecli cluster tasks               Show task log (--running, --limit)
 pvecli cluster shutdown            Shutdown the entire cluster (orchestrated)
 pvecli cluster reboot              Reboot the entire cluster (orchestrated)
+pvecli cluster ha disarm           Disarm HA cluster wide before maintenance (PVE 9.2+)
+pvecli cluster ha arm              Re-arm HA afterwards
+pvecli cluster guests start        Start many guests in one go (filters below)
+pvecli cluster guests shutdown     Shut down many guests (--timeout, --force-stop)
+pvecli cluster guests suspend      Suspend many VMs (--to-disk to hibernate)
+pvecli cluster guests migrate T    Migrate many guests to node T (--with-local-disks)
 ```
+
+### cluster guests
+
+Pick the guests with `--vms 100,101` or `--vms 100-110`, `--tag`, `--pool` or `--node` (filters combine, and at least one is required). `--max-workers` caps the tasks running at once.
+
+```bash
+pvecli cluster guests shutdown --tag lab --timeout 120 --force-stop
+pvecli cluster guests start --pool PROD --max-workers 4
+pvecli cluster guests migrate pve2 --node pve1     # same as: pvecli node evacuate pve1 pve2
+```
+
+Where PVE offers cluster bulk actions, the whole set runs as a single cluster task; older versions get one task per node. A bulk task ends OK even when it skipped a guest (locked, already in the target state...), so pvecli then checks every guest and lists those that did not get there.
 
 ### cluster usage / pool usage
 
@@ -400,7 +443,7 @@ from the profile only when the profile itself authenticates as `root@pam`.
 
 Orchestrates a safe cluster-wide power operation:
 
-1. Disables HA resources (prevents migration during shutdown)
+1. Disarms HA in one call on PVE 9.2+ (resources frozen in place), or disables each HA resource on older versions
 2. Sets Ceph maintenance flags if Ceph is detected
 3. Stops all guests on each node
 4. Shuts down / reboots nodes (connected node always last)
@@ -430,7 +473,11 @@ pvecli sdn vnet remove [VNET]      Remove a vnet (refused while guests or subnet
 pvecli sdn subnet add [CIDR]       Attach a subnet (--vnet, --gateway, --snat, --dhcp-range)
 pvecli sdn subnet remove [CIDR]    Detach a subnet (--vnet)
 pvecli sdn apply                   Apply the pending configuration on every node
+pvecli sdn discard                 Drop every pending change
+pvecli sdn unlock                  Release a stale SDN lock left by another session
 ```
+
+On PVE 9.2+, `sdn apply` first shows what the reload changes in the network and FRR configuration of a node (`--no-diff` to skip it). Where PVE has a global SDN lock, apply holds it until the configuration is committed, so a concurrent edit from the web UI or another tool cannot slip in; a lock held by someone else is reported with the way out.
 
 ### Enabling writes
 
