@@ -190,6 +190,8 @@ pvecli ct image remove [NODE] [STORAGE] Remove an LXC image from storage
 ## storage
 
 ```
+pvecli storage add [STORAGE_ID]             Add a shared storage, checking every node reaches it
+pvecli storage remove [STORAGE_ID]          Remove a storage definition (data on the backend is kept)
 pvecli storage list                         List all storage (--node)
 pvecli storage info [NODE] [STORAGE]        Show storage details & config
 pvecli storage config [NODE] [STORAGE]      Edit content types interactively
@@ -198,6 +200,38 @@ pvecli storage content add [NODE] [STOR]      Upload from local file (--source-f
 pvecli storage content download [NODE] [STOR] Download from URL (--url, --filename, --type)
 pvecli storage content remove [NODE] [STOR]   Delete content
 ```
+
+### storage add
+
+Creates a **cluster wide** storage: one API call covers every node. What makes it
+different from the web UI is the discovery step, which probes the backend from
+**every** node before creating anything, and the verification step, which checks
+the storage really mounted on each one.
+
+Supported types: `nfs`, `cifs`, `rbd` (external Ceph), `cephfs` (external Ceph),
+`pbs`, `iscsi`. Deploying a hyperconverged Ceph is out of scope: use `pveceph`.
+
+```bash
+# Discovery: lists the exports the server really offers, from each node
+pvecli storage add nfs-iso --type nfs --server 10.0.0.9 --export /srv/iso --content iso
+
+# External Ceph: the keyring is read from a file, never from the command line
+pvecli storage add ceph-vm --type rbd --monhost 10.0.0.1,10.0.0.2 \
+    --pool rbd --keyring-file /root/ceph.client.admin.keyring
+
+# Restrict to the nodes that can reach the backend
+pvecli storage add nfs-iso --type nfs --server 10.0.0.9 --export /srv/iso --nodes pve1,pve2
+```
+
+Content types are validated against what the backend supports before any network
+call: asking for `images` on a `pbs` storage is refused immediately.
+
+When a node cannot reach the backend, the interactive mode offers to restrict the
+storage to the nodes that can. With `--yes` the scope is left untouched and a
+warning is printed: the flag means "do not ask", not "decide for me".
+
+Credentials never travel through the command line. Use `--password-env VAR` for
+CIFS and PBS, or answer the masked prompt.
 
 ---
 
@@ -209,7 +243,7 @@ pvecli pool remove [POOLID]                 Delete a pool (--force)
 pvecli pool content add [POOLID] [VMIDS]    Add VMs / CTs to a pool
 pvecli pool content remove [POOLID] [VMIDS] Remove VMs / CTs from a pool
 pvecli pool export                          Export all pools to JSON (--output)
-pvecli pool import                          Import pools from JSON (--input)
+pvecli pool import [FILE]                   Import pools from JSON (default: pools.json)
 pvecli pool list                            List all resource pools
 pvecli pool usage [POOLID]                  Show aggregated CPU / memory / disk usage for a pool
 pvecli pool info [POOLID]                   Show pool details
@@ -220,6 +254,10 @@ pvecli pool info [POOLID]                   Show pool details
 ## cluster
 
 ```
+pvecli cluster preflight           Check what silently breaks a join or a maintenance window
+pvecli cluster health              Quorum, node votes, failure tolerance, HA and Ceph in one view
+pvecli cluster create [NAME]       Turn a standalone node into the first cluster member
+pvecli cluster join [TARGET]       Make a standalone node join the cluster of the profile
 pvecli cluster status              Show cluster status
 pvecli cluster resources           Show resources (--type vm/ct/node/storage)
 pvecli cluster usage               Show node load, guest workload, overhead, pools, storage
@@ -279,6 +317,85 @@ Reported figures and their traps:
 - `diskread`, `diskwrite`, `netin` and `netout` are cumulative counters since
   boot, not rates, so they are deliberately not reported.
 
+### cluster preflight
+
+Runs the checks that the web UI does not offer, and that explain most failed joins
+and surprises during maintenance:
+
+| Check | What it catches |
+|:------|:----------------|
+| Nodes online | A node down before you start a maintenance window |
+| PVE versions | A join between different releases, which Proxmox refuses. A patch level gap only warns |
+| Clock drift | Corosync and the join both depend on synchronized clocks |
+| Name resolution | Nodes that resolve each other through neither `/etc/hosts` nor DNS |
+| Core services | `pve-cluster`, `pvedaemon`, `pveproxy`, `pvestatd` not running |
+| Quorum | Cluster already read only |
+| Corosync links | A single link, so no redundancy |
+| Quorum resilience | Two nodes without a QDevice |
+| Guests present | On a standalone node, joining wipes its `/etc/pve` |
+
+Exit code is `1` when a blocking issue is found, in text mode as in `--json`, so it
+can gate a script.
+
+```bash
+pvecli cluster preflight
+pvecli cluster preflight --max-drift 5 --json
+```
+
+### cluster health
+
+Consolidates quorum, per node votes, how many nodes can still be lost, HA and Ceph.
+
+```bash
+pvecli cluster health
+```
+
+The failure tolerance is deliberately reported as **not computable** when a QDevice
+is present or when a node vote is unknown: the arbiter contributes votes that no
+endpoint exposes, and a wrong number would be used to decide whether a node can be
+shut down. Exit code is `1` when the cluster is not quorate.
+
+### cluster create / join
+
+Both are irreversible through the API: a cluster cannot be renamed nor dissolved,
+and leaving a cluster requires reinstalling the node. Both therefore ask you to type
+the cluster name to confirm, unless `--yes` is passed.
+
+```bash
+# On the profile of a standalone node
+pvecli cluster create prod-cluster
+
+# From the profile of the cluster, make another node join it
+pvecli cluster join 10.0.0.12
+pvecli cluster join 10.0.0.12 --target-password-env NODEPW --peer-password-env PEERPW
+```
+
+`join` checks before touching anything, and every check is **measured** rather than
+advised: it refuses a node that already belongs to a cluster, refuses a join between
+different PVE releases such as 9.1 and 9.2 (Proxmox rejects those) while only warning
+on a patch level gap such as 9.1.1 and 9.1.2, refuses when the clocks differ by more
+than 30 seconds and warns beyond 2 seconds, warns when guests exist on the node
+(joining replaces its `/etc/pve`), and refuses to join a multi link cluster without the
+matching link options, which would silently leave corosync without redundancy. Only
+`--link0` and `--link1` exist: a cluster on ring2 or above has to be joined with
+`pvecm add`, and the error says so rather than naming an option that does not exist.
+
+There is no generic "remember to configure NTP" reminder: Proxmox enables
+`systemd-timesyncd` by default, so such a message would be wrong most of the time.
+The drift is compared between the cluster and the joining node, and the fix is only
+suggested when a real drift is measured.
+
+Note that the Proxmox API exposes no NTP configuration at all, only the timezone, so
+neither pvecli nor the web UI can set NTP servers. `cluster preflight` reports the
+drift across the whole cluster with the same logic.
+
+Both reconnect on a fresh connection to verify: the node reissues its certificate
+and restarts `pveproxy` during the operation, so its own answer cannot be trusted.
+
+Passwords are never taken from the command line. The joining node's password is
+prompted or read from `--target-password-env`, and the peer's `root@pam` password
+from the profile only when the profile itself authenticates as `root@pam`.
+
 ### cluster shutdown / reboot
 
 Orchestrates a safe cluster-wide power operation:
@@ -294,6 +411,125 @@ Requires double confirmation (type `SHUTDOWN` or `REBOOT`) unless `--yes` is pas
 
 ---
 
+## sdn
+
+Read commands work everywhere. **Every write command is refused** unless the profile
+carries `sdn_write: true`, because applying an SDN configuration reloads the network
+on every node of the cluster at once. Leave the flag off on production profiles.
+
+```
+pvecli sdn list                    Vnets with their zone and their status on every node
+pvecli sdn zones                   Zones, their type and where they are deployed
+pvecli sdn info [VNET]             Detail a vnet: subnets and the guests attached to it
+pvecli sdn health                  Unapplied changes and vnets missing on some nodes
+pvecli sdn zone add [ZONE]         Create a zone (--type simple|vlan|qinq|vxlan|evpn)
+pvecli sdn zone set [ZONE]         Change a zone (--dhcp/--no-dhcp, --mtu, --nodes, --peers)
+pvecli sdn zone remove [ZONE]      Remove a zone (refused while vnets use it)
+pvecli sdn vnet add [VNET]         Create a vnet in a zone (--zone, --tag, --alias, --vlanaware)
+pvecli sdn vnet remove [VNET]      Remove a vnet (refused while guests or subnets use it)
+pvecli sdn subnet add [CIDR]       Attach a subnet (--vnet, --gateway, --snat, --dhcp-range)
+pvecli sdn subnet remove [CIDR]    Detach a subnet (--vnet)
+pvecli sdn apply                   Apply the pending configuration on every node
+```
+
+### Enabling writes
+
+Add the flag to the profile in `~/.config/pvecli/config.yaml`:
+
+```yaml
+profiles:
+  lab:
+    host: 10.0.0.10
+    sdn_write: true      # absent or false means every SDN write is refused
+```
+
+### Workflow
+
+Nothing takes effect until `sdn apply`. Every write command says so and `sdn health`
+lists what is waiting, including a subnet added on its own.
+
+```bash
+pvecli sdn zone add lab1 --type simple --dhcp
+pvecli sdn vnet add labnet --zone lab1 --alias "Lab network"
+pvecli sdn subnet add 10.0.30.0/24 --vnet labnet --gateway 10.0.30.1 --snat \
+    --dhcp-range 10.0.30.100:10.0.30.200 --dhcp-dns 10.0.0.1
+pvecli sdn health          # shows the three pending changes
+pvecli sdn apply           # asks you to type the cluster name
+```
+
+`sdn apply` waits for the reload task to finish and exits `1` if it fails, then polls
+until every vnet reports available on every node. Use `--force` to regenerate the node
+configuration when nothing is pending, for instance after installing dnsmasq.
+
+Identifiers for zones and vnets are limited by Proxmox to 2 to 8 characters,
+letters and digits only, starting with a letter.
+
+### Zone types
+
+| Type | Needs | Notes |
+|:-----|:------|:------|
+| `simple` | nothing | Isolated bridge, routed or NAT through the subnet gateway |
+| `vlan` | `--bridge` | VLAN tag on an existing bridge |
+| `qinq` | `--bridge`, `--tag` | Stacked VLANs |
+| `vxlan` | `--peers` | Layer 2 overlay between nodes |
+| `evpn` | `--controller`, `--vrf-vxlan` | Routed overlay, needs a controller defined first |
+
+### DHCP
+
+DHCP is a **technology preview** in Proxmox. It needs, on every node:
+
+```bash
+apt install dnsmasq
+systemctl disable --now dnsmasq   # otherwise it holds port 53 and the per-zone instance fails
+```
+
+and the zone itself must carry `--dhcp` (`pvecli sdn zone add ... --dhcp`, or
+`pvecli sdn zone set <zone> --dhcp` afterwards). Leases are handed out through the
+IPAM, so only guests known to Proxmox get an address.
+
+A DHCP zone without an IPAM never leases anything: dnsmasq ignores every MAC
+the IPAM does not know. `sdn zone add` therefore uses the `pve` IPAM unless
+`--ipam` says otherwise, and `sdn health` flags any DHCP zone left without one.
+Proxmox only accepts adding an IPAM to a zone that has no subnet yet: remove the
+subnets, run `pvecli sdn zone set <zone> --dhcp`, add them back, then apply.
+
+---
+
+## ceph
+
+Read only. Deploying a hyperconverged Ceph is deliberately out of scope: installing
+the packages has no REST endpoint, and destroying a pool or an OSD is not something a
+multi-target CLI should make easy. Use `pveceph` for those.
+
+```
+pvecli ceph status                 Health, monitors, OSDs, capacity and active flags
+pvecli ceph osd                    OSD tree with usage and device class
+pvecli ceph pool                   Pools with size, min_size, PGs and usage
+pvecli ceph flags                  All OSD flags and which ones are set
+pvecli ceph versions               Version of every daemon, to spot the ones left behind
+pvecli ceph log [NODE]             Tail of the Ceph log (--limit)
+```
+
+On a cluster without Ceph, every command says so and exits `0`.
+
+`ceph pool` warns when a pool has `min_size` below 2, where a single OSD failure can
+lose writes. `ceph status` warns when a flag is set, since a forgotten `noout` hides a
+failed OSD for as long as it stays on. `cluster shutdown` and `cluster reboot` set
+those flags for you, and print the `ceph osd unset` commands to run once the nodes are
+back up: clearing them is deliberate rather than automatic, since nothing on the way
+back tells pvecli the cluster is healthy again.
+
+Looping over profiles gives a fleet wide view that the web UI cannot produce, since
+one web UI shows one cluster:
+
+```bash
+for p in cluster-a cluster-b cluster-c; do
+    echo "== $p"; pvecli ceph status -p "$p" --json | jq -r .health
+done
+```
+
+---
+
 ## tag (global)
 
 ```
@@ -302,7 +538,7 @@ pvecli tag add [TAG]               Add / update a tag color (--color)
 pvecli tag edit [TAG]              Rename a tag and/or change its color (--name, --color)
 pvecli tag remove [TAGS]           Remove tag(s) from all VMs and CTs
 pvecli tag export                  Export tags and colors to JSON (--output)
-pvecli tag import                  Import tags and colors from JSON (--input)
+pvecli tag import [FILE]           Import tags and colors from JSON (default: tags.json)
 pvecli tag color init              Initialize the color palette
 pvecli tag color list              List palette colors
 pvecli tag color add [NAME] [HEX]  Add a color to the palette

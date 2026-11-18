@@ -6,7 +6,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.10+-3776AB?logo=python&logoColor=white)](https://www.python.org)
 [![License](https://img.shields.io/badge/license-GPLv3-22c55e)](LICENSE.txt)
-[![Version](https://img.shields.io/badge/version-1.9.2-6366f1)](https://github.com/Helphyy/pvecli/releases)
+[![Version](https://img.shields.io/badge/version-1.10.0-6366f1)](https://github.com/Helphyy/pvecli/releases)
 [![Proxmox VE](https://img.shields.io/badge/Proxmox-VE-E57000?logo=proxmox&logoColor=white)](https://www.proxmox.com)
 [![pipx](https://img.shields.io/badge/install%20with-pipx-0ea5e9)](https://pipx.pypa.io)
 
@@ -24,6 +24,9 @@
 - 🖥 **Remote access** - Built-in VNC, SSH (with jump host), and RDP launchers
 - ⚙️ **Remote exec** - Run commands on VMs via QEMU Guest Agent with shell support
 - 🔌 **Node & cluster power** - Shutdown/reboot nodes or entire clusters with safe orchestration
+- 🧭 **Cluster lifecycle** - Preflight checks, health with failure tolerance, create and join
+- 🕸 **SDN** - Zones, vnets, subnets and DHCP, with a per-profile write lock
+- 🐙 **Ceph** - Health, OSDs, pools, flags and versions across your whole fleet
 - 📊 **Usage reporting** - Aggregate CPU, memory and provisioned disk per cluster or per pool
 - 🎨 **Rich output** - Tables, spinners, colors, and confirmation prompts
 - ⚡ **Async** - Fast parallel API calls via httpx
@@ -84,9 +87,11 @@ pvecli ct list
 | `pvecli node` | Node info, shutdown, reboot, VNC shell, SSH |
 | `pvecli vm` | Full VM lifecycle - start, stop, clone, template, snapshot, exec, VNC, SSH, RDP |
 | `pvecli ct` | LXC container lifecycle - start, stop, clone, template, snapshot, VNC, SSH |
-| `pvecli storage` | Storage listing, content management (upload, delete), config |
+| `pvecli storage` | Add and remove shared storage, listing, content management, config |
 | `pvecli pool` | Resource pool management with usage reporting and export/import |
-| `pvecli cluster` | Cluster status, resources, usage reporting, tasks, shutdown, reboot |
+| `pvecli cluster` | Preflight, health, create, join, status, resources, usage, tasks, shutdown, reboot |
+| `pvecli sdn` | SDN zones, vnets, subnets and DHCP (writes locked behind `sdn_write`) |
+| `pvecli ceph` | Ceph health, OSDs, pools, flags, versions and log (read only) |
 | `pvecli tag` | Global tag management with color palette and export/import |
 
 → **[Full command reference](docs/commands.md)**
@@ -133,7 +138,23 @@ pvecli pool usage PROD --json
 
 # Export/import tags and pools between clusters
 pvecli tag export -o tags.json
-pvecli tag import -i tags.json --profile production
+pvecli tag import tags.json --profile production
+
+# Check what would break a join or a maintenance window
+pvecli cluster preflight
+
+# How many nodes can this cluster still lose?
+pvecli cluster health
+
+# Add a shared NFS storage, verified on every node
+pvecli storage add nfs-iso --type nfs --server 10.0.0.9 --export /srv/iso --content iso
+
+# SDN: what is deployed, and what is waiting to be applied
+pvecli sdn list
+pvecli sdn health
+
+# Ceph health across the fleet
+pvecli ceph status --profile production
 ```
 
 ---
