@@ -11,7 +11,7 @@ import re
 import typer
 from rich.table import Table
 
-from ..api.client import ProxmoxClient
+from ..api.client import ProxmoxClient, is_not_implemented
 from ..api.exceptions import PVECliError
 from ..config import ConfigManager
 from ..utils import (
@@ -32,7 +32,7 @@ from ..utils.menu import select_menu
 app = typer.Typer(
     help="Manage SDN (zones, vnets, subnets)",
     no_args_is_help=True,
-    cls=ordered_group(["list", "zones", "info", "health", "zone", "vnet", "subnet", "apply"]),
+    cls=ordered_group(["list", "zones", "info", "health", "zone", "vnet", "subnet", "apply", "discard", "unlock"]),
 )
 zone_app = typer.Typer(help="Manage SDN zones", no_args_is_help=True)
 vnet_app = typer.Typer(help="Manage SDN vnets", no_args_is_help=True)
@@ -275,7 +275,7 @@ async def sdn_list(
             console.print(table)
 
     except PVECliError as e:
-        print_error(str(e))
+        print_error(_explain_sdn_error(e))
         raise typer.Exit(1)
 
 
@@ -343,7 +343,7 @@ async def sdn_zones(
             console.print(table)
 
     except PVECliError as e:
-        print_error(str(e))
+        print_error(_explain_sdn_error(e))
         raise typer.Exit(1)
 
 
@@ -468,7 +468,7 @@ async def sdn_info(
                 print_info("No guest attached to this vnet")
 
     except PVECliError as e:
-        print_error(str(e))
+        print_error(_explain_sdn_error(e))
         raise typer.Exit(1)
 
 
@@ -587,7 +587,7 @@ async def sdn_health(
                 )
 
     except PVECliError as e:
-        print_error(str(e))
+        print_error(_explain_sdn_error(e))
         raise typer.Exit(1)
 
 
@@ -598,10 +598,16 @@ async def sdn_health(
 @async_to_sync
 async def sdn_apply(
     force: bool = typer.Option(False, "--force", "-f", is_flag=True, help="Re-apply even when nothing is pending, to regenerate the node configuration"),
+    diff: bool = typer.Option(True, "--diff/--no-diff", help="Show what the reload changes on a node first (PVE 9.2+)"),
     yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip the typed confirmation"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
-    """Apply the pending SDN configuration on every node of the cluster."""
+    """Apply the pending SDN configuration on every node of the cluster.
+
+    On PVE 9.2+ the network and FRR changes are previewed first, and the
+    global SDN lock is taken for the duration of the apply, so a concurrent
+    edit from the web UI or another tool cannot slip in between.
+    """
     config_manager = ConfigManager()
 
     try:
@@ -644,6 +650,8 @@ async def sdn_apply(
                 console.print("  [dim]nothing pending, forced regeneration[/dim]")
             console.print(f"\n  [bold]Cluster:[/bold] {cluster_name}")
             console.print(f"  [bold]Nodes:[/bold]   {', '.join(nodes)}")
+            if diff:
+                await _show_dry_run(client, nodes[0])
             print_warning(
                 "Applying reloads the network configuration on every node listed above. "
                 "Guests attached to a modified vnet can lose connectivity for a moment."
@@ -659,7 +667,14 @@ async def sdn_apply(
             # PUT /cluster/sdn returns a UPID: the reload runs as a task and
             # announcing success before it finishes would hide a failed
             # ifreload on any node.
-            upid = await client.apply_sdn()
+            token = await _take_sdn_lock(client)
+            try:
+                upid = await client.apply_sdn(lock_token=token)
+            except PVECliError:
+                if token:
+                    # The apply never committed: give the lock back
+                    await client.unlock_sdn(lock_token=token)
+                raise
             try:
                 result = await client.wait_for_task(nodes[0], upid, timeout=300)
             except PVECliError as e:
@@ -705,7 +720,142 @@ async def sdn_apply(
         console.print()
         print_cancelled()
     except PVECliError as e:
-        print_error(str(e))
+        print_error(_explain_sdn_error(e))
+        raise typer.Exit(1)
+
+
+def _explain_sdn_error(err: Exception) -> str:
+    """Turn the raw lock error of PVE into something actionable."""
+    text = str(err)
+    if "lock token" in text:
+        return (
+            "The SDN configuration is locked by another session (web UI, PDM, "
+            "Terraform...). Wait for it to finish, or, if it is stale, release it "
+            "with: pvecli sdn unlock"
+        )
+    return text
+
+
+async def _take_sdn_lock(client: ProxmoxClient) -> str | None:
+    """Take the global SDN lock, or None on versions without one.
+
+    Refuses clearly when another session (web UI, PDM, Terraform) holds it,
+    instead of the bare API error the apply would end with.
+    """
+    try:
+        return await client.lock_sdn(allow_pending=True)
+    except PVECliError as e:
+        if is_not_implemented(e):
+            return None
+        if "lock" in str(e).lower():
+            raise PVECliError(
+                "The SDN configuration is locked by another session (web UI, PDM, "
+                f"Terraform...): {e}. Wait for it to finish, or, if it is stale, "
+                "release it with: pvecli sdn unlock"
+            )
+        raise
+
+
+async def _show_dry_run(client: ProxmoxClient, node: str, max_lines: int = 60) -> None:
+    """Print what the reload would change on one node (PVE 9.2+, skipped before)."""
+    try:
+        result = await client.get_sdn_dry_run(node)
+    except PVECliError as e:
+        if is_not_implemented(e):
+            return
+        print_warning(f"Could not preview the changes: {e}")
+        return
+    shown = False
+    for key, title in (("interfaces-diff", "Network interfaces"), ("frr-diff", "FRR routing")):
+        text = (result.get(key) or "").rstrip()
+        if not text:
+            continue
+        shown = True
+        lines = text.splitlines()
+        console.print(f"\n  [bold]{title} on {node}:[/bold]")
+        for line in lines[:max_lines]:
+            style = "green" if line.startswith("+") else "red" if line.startswith("-") else "dim"
+            console.print(f"    {line}", style=style, markup=False, highlight=False)
+        if len(lines) > max_lines:
+            console.print(f"    [dim]... {len(lines) - max_lines} more line(s)[/dim]")
+    if not shown:
+        console.print(f"\n  [dim]No change to the network or FRR configuration of {node}[/dim]")
+
+
+@app.command("unlock")
+@async_to_sync
+async def sdn_unlock(
+    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip confirmation"),
+    profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+) -> None:
+    """Release a stale global SDN lock left by another session."""
+    config_manager = ConfigManager()
+    try:
+        profile_config = config_manager.get_profile(profile)
+        _require_write(profile_config, profile)
+        async with ProxmoxClient(profile_config) as client:
+            if not yes and not confirm(
+                "Release the SDN lock? Only do this when the session holding it is gone.",
+                default=False,
+            ):
+                print_cancelled()
+                return
+            try:
+                await client.unlock_sdn(force=True)
+            except PVECliError as e:
+                if is_not_implemented(e):
+                    print_info("This PVE version has no global SDN lock: nothing to release")
+                    return
+                raise
+            print_success("SDN lock released")
+    except PVECliError as e:
+        print_error(_explain_sdn_error(e))
+        raise typer.Exit(1)
+
+
+@app.command("discard")
+@async_to_sync
+async def sdn_discard(
+    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip confirmation"),
+    profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+) -> None:
+    """Drop every pending SDN change, back to the applied configuration."""
+    config_manager = ConfigManager()
+    try:
+        profile_config = config_manager.get_profile(profile)
+        _require_write(profile_config, profile)
+        async with ProxmoxClient(profile_config) as client:
+            pending_zones, pending_vnets, pending_subnets = await _pending_changes(client)
+            pending = (
+                [f"zone {z.get('zone')} ({z.get('state')})" for z in pending_zones]
+                + [f"vnet {v.get('vnet')} ({v.get('state')})" for v in pending_vnets]
+                + [
+                    f"subnet {x.get('cidr') or x.get('subnet')} on {x.get('vnet')} ({x.get('state')})"
+                    for x in pending_subnets
+                ]
+            )
+            if not pending:
+                print_info("Nothing pending, the SDN configuration is already applied")
+                return
+            console.print("\n[bold]Pending changes to drop:[/bold]")
+            for line in pending:
+                console.print(f"  {line}")
+            if not yes and not confirm("\nDrop all of them?", default=False):
+                print_cancelled()
+                return
+            try:
+                await client.rollback_sdn()
+            except PVECliError as e:
+                if is_not_implemented(e):
+                    print_error(
+                        "This PVE version cannot drop pending SDN changes through the API: "
+                        "remove each pending object instead"
+                    )
+                    raise typer.Exit(1)
+                raise
+            print_success(f"{len(pending)} pending change(s) dropped")
+    except PVECliError as e:
+        print_error(_explain_sdn_error(e))
         raise typer.Exit(1)
 
 
@@ -876,7 +1026,7 @@ async def sdn_zone_add(
         console.print()
         print_cancelled()
     except PVECliError as e:
-        print_error(str(e))
+        print_error(_explain_sdn_error(e))
         raise typer.Exit(1)
 
 
@@ -959,7 +1109,7 @@ async def sdn_zone_set(
             print_info("Activate it with: pvecli sdn apply")
 
     except PVECliError as e:
-        print_error(str(e))
+        print_error(_explain_sdn_error(e))
         raise typer.Exit(1)
 
 
@@ -1013,7 +1163,7 @@ async def sdn_zone_remove(
             print_info("Apply the change with: pvecli sdn apply")
 
     except PVECliError as e:
-        print_error(str(e))
+        print_error(_explain_sdn_error(e))
         raise typer.Exit(1)
 
 
@@ -1109,7 +1259,7 @@ async def sdn_vnet_add(
         console.print()
         print_cancelled()
     except PVECliError as e:
-        print_error(str(e))
+        print_error(_explain_sdn_error(e))
         raise typer.Exit(1)
 
 
@@ -1188,7 +1338,7 @@ async def sdn_vnet_remove(
             print_info("Apply the change with: pvecli sdn apply")
 
     except PVECliError as e:
-        print_error(str(e))
+        print_error(_explain_sdn_error(e))
         raise typer.Exit(1)
 
 
@@ -1257,7 +1407,7 @@ async def sdn_subnet_remove(
             print_info("Apply the change with: pvecli sdn apply")
 
     except PVECliError as e:
-        print_error(str(e))
+        print_error(_explain_sdn_error(e))
         raise typer.Exit(1)
 
 
@@ -1358,5 +1508,5 @@ async def sdn_subnet_add(
         console.print()
         print_cancelled()
     except PVECliError as e:
-        print_error(str(e))
+        print_error(_explain_sdn_error(e))
         raise typer.Exit(1)

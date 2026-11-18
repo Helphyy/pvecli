@@ -1915,15 +1915,44 @@ class ProxmoxClient:
         """Detach a subnet from a vnet. Stays pending until apply_sdn()."""
         await self.delete(f"/cluster/sdn/vnets/{vnet}/subnets/{subnet}")
 
-    async def apply_sdn(self) -> str:
+    async def apply_sdn(self, lock_token: str | None = None) -> str:
         """Apply the pending SDN configuration on every node.
 
         This reloads the network configuration cluster wide.
 
+        Args:
+            lock_token: Token of the SDN lock held by pvecli, released once
+                the configuration is committed
+
         Returns:
             UPID of the reload task
         """
-        return await self.put("/cluster/sdn")
+        data = {"lock-token": lock_token, "release-lock": 1} if lock_token else None
+        return await self.put("/cluster/sdn", data=data)
+
+    async def get_sdn_dry_run(self, node: str) -> dict[str, Any]:
+        """What apply would change on one node: frr-diff and interfaces-diff (9.2+)."""
+        return await self.get("/cluster/sdn/dry-run", params={"node": node}) or {}
+
+    async def lock_sdn(self, allow_pending: bool = True) -> str:
+        """Take the global SDN lock and return its token (recent PVE versions only)."""
+        return await self.post(
+            "/cluster/sdn/lock", data={"allow-pending": 1} if allow_pending else None
+        )
+
+    async def unlock_sdn(self, lock_token: str | None = None, force: bool = False) -> None:
+        """Release the global SDN lock, with its token or by force."""
+        params: dict[str, Any] = {}
+        if lock_token:
+            params["lock-token"] = lock_token
+        if force:
+            params["force"] = 1
+        await self.delete("/cluster/sdn/lock", params=params or None)
+
+    async def rollback_sdn(self, lock_token: str | None = None) -> None:
+        """Drop every pending SDN change (recent PVE versions only)."""
+        data = {"lock-token": lock_token, "release-lock": 1} if lock_token else None
+        await self.post("/cluster/sdn/rollback", data=data)
 
     async def create_cluster(self, clustername: str, **params: Any) -> str:
         """Turn the node this client talks to into the first cluster member.
