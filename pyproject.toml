@@ -110,7 +110,7 @@ addopts = [
     "--cov=src",
     "--cov-report=term-missing:skip-covered",
     # Floor, raised as the legacy wizards get tests: never lower it
-    "--cov-fail-under=30",
+    "--cov-fail-under=80",
 ]
 filterwarnings = [
     "error",

@@ -27,3 +27,11 @@ def test_no_click_import_in_the_cli():
     # typer vendors click since 0.26: importing click directly drifts from it
     offenders = [p.name for p in (ROOT / "src").rglob("*.py") if re.search(r"^\s*(import click|from click)", p.read_text(), re.M)]
     assert not offenders
+
+
+def test_tests_never_touch_the_real_age_identity(home):
+    import src.cli.tag
+    import src.crypto
+
+    assert str(src.crypto._IDENTITY_FILE).startswith(str(home))
+    assert str(src.cli.tag._COLOR_FILE).startswith(str(home))

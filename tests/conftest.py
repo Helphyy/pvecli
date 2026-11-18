@@ -50,6 +50,16 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     (cfg_dir / "config.yaml").write_text(yaml.safe_dump(TEST_CONFIG))
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    # The age identity path is computed when src.crypto is imported, with
+    # the real HOME: point it at the test HOME too, or tests would encrypt
+    # with (and could create) the user's real key
+    import src.crypto
+
+    monkeypatch.setattr(src.crypto, "_IDENTITY_FILE", cfg_dir / ".age-identity")
+    # Same for the tag palette: a test must never rewrite the real one
+    import src.cli.tag
+
+    monkeypatch.setattr(src.cli.tag, "_COLOR_FILE", cfg_dir / "tag_color.yml")
     monkeypatch.setenv("COLUMNS", "200")
     return tmp_path
 
@@ -113,3 +123,17 @@ def cli(home: Path, api: FakeAPI, clock: FakeClock) -> Iterator[Any]:
         return Run(result.exit_code, result.stdout, result.stderr)
 
     yield run
+
+
+@pytest.fixture
+def ui(monkeypatch: pytest.MonkeyPatch, cli: Any) -> Any:
+    """Scripted answers for menus and prompts (see tests/interactive.py).
+
+    Depends on `cli` so every src.cli module is imported before patching.
+    """
+    from tests.interactive import UI
+    from tests.interactive import install as install_ui
+
+    script = UI()
+    install_ui(monkeypatch, script)
+    return script
