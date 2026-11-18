@@ -613,6 +613,8 @@ pvecli ceph status                 Health, monitors, OSDs, capacity and active f
 pvecli ceph osd                    OSD tree with usage and device class
 pvecli ceph pool                   Pools with size, min_size, PGs and usage
 pvecli ceph flags                  All OSD flags and which ones are set
+pvecli ceph set FLAGS              Set OSD flags through the API (noout,nobackfill...)
+pvecli ceph unset FLAGS            Clear them, e.g. after cluster shutdown or reboot
 pvecli ceph versions               Version of every daemon, to spot the ones left behind
 pvecli ceph log [NODE]             Tail of the Ceph log (--limit)
 ```

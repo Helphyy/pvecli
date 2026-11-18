@@ -20,6 +20,7 @@ from ..utils import (
     format_percentage,
     print_error,
     print_info,
+    print_success,
     print_warning,
 )
 from ..utils.fleet import fleet
@@ -39,7 +40,7 @@ def _no_ceph(json_output: bool = False) -> None:
 app = typer.Typer(
     help="Inspect Ceph (read only)",
     no_args_is_help=True,
-    cls=ordered_group(["status", "osd", "pool", "flags", "versions", "log"]),
+    cls=ordered_group(["status", "osd", "pool", "flags", "set", "unset", "versions", "log"]),
 )
 
 _HEALTH_STYLE = {
@@ -496,3 +497,55 @@ async def ceph_log(
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)
+
+
+async def _change_flags(profile: str | None, names: str, value: int) -> None:
+    wanted = [n.strip() for n in names.split(",") if n.strip()]
+    async with ProxmoxClient(ConfigManager().get_profile(profile)) as client:
+        try:
+            known = {f.get("name") for f in await client.get_ceph_flags() or []}
+        except PVECliError as e:
+            if _absent(e):
+                print_error("No Ceph on this cluster")
+                raise typer.Exit(1) from None
+            raise
+        # Every name checked before the first write: a typo must not leave
+        # half of the flags changed
+        unknown = [n for n in wanted if n not in known]
+        if not wanted or unknown:
+            print_error(
+                f"Unknown flag(s): {', '.join(unknown) or '(none given)'}. "
+                f"Known: {', '.join(sorted(k for k in known if k))}"
+            )
+            raise typer.Exit(1)
+        for name in wanted:
+            await client.put(f"/cluster/ceph/flags/{name}", data={"value": value})
+        print_success(f"Ceph flag(s) {'set' if value else 'cleared'}: {', '.join(wanted)}")
+
+
+@app.command("set")
+@async_to_sync
+async def ceph_set(
+    flags: str = typer.Argument(..., help="Flag(s), comma separated: noout,nobackfill"),
+    profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+) -> None:
+    """Set Ceph OSD flags (same as 'ceph osd set', through the API)."""
+    try:
+        await _change_flags(profile, flags, 1)
+    except PVECliError as e:
+        print_error(str(e))
+        raise typer.Exit(1) from None
+
+
+@app.command("unset")
+@async_to_sync
+async def ceph_unset(
+    flags: str = typer.Argument(..., help="Flag(s), comma separated: noout,nobackfill"),
+    profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
+) -> None:
+    """Clear Ceph OSD flags, e.g. after a cluster shutdown or reboot."""
+    try:
+        await _change_flags(profile, flags, 0)
+    except PVECliError as e:
+        print_error(str(e))
+        raise typer.Exit(1) from None
