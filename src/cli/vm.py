@@ -2038,7 +2038,8 @@ def clone_vm(
         # Offer to print the full CLI command for reproduction
         if Confirm.ask("\n[bold]Print the full clone command?[/bold]", default=True):
             _print_clone_command(
-                vmid, clone_snapshot, post_snapshot, cloned_vmid, is_template, source_node
+                vmid, clone_snapshot, post_snapshot, cloned_vmid, is_template, source_node,
+                profile_name=profile or config_manager.get().default_profile,
             )
 
     except PVECliError as e:
@@ -2577,7 +2578,7 @@ async def delete_snapshot(
 
 def _print_create_command(
     node: str, config: dict[str, Any], vmid: int, is_windows: bool
-) -> None:
+, profile_name: str | None = None) -> None:
     """Print the full pvecli vm add command to reproduce a VM creation."""
     # Map ostype back to os-type/os-version
     ostype = config.get("ostype", "l26")
@@ -2670,6 +2671,9 @@ def _print_create_command(
             efi_stor = efi.split(":")[0]
             parts.append(f"--efi-storage {efi_stor}")
 
+    if profile_name:
+        # Without it a copy-paste would target the default profile
+        parts.append(f"-p {profile_name}")
     cmd = " \\\n    ".join(parts)
     console.print(f"\n[dim]{cmd}[/dim]\n")
 
@@ -2681,6 +2685,7 @@ def _print_clone_command(
     new_vmid: int,
     is_template: bool,
     source_node: str,
+    profile_name: str | None = None,
 ) -> None:
     """Print the full pvecli vm clone command to reproduce a VM clone."""
     parts = [f"pvecli vm clone {source_vmid}"]
@@ -2697,6 +2702,9 @@ def _print_clone_command(
     if target and target != source_node:
         parts.append(f"--target {target}")
 
+    if profile_name:
+        # Without it a copy-paste would target the default profile
+        parts.append(f"-p {profile_name}")
     cmd = " \\\n    ".join(parts)
     console.print(f"\n[dim]{cmd}[/dim]\n")
 
@@ -3379,7 +3387,7 @@ def create_vm(
 
         # Offer to print the full CLI command for reproduction
         if Confirm.ask("\n[bold]Print the full creation command?[/bold]", default=True):
-            _print_create_command(node, config, created_vmid, is_windows)
+            _print_create_command(node, config, created_vmid, is_windows, profile_name=profile or config_manager.get().default_profile)
 
     except PVECliError as e:
         print_error(str(e))

@@ -53,7 +53,7 @@ from ..utils import (
     prompt,
     usage_bar,
 )
-from ..utils.menu import multi_select_menu, select_menu
+from ..utils.menu import multi_select_menu, require_terminal, select_menu
 from ..utils.network import resolve_node_host
 from ..utils.output import err_console
 from .tag import _parse_color_map
@@ -212,6 +212,20 @@ async def validate_resources(
             print_error(f"{label} {rid} not found")
             raise typer.Exit(1)
         result.append({"id": rid, "node": resource.get("node"), "status": resource.get("status", "unknown")})
+
+    # /cluster/resources lags a few seconds behind: right after a stop it
+    # still says "running", and a remove would be refused. Ask each guest's
+    # node for the live state, keeping the cached one if that call fails.
+    async def live_status(entry: dict[str, Any]) -> None:
+        try:
+            current = await client.get(
+                f"/nodes/{entry['node']}/{resource_type}/{entry['id']}/status/current"
+            )
+            entry["status"] = (current or {}).get("status", entry["status"])
+        except PVECliError:
+            pass
+
+    await asyncio.gather(*(live_status(e) for e in result))
     return result
 
 
@@ -301,7 +315,7 @@ async def shared_list_tags(
         node: Node name.
     """
     config = await get_config()
-    tags = config.get("tags", "")
+    tags = (config.get("tags", "") or "").strip()
 
     cluster_opts = await client.get_cluster_options()
     color_map = _parse_color_map(cluster_opts.get("tag-style", ""))
@@ -363,25 +377,31 @@ async def shared_add_tag(
         known_tags.update(cm)
 
         if not known_tags:
-            print_error("No tags found in the cluster")
-            raise typer.Exit(1)
+            # A cluster without any tag yet: nothing to pick from, so ask for
+            # the first one directly instead of refusing.
+            require_terminal()
+            custom = prompt("  Tag name (the cluster has no tag yet)")
+            if not custom.strip():
+                print_cancelled()
+                return
+            chosen = [custom.strip()]
+        else:
+            current_tag_list = [t.strip() for t in current_tags.split(";") if t.strip()]
+            sorted_tags = sorted(known_tags)
+            preselected = [i for i, t in enumerate(sorted_tags) if t in current_tag_list]
 
-        current_tag_list = [t.strip() for t in current_tags.split(";") if t.strip()]
-        sorted_tags = sorted(known_tags)
-        preselected = [i for i, t in enumerate(sorted_tags) if t in current_tag_list]
-
-        entries = sorted_tags + ["+ Add custom tag"]
-        sel = multi_select_menu(entries, "  Tags (Space to toggle, Enter to confirm):", preselected=preselected)
-        if sel is None:
-            print_cancelled()
-            return
-        chosen = [entries[i] for i in sel]
-        if "+ Add custom tag" in chosen:
-            custom = prompt("  Custom tag name")
-            if custom.strip():
-                chosen = [t for t in chosen if t != "+ Add custom tag"] + [custom.strip()]
-            else:
-                chosen = [t for t in chosen if t != "+ Add custom tag"]
+            entries = sorted_tags + ["+ Add custom tag"]
+            sel = multi_select_menu(entries, "  Tags (Space to toggle, Enter to confirm):", preselected=preselected)
+            if sel is None:
+                print_cancelled()
+                return
+            chosen = [entries[i] for i in sel]
+            if "+ Add custom tag" in chosen:
+                custom = prompt("  Custom tag name")
+                if custom.strip():
+                    chosen = [t for t in chosen if t != "+ Add custom tag"] + [custom.strip()]
+                else:
+                    chosen = [t for t in chosen if t != "+ Add custom tag"]
         input_tag_list = chosen
         if not input_tag_list:
             print_cancelled()
@@ -446,7 +466,7 @@ async def shared_remove_tag(
 ) -> None:
     """Remove tags from a VM or container."""
     config = await get_config()
-    current_tags = config.get("tags", "")
+    current_tags = (config.get("tags", "") or "").strip()
 
     if not current_tags:
         print_warning(f"{label.capitalize()} {resource_id} has no tags")
@@ -496,7 +516,9 @@ async def shared_remove_tag(
     ) as progress:
         tag_desc = ", ".join(removed_tags)
         progress.add_task(description=f"Removing tag(s) '{tag_desc}' from {label} {resource_id}...", total=None)
-        await update_config(tags=new_tags)
+        # An empty value leaves "tags: " in the config, which every reader
+        # then sees as one blank tag: drop the key instead.
+        await update_config(**({"tags": new_tags} if new_tags else {"delete": "tags"}))
 
     if len(removed_tags) == 1:
         print_success(f"Tag '{removed_tags[0]}' removed from {label} {resource_id}")

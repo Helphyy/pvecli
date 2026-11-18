@@ -2020,9 +2020,14 @@ class ProxmoxClient:
             # Look for URL field in template data
             url = template_data.get("url") or template_data.get("location")
 
-        # Fallback: construct URL if not found in template data
+        # No URL known (template given by name): let the node fetch it from
+        # the official index, exactly like `pveam download`. It resolves the
+        # mirror itself and verifies the checksum. There is no generic
+        # download URL to build by hand.
         if not url:
-            url = f"https://www.proxmox.com/appliances/get/{template}"
+            return await self.post(
+                f"/nodes/{node}/aplinfo", data={"storage": storage, "template": template}
+            )
 
         data = {
             "url": url,

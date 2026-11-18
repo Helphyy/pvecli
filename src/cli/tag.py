@@ -100,10 +100,36 @@ def _parse_color_map(tag_style) -> dict[str, str]:
 
 
 def _build_tag_style(color_map: dict[str, str], existing_style) -> str:
-    """Rebuild tag-style string with updated color-map."""
+    """Rebuild tag-style with an updated color-map.
+
+    Every other tag-style option already set (shape, ordering,
+    case-sensitive) is kept: tag-style is a single property, so writing the
+    color-map alone would silently reset them.
+    """
+    others: dict[str, str] = {}
+    if isinstance(existing_style, dict):
+        others = {str(k): str(v) for k, v in existing_style.items() if k != "color-map"}
+    elif isinstance(existing_style, str):
+        for part in existing_style.split(","):
+            key, sep, value = part.strip().partition("=")
+            if sep and key != "color-map":
+                others[key] = value
+    parts = []
     if color_map:
-        return "color-map=" + ";".join(f"{tag}:{color}" for tag, color in sorted(color_map.items()))
-    return ""
+        parts.append(
+            "color-map=" + ";".join(f"{tag}:{color}" for tag, color in sorted(color_map.items()))
+        )
+    parts += [f"{k}={v}" for k, v in others.items() if v not in ("", "None")]
+    return ",".join(parts)
+
+
+async def _write_tag_style(client: ProxmoxClient, style: str) -> None:
+    """Write tag-style, or drop the key when nothing is left in it."""
+    if style:
+        await client.update_cluster_options(**{"tag-style": style})
+    else:
+        # An empty value leaves "tag-style:" in datacenter.cfg
+        await client.update_cluster_options(delete="tag-style")
 
 
 def _pick_color(tag_name: str) -> str | None:
@@ -148,7 +174,9 @@ def _pick_color(tag_name: str) -> str | None:
             if ch == b"\x1b":
                 if select.select([fd], [], [], 0.1)[0]:
                     ch += os.read(fd, 1)
-                    if ch[-1:] == b"[" and select.select([fd], [], [], 0.1)[0]:
+                    # CSI (ESC [ A) or SS3 (ESC O A): terminals left in
+                    # application cursor mode send the latter
+                    if ch[-1:] in (b"[", b"O") and select.select([fd], [], [], 0.1)[0]:
                         ch += os.read(fd, 1)
             return ch.decode()
         finally:
@@ -161,9 +189,9 @@ def _pick_color(tag_name: str) -> str | None:
     try:
         while True:
             key = _read_key()
-            if key == "\x1b[A":  # Up
+            if key in ("\x1b[A", "\x1bOA"):  # Up
                 selected = (selected - 1) % n
-            elif key == "\x1b[B":  # Down
+            elif key in ("\x1b[B", "\x1bOB"):  # Down
                 selected = (selected + 1) % n
             elif key in ("\r", "\n"):  # Enter
                 sys.stdout.write(f"\x1b[{menu_lines}A\x1b[J")
@@ -316,7 +344,7 @@ async def add_tag(
             color_map = _parse_color_map(existing_style)
             color_map[tag] = color
             new_style = _build_tag_style(color_map, existing_style)
-            await client.update_cluster_options(**{"tag-style": new_style})
+            await _write_tag_style(client, new_style)
 
         print_success(f"Tag '{tag}' color set to #{color}")
 
@@ -413,7 +441,7 @@ async def edit_tag(
 
             new_style = _build_tag_style(color_map, existing_style)
             if new_style != existing_style:
-                await client.update_cluster_options(**{"tag-style": new_style})
+                await _write_tag_style(client, new_style)
 
         if rename:
             print_success(f"Tag '{tag}' renamed to '{new_name}' on {renamed_count} resource(s)")
@@ -533,11 +561,7 @@ async def remove_tag(
 
             # Update color map once
             if color_removed:
-                new_style = _build_tag_style(color_map, existing_style)
-                if new_style:
-                    await client.update_cluster_options(**{"tag-style": new_style})
-                else:
-                    await client.update_cluster_options(**{"tag-style": ""})
+                await _write_tag_style(client, _build_tag_style(color_map, existing_style))
 
             if len(actionable) == 1:
                 t = actionable[0][0]
@@ -654,7 +678,7 @@ async def import_tags(
 
             if imported:
                 new_style = _build_tag_style(color_map, existing_style)
-                await client.update_cluster_options(**{"tag-style": new_style})
+                await _write_tag_style(client, new_style)
 
             if imported:
                 print_success(f"{imported} tag(s) imported from {file_path}")

@@ -20,6 +20,7 @@ from ..utils import (
     emit_json,
     format_bytes,
     format_percentage,
+    format_uptime,
     get_status_color,
     menu_prompt,
     print_cancelled,
@@ -1094,14 +1095,12 @@ def _print_resources_table(resources: list[dict], title: str) -> None:
             mem_pct = (mem / maxmem * 100) if maxmem else 0
             uptime = r.get("uptime", 0)
 
-            uptime_days = uptime // 86400
-
             table.add_row(
                 node,
                 f"[{status_color}]{status}[/{status_color}]",
                 f"{format_percentage(cpu)} ({maxcpu})",
                 f"{format_bytes(mem)} / {format_bytes(maxmem)} ({format_percentage(mem_pct)})",
-                f"{uptime_days}d",
+                format_uptime(uptime) if uptime else "-",
             )
 
     elif resource_type == "storage":

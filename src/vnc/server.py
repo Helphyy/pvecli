@@ -26,6 +26,8 @@ class VNCProxyServer:
 
     # Grace period (seconds) after last connection drops before exiting
     DISCONNECT_GRACE = 5
+    # Background server lifetime when no browser ever connects, in seconds
+    FIRST_CONNECT_TIMEOUT = 300
 
     def __init__(
         self,
@@ -200,9 +202,17 @@ class VNCProxyServer:
 
                 stdin_task.cancel()
             else:
-                # Background mode: wait for connections to close
+                # Background mode: wait for connections to close. Give up when
+                # nobody ever connects (browser failed to open, tab closed
+                # before loading): nothing else would stop this process.
+                started = time.monotonic()
                 while True:
                     await asyncio.sleep(1)
+                    if (
+                        not self._ever_connected
+                        and time.monotonic() - started >= self.FIRST_CONNECT_TIMEOUT
+                    ):
+                        break
                     if self._ever_connected and self._active_connections == 0:
                         idle = time.monotonic() - self._last_disconnect
                         if idle >= self.DISCONNECT_GRACE:

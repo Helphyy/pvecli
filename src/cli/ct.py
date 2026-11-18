@@ -1241,6 +1241,7 @@ def _print_clone_command(
     new_ctid: int,
     is_template: bool,
     source_node: str,
+    profile_name: str | None = None,
 ) -> None:
     """Print the full pvecli ct clone command to reproduce a container clone."""
     parts = [f"pvecli ct clone {source_ctid}"]
@@ -1257,6 +1258,9 @@ def _print_clone_command(
     if target and target != source_node:
         parts.append(f"--target {target}")
 
+    if profile_name:
+        # Without it a copy-paste would target the default profile
+        parts.append(f"-p {profile_name}")
     cmd = " \\\n    ".join(parts)
     console.print(f"\n[dim]{cmd}[/dim]\n")
 
@@ -1514,7 +1518,8 @@ def clone_container(
         # Offer to print the full CLI command for reproduction
         if Confirm.ask("\n[bold]Print the full clone command?[/bold]", default=True):
             _print_clone_command(
-                ctid, clone_snapshot, post_snapshot, cloned_ctid, is_template, source_node
+                ctid, clone_snapshot, post_snapshot, cloned_ctid, is_template, source_node,
+                profile_name=profile or config_manager.get().default_profile,
             )
 
     except PVECliError as e:
@@ -2046,7 +2051,7 @@ async def delete_snapshot(
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)
-def _print_ct_create_command(node: str, config: dict, ctid: int) -> None:
+def _print_ct_create_command(node: str, config: dict, ctid: int, profile_name: str | None = None) -> None:
     """Print the full pvecli ct add command to reproduce a container creation."""
     parts = [f"pvecli ct add {node}"]
     parts.append(f"--ctid {ctid}")
@@ -2118,6 +2123,9 @@ def _print_ct_create_command(node: str, config: dict, ctid: int) -> None:
     if "fuse=1" in features:
         parts.append("--fuse")
 
+    if profile_name:
+        # Without it a copy-paste would target the default profile
+        parts.append(f"-p {profile_name}")
     cmd = " \\\n    ".join(parts)
     console.print(f"\n[dim]{cmd}[/dim]\n")
 
@@ -2724,7 +2732,7 @@ def create_container(
 
         # Offer to print the full CLI command for reproduction
         if Confirm.ask("\n[bold]Print the full creation command?[/bold]", default=True):
-            _print_ct_create_command(node, config, created_ctid)
+            _print_ct_create_command(node, config, created_ctid, profile_name=profile or config_manager.get().default_profile)
 
     except PVECliError as e:
         print_error(str(e))
