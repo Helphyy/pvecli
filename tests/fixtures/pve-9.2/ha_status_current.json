@@ -1,0 +1,30 @@
+[
+ {
+  "id": "quorum",
+  "node": "pve-lab9",
+  "quorate": 1,
+  "status": "OK",
+  "type": "quorum"
+ },
+ {
+  "id": "master",
+  "node": "pve-lab9",
+  "status": "pve-lab9 (idle, Wed Nov 18 09:24:56 2026)",
+  "timestamp": 1794990296,
+  "type": "master"
+ },
+ {
+  "armed-state": "standby",
+  "id": "fencing",
+  "node": "pve-lab9",
+  "status": "standby (CRM watchdog standby)",
+  "type": "fencing"
+ },
+ {
+  "id": "lrm:pve-lab9",
+  "node": "pve-lab9",
+  "status": "pve-lab9 (idle, watchdog standby, Wed Nov 18 12:39:33 2026)",
+  "timestamp": 1795001973,
+  "type": "lrm"
+ }
+]

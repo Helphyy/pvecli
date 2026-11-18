@@ -1,0 +1,57 @@
+[
+ {
+  "description": "Backfilling of PGs is suspended.",
+  "name": "nobackfill",
+  "value": 0
+ },
+ {
+  "description": "Deep Scrubbing is disabled.",
+  "name": "nodeep-scrub",
+  "value": 0
+ },
+ {
+  "description": "OSD failure reports are being ignored, such that the monitors will not mark OSDs down.",
+  "name": "nodown",
+  "value": 0
+ },
+ {
+  "description": "OSDs that were previously marked out will not be marked back in when they start.",
+  "name": "noin",
+  "value": 0
+ },
+ {
+  "description": "OSDs will not automatically be marked out after the configured interval.",
+  "name": "noout",
+  "value": 0
+ },
+ {
+  "description": "Rebalancing of PGs is suspended.",
+  "name": "norebalance",
+  "value": 0
+ },
+ {
+  "description": "Recovery of PGs is suspended.",
+  "name": "norecover",
+  "value": 0
+ },
+ {
+  "description": "Scrubbing is disabled.",
+  "name": "noscrub",
+  "value": 0
+ },
+ {
+  "description": "Cache tiering activity is suspended.",
+  "name": "notieragent",
+  "value": 0
+ },
+ {
+  "description": "OSDs are not allowed to start.",
+  "name": "noup",
+  "value": 0
+ },
+ {
+  "description": "Pauses read and writes.",
+  "name": "pause",
+  "value": 0
+ }
+]

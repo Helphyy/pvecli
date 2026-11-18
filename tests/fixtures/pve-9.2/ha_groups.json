@@ -1,0 +1,4 @@
+{
+ "__error__": "cannot index groups: ha groups have been migrated to rules\n",
+ "__status__": 500
+}

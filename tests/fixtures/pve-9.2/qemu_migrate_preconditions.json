@@ -1,0 +1,10 @@
+{
+ "allowed_nodes": [],
+ "has-dbus-vmstate": 1,
+ "local_disks": [],
+ "local_resources": [],
+ "mapped-resource-info": {},
+ "mapped-resources": [],
+ "not_allowed_nodes": {},
+ "running": 0
+}

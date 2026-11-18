@@ -1,0 +1,60 @@
+[
+ {
+  "id": "cluster",
+  "name": "sdnlab",
+  "nodes": 5,
+  "quorate": 1,
+  "type": "cluster",
+  "version": 5
+ },
+ {
+  "id": "node/pve-lab1",
+  "ip": "10.199.32.51",
+  "level": "",
+  "local": 1,
+  "name": "pve-lab1",
+  "nodeid": 1,
+  "online": 1,
+  "type": "node"
+ },
+ {
+  "id": "node/pve-lab5",
+  "ip": "10.199.32.55",
+  "level": "",
+  "local": 0,
+  "name": "pve-lab5",
+  "nodeid": 5,
+  "online": 1,
+  "type": "node"
+ },
+ {
+  "id": "node/pve-lab3",
+  "ip": "10.199.32.53",
+  "level": "",
+  "local": 0,
+  "name": "pve-lab3",
+  "nodeid": 3,
+  "online": 1,
+  "type": "node"
+ },
+ {
+  "id": "node/pve-lab4",
+  "ip": "10.199.32.54",
+  "level": "",
+  "local": 0,
+  "name": "pve-lab4",
+  "nodeid": 4,
+  "online": 1,
+  "type": "node"
+ },
+ {
+  "id": "node/pve-lab2",
+  "ip": "10.199.32.52",
+  "level": "",
+  "local": 0,
+  "name": "pve-lab2",
+  "nodeid": 2,
+  "online": 1,
+  "type": "node"
+ }
+]

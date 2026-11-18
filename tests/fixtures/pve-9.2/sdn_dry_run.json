@@ -1,0 +1,4 @@
+{
+ "frr-diff": "--- /etc/frr/frr.conf\t2023-06-06 08:39:32.000000000 +0200\n+++ /proc/972/fd/11\t2026-11-18 12:39:33.357663782 +0100\n@@ -1,10 +1,8 @@\n-# default to using syslog. /etc/rsyslog.d/45-frr.conf places the log in\n-# /var/log/frr/frr.log\n-#\n-# Note:\n-# FRR's configuration shell, vtysh, dynamically edits the live, in-memory\n-# configuration while FRR is running. When instructed, vtysh will persist the\n-# live configuration to this file, overwriting its contents. If you want to\n-# avoid this, you can edit this file manually before starting FRR, or instruct\n-# vtysh to write configuration to a different file.\n+frr version 10.6.1\n+frr defaults datacenter\n+hostname pve-lab9\n log syslog informational\n+service integrated-vtysh-config\n+!\n+line vty\n+!\n",
+ "interfaces-diff": null
+}

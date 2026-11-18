@@ -1,0 +1,74 @@
+{
+ "lrm_status": {
+  "pve-lab1": {
+   "mode": "active",
+   "results": {
+    "/p5ovfFTGES3/xt08zQWuQ": {
+     "exit_code": 0,
+     "sid": "vm:301",
+     "state": "request_stop"
+    }
+   },
+   "state": "wait_for_agent_lock",
+   "timestamp": 1795002001
+  },
+  "pve-lab2": {
+   "mode": "active",
+   "results": {
+    "MezrrMl2uqB4IIU1OELMPA": {
+     "exit_code": 0,
+     "sid": "vm:300",
+     "state": "stopped"
+    }
+   },
+   "state": "wait_for_agent_lock",
+   "timestamp": 1795002001
+  },
+  "pve-lab3": {
+   "mode": "active",
+   "results": {
+    "MNYWio8FZp5oEzhQ+EjVbA": {
+     "exit_code": 0,
+     "sid": "vm:300",
+     "state": "migrate"
+    }
+   },
+   "state": "wait_for_agent_lock",
+   "timestamp": 1795002004
+  },
+  "pve-lab4": {
+   "mode": "active",
+   "results": {
+    "WBwmGnDO8MLssii/XNHx5Q": {
+     "exit_code": 0,
+     "sid": "vm:300",
+     "state": "migrate"
+    }
+   },
+   "state": "wait_for_agent_lock",
+   "timestamp": 1795002000
+  },
+  "pve-lab5": {
+   "mode": "active",
+   "results": {},
+   "state": "wait_for_agent_lock",
+   "timestamp": 1795002002
+  }
+ },
+ "manager_status": {
+  "master_node": "pve-lab4",
+  "node_status": {
+   "pve-lab1": "online",
+   "pve-lab2": "online",
+   "pve-lab3": "online",
+   "pve-lab4": "online",
+   "pve-lab5": "online"
+  },
+  "service_status": {},
+  "timestamp": 1794999604
+ },
+ "quorum": {
+  "node": "pve-lab1",
+  "quorate": "1"
+ }
+}

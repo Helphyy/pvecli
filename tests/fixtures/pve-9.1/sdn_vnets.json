@@ -1,0 +1,25 @@
+[
+ {
+  "alias": "Lab simple",
+  "digest": "3954567d86d42423dcaa83ce052c874a6e03cb3e",
+  "type": "vnet",
+  "vnet": "vsimple",
+  "zone": "zsimple"
+ },
+ {
+  "alias": "Lab VLAN 42",
+  "digest": "3954567d86d42423dcaa83ce052c874a6e03cb3e",
+  "tag": 42,
+  "type": "vnet",
+  "vnet": "vvlan",
+  "zone": "zvlan"
+ },
+ {
+  "alias": "Lab VXLAN",
+  "digest": "3954567d86d42423dcaa83ce052c874a6e03cb3e",
+  "tag": 9000,
+  "type": "vnet",
+  "vnet": "vvxlan",
+  "zone": "zvxlan"
+ }
+]

@@ -1,0 +1,22 @@
+[
+ {
+  "name": "guest-sdn",
+  "type": "qemu",
+  "vmid": 300
+ },
+ {
+  "name": "deb13-cloud",
+  "type": "qemu",
+  "vmid": 9000
+ },
+ {
+  "name": "dhcp-test",
+  "type": "qemu",
+  "vmid": 301
+ },
+ {
+  "name": "fixct",
+  "type": "lxc",
+  "vmid": 311
+ }
+]

@@ -1,0 +1,9 @@
+{
+ "boot": " ",
+ "digest": "c42f68909a16a2380e807c80b4aaa4043520dad0",
+ "memory": "128",
+ "meta": "creation-qemu=11.1.3,ctime=1794952414",
+ "name": "vncprobe",
+ "smbios1": "uuid=23c48362-57ea-4ae9-9987-4008868f4fca",
+ "vmgenid": "2de68c1c-71c1-4bc4-8390-4c8d5c84c2b0"
+}

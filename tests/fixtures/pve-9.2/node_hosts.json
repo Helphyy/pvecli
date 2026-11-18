@@ -1,0 +1,4 @@
+{
+ "data": "127.0.0.1 localhost.localdomain localhost\n10.199.32.64 pve-lab9.sdnlab.local pve-lab9\n\n# The following lines are desirable for IPv6 capable hosts\n\n::1     ip6-localhost ip6-loopback\nfe00::0 ip6-localnet\nff00::0 ip6-mcastprefix\nff02::1 ip6-allnodes\nff02::2 ip6-allrouters\nff02::3 ip6-allhosts\n",
+ "digest": "9e9ca5658d2f99ac61b4c9d0b99e471b53c6eb47"
+}

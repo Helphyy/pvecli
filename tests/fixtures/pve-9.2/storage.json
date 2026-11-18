@@ -1,0 +1,17 @@
+[
+ {
+  "content": "images,rootdir",
+  "digest": "921a2c39e40935cc1d681235282a3f4359c66196",
+  "storage": "local-lvm",
+  "thinpool": "data",
+  "type": "lvmthin",
+  "vgname": "pve"
+ },
+ {
+  "content": "iso,vztmpl,import,backup",
+  "digest": "921a2c39e40935cc1d681235282a3f4359c66196",
+  "path": "/var/lib/vz",
+  "storage": "local",
+  "type": "dir"
+ }
+]

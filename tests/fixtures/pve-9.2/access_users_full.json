@@ -1,0 +1,11 @@
+[
+ {
+  "email": "root@sdnlab.local",
+  "enable": 1,
+  "expire": 0,
+  "groups": "",
+  "realm-type": "pam",
+  "tokens": null,
+  "userid": "root@pam"
+ }
+]

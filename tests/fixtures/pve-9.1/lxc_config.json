@@ -1,0 +1,11 @@
+{
+ "arch": "amd64",
+ "digest": "18de7c597fc0def1954d0406be9430ab444e4d0e",
+ "hostname": "fixct",
+ "memory": 256,
+ "net0": "name=eth0,bridge=vsimple,hwaddr=BC:24:11:A6:9E:69,ip=dhcp,type=veth",
+ "ostype": "alpine",
+ "rootfs": "local-lvm:vm-311-disk-0,size=1G",
+ "swap": 512,
+ "unprivileged": 1
+}

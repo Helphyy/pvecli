@@ -1,0 +1,37 @@
+[
+ {
+  "content": "backup,import,vztmpl,iso",
+  "digest": "be02ac75e8218449099847bdb231c4143f36cc4c",
+  "path": "/var/lib/vz",
+  "storage": "local",
+  "type": "dir"
+ },
+ {
+  "content": "rootdir,images",
+  "digest": "be02ac75e8218449099847bdb231c4143f36cc4c",
+  "krbd": 0,
+  "pool": "labpool",
+  "shared": 1,
+  "storage": "labpool",
+  "type": "rbd"
+ },
+ {
+  "content": "backup",
+  "datastore": "labds",
+  "digest": "be02ac75e8218449099847bdb231c4143f36cc4c",
+  "fingerprint": "CD:6E:F4:9A:2F:82:D9:A8:E7:04:12:A8:23:5E:1F:43:07:10:B4:2B:7F:C3:AF:B0:F8:30:6D:75:98:26:B6:A5",
+  "server": "10.199.32.70",
+  "shared": 1,
+  "storage": "pbs-lab",
+  "type": "pbs",
+  "username": "root@pam"
+ },
+ {
+  "content": "rootdir,images",
+  "digest": "be02ac75e8218449099847bdb231c4143f36cc4c",
+  "storage": "local-lvm",
+  "thinpool": "data",
+  "type": "lvmthin",
+  "vgname": "pve"
+ }
+]

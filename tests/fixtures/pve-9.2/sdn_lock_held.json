@@ -1,0 +1,4 @@
+{
+ "__error__": "could not acquire lock for SDN config: invalid lock token provided! at /usr/share/perl5/PVE/Network/SDN.pm line 420.",
+ "__status__": 500
+}

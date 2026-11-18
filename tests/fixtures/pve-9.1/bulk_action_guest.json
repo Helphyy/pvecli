@@ -1,0 +1,14 @@
+[
+ {
+  "name": "start"
+ },
+ {
+  "name": "shutdown"
+ },
+ {
+  "name": "migrate"
+ },
+ {
+  "name": "suspend"
+ }
+]

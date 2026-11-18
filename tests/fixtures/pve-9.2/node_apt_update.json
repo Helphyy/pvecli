@@ -1,0 +1,46 @@
+[
+ {
+  "Arch": "amd64",
+  "Description": "This package contains the Qemu Server tools used by Proxmox VE",
+  "OldVersion": "9.2.15",
+  "Origin": "Proxmox",
+  "Package": "qemu-server",
+  "Priority": "optional",
+  "Section": "admin",
+  "Title": "Qemu Server Tools",
+  "Version": "9.2.16"
+ },
+ {
+  "Arch": "all",
+  "Description": "This package contains the API endpoints for the Software Defined Network of Proxmox VE.",
+  "OldVersion": "1.6.9",
+  "Origin": "Proxmox",
+  "Package": "libpve-network-api-perl",
+  "Priority": "optional",
+  "Section": "perl",
+  "Title": "API endpoints for Proxmox VE's SDN stack",
+  "Version": "1.6.10"
+ },
+ {
+  "Arch": "all",
+  "Description": "This package contains the base library used by other Proxmox VE components.",
+  "OldVersion": "9.2.9",
+  "Origin": "Proxmox",
+  "Package": "libpve-common-perl",
+  "Priority": "optional",
+  "Section": "perl",
+  "Title": "Proxmox VE base library",
+  "Version": "9.2.10"
+ },
+ {
+  "Arch": "all",
+  "Description": "This package contains the perl side of the Software Defined Network implementation for Proxmox VE.",
+  "OldVersion": "1.6.9",
+  "Origin": "Proxmox",
+  "Package": "libpve-network-perl",
+  "Priority": "optional",
+  "Section": "perl",
+  "Title": "Proxmox VE's SDN (Software Defined Network) stack",
+  "Version": "1.6.10"
+ }
+]

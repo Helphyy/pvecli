@@ -1,0 +1,36 @@
+[
+ {
+  "hostname": "guest-sdn",
+  "ip": "10.77.30.100",
+  "mac": "BC:24:11:EE:5A:C4",
+  "subnet": "10.77.30.0/24",
+  "vmid": 300,
+  "vnet": "vsimple",
+  "zone": "zsimple"
+ },
+ {
+  "hostname": "fixct",
+  "ip": "10.77.30.101",
+  "mac": "BC:24:11:A6:9E:69",
+  "subnet": "10.77.30.0/24",
+  "vmid": 311,
+  "vnet": "vsimple",
+  "zone": "zsimple"
+ },
+ {
+  "gateway": 1,
+  "ip": "10.77.30.1",
+  "subnet": "10.77.30.0/24",
+  "vnet": "vsimple",
+  "zone": "zsimple"
+ },
+ {
+  "hostname": "deb13-cloud",
+  "ip": "10.77.30.102",
+  "mac": "BC:24:11:96:77:50",
+  "subnet": "10.77.30.0/24",
+  "vmid": 9000,
+  "vnet": "vsimple",
+  "zone": "zsimple"
+ }
+]

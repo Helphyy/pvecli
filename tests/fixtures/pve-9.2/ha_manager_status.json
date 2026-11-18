@@ -1,0 +1,29 @@
+{
+ "lrm_status": {
+  "pve-lab9": {
+   "mode": "active",
+   "results": {
+    "1z7xux/6DtgV0WAmpPSJBA": {
+     "exit_code": 7,
+     "sid": "ct:900",
+     "state": "started"
+    }
+   },
+   "state": "wait_for_agent_lock",
+   "timestamp": 1795001973
+  }
+ },
+ "manager_status": {
+  "imbalance": 0,
+  "master_node": "pve-lab9",
+  "node_status": {
+   "pve-lab9": "online"
+  },
+  "service_status": {},
+  "timestamp": 1794990296
+ },
+ "quorum": {
+  "node": "pve-lab9",
+  "quorate": "1"
+ }
+}

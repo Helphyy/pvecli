@@ -1,0 +1,21 @@
+[
+ {
+  "dhcp": "dnsmasq",
+  "digest": "d4bcc7ec24be1fff5460899cd5c4d219a8156ffc",
+  "ipam": "pve",
+  "type": "simple",
+  "zone": "zsimple"
+ },
+ {
+  "bridge": "vmbr0",
+  "digest": "d4bcc7ec24be1fff5460899cd5c4d219a8156ffc",
+  "type": "vlan",
+  "zone": "zvlan"
+ },
+ {
+  "digest": "d4bcc7ec24be1fff5460899cd5c4d219a8156ffc",
+  "peers": "10.199.32.51,10.199.32.52,10.199.32.53,10.199.32.54,10.199.32.55",
+  "type": "vxlan",
+  "zone": "zvxlan"
+ }
+]

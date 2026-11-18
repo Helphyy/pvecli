@@ -1,0 +1,33 @@
+[
+ {
+  "filename": "pve-root-ca.pem",
+  "fingerprint": "43:38:DD:7F:0E:A4:E1:1A:3D:10:D3:35:40:02:D2:D0:05:18:05:17:73:D4:F4:6F:78:AA:E5:4D:65:C7:0E:43",
+  "issuer": "/CN=Proxmox Virtual Environment/OU=1791d701-55db-4ea5-bcf8-c16e28e34308/O=PVE Cluster Manager CA",
+  "notafter": 2110225825,
+  "notbefore": 1794865825,
+  "pem": "<redacted>",
+  "public-key-bits": 4096,
+  "public-key-type": "rsaEncryption",
+  "san": [],
+  "subject": "/CN=Proxmox Virtual Environment/OU=1791d701-55db-4ea5-bcf8-c16e28e34308/O=PVE Cluster Manager CA"
+ },
+ {
+  "filename": "pve-ssl.pem",
+  "fingerprint": "E5:FE:61:8C:9E:1D:5C:DA:3D:6B:D4:7D:F6:AB:C9:FC:29:6F:11:FB:CF:08:EB:85:45:A7:5C:44:39:9E:BC:58",
+  "issuer": "/CN=Proxmox Virtual Environment/OU=1791d701-55db-4ea5-bcf8-c16e28e34308/O=PVE Cluster Manager CA",
+  "notafter": 1848777052,
+  "notbefore": 1785705052,
+  "pem": "<redacted>",
+  "public-key-bits": 2048,
+  "public-key-type": "rsaEncryption",
+  "san": [
+   "127.0.0.1",
+   "0000:0000:0000:0000:0000:0000:0000:0001",
+   "localhost",
+   "10.199.32.64",
+   "pve-lab9",
+   "pve-lab9.sdnlab.local"
+  ],
+  "subject": "/OU=PVE Cluster Node/O=Proxmox Virtual Environment/CN=pve-lab9.sdnlab.local"
+ }
+]

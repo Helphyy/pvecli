@@ -1,0 +1,20 @@
+{
+ "allowed_nodes": [
+  "pve-lab1",
+  "pve-lab4",
+  "pve-lab5",
+  "pve-lab3"
+ ],
+ "has-dbus-vmstate": 1,
+ "local_disks": [],
+ "local_resources": [],
+ "mapped-resource-info": {},
+ "mapped-resources": [],
+ "not_allowed_nodes": {
+  "pve-lab1": {},
+  "pve-lab3": {},
+  "pve-lab4": {},
+  "pve-lab5": {}
+ },
+ "running": 0
+}

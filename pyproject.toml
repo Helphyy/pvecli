@@ -74,6 +74,9 @@ select = [
 ignore = [
     "E501",  # line too long (handled by formatter)
     "B008",  # do not perform function calls in argument defaults
+    # `raise typer.Exit(1)` inside an except is control flow (exit code),
+    # not an error to chain: the PVECliError was already printed.
+    "B904",
 ]
 
 [tool.ruff.format]
@@ -82,7 +85,9 @@ indent-style = "space"
 
 [tool.mypy]
 python_version = "3.10"
-warn_return_any = true
+# The API client returns parsed JSON (Any) by nature: flagging every
+# return of it is noise, not a defect.
+warn_return_any = false
 warn_unused_configs = true
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
@@ -91,13 +96,24 @@ no_implicit_optional = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+markers = [
+    "lab: runs read-only commands against a real Proxmox lab (needs PVECLI_LAB=1)",
+]
 addopts = [
     "--strict-markers",
     "--strict-config",
     "--cov=src",
-    "--cov-report=term-missing",
+    "--cov-report=term-missing:skip-covered",
+    # Floor, raised as the legacy wizards get tests: never lower it
+    "--cov-fail-under=30",
+]
+filterwarnings = [
+    "error",
+    # Third-party noise we cannot fix, kept as plain warnings
+    "default::DeprecationWarning:pytest_asyncio.*",
 ]

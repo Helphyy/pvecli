@@ -1,0 +1,11 @@
+{
+ "boot": "order=net0",
+ "cores": 1,
+ "digest": "c51592454e7d3e85ac1fd2ac67126175f4970eb3",
+ "memory": "512",
+ "meta": "creation-qemu=10.1.2,ctime=1785783460",
+ "name": "guest-sdn",
+ "net0": "virtio=BC:24:11:EE:5A:C4,bridge=vsimple",
+ "smbios1": "uuid=98ceb042-ff9f-48c5-9236-196ba63eedfd",
+ "vmgenid": "11bde28b-67d7-4938-af35-02ab3555ad6a"
+}

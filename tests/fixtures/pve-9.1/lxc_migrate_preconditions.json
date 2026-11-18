@@ -1,0 +1,10 @@
+{
+ "allowed-nodes": [
+  "pve-lab4",
+  "pve-lab2",
+  "pve-lab5",
+  "pve-lab3"
+ ],
+ "not-allowed-nodes": {},
+ "running": 1
+}

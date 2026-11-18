@@ -1,0 +1,19 @@
+{
+ "cpu": 0,
+ "cpus": 1,
+ "disk": 0,
+ "ha": {
+  "managed": 0
+ },
+ "maxdisk": 0,
+ "maxmem": 536870912,
+ "mem": 0,
+ "memhost": 0,
+ "name": "guest-sdn",
+ "netin": 0,
+ "netout": 0,
+ "qmpstatus": "stopped",
+ "status": "stopped",
+ "uptime": 0,
+ "vmid": 300
+}

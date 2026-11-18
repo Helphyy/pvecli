@@ -1,0 +1,11 @@
+{
+ "arch": "amd64",
+ "digest": "3b50e31230dc5c3a90ecccc7655cac878af734ef",
+ "hostname": "ct900",
+ "memory": 256,
+ "net0": "name=eth0,bridge=vmbr0,hwaddr=BC:24:11:F8:DD:82,type=veth",
+ "ostype": "alpine",
+ "rootfs": "local-lvm:vm-900-disk-0,size=1G",
+ "swap": 512,
+ "unprivileged": 1
+}

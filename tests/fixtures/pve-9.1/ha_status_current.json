@@ -1,0 +1,51 @@
+[
+ {
+  "id": "quorum",
+  "node": "pve-lab1",
+  "quorate": 1,
+  "status": "OK",
+  "type": "quorum"
+ },
+ {
+  "id": "master",
+  "node": "pve-lab4",
+  "status": "pve-lab4 (idle, Wed Nov 18 12:00:04 2026)",
+  "timestamp": 1794999604,
+  "type": "master"
+ },
+ {
+  "id": "lrm:pve-lab1",
+  "node": "pve-lab1",
+  "status": "pve-lab1 (idle, Wed Nov 18 12:40:01 2026)",
+  "timestamp": 1795002001,
+  "type": "lrm"
+ },
+ {
+  "id": "lrm:pve-lab2",
+  "node": "pve-lab2",
+  "status": "pve-lab2 (idle, Wed Nov 18 12:40:01 2026)",
+  "timestamp": 1795002001,
+  "type": "lrm"
+ },
+ {
+  "id": "lrm:pve-lab3",
+  "node": "pve-lab3",
+  "status": "pve-lab3 (idle, Wed Nov 18 12:40:04 2026)",
+  "timestamp": 1795002004,
+  "type": "lrm"
+ },
+ {
+  "id": "lrm:pve-lab4",
+  "node": "pve-lab4",
+  "status": "pve-lab4 (idle, Wed Nov 18 12:40:00 2026)",
+  "timestamp": 1795002000,
+  "type": "lrm"
+ },
+ {
+  "id": "lrm:pve-lab5",
+  "node": "pve-lab5",
+  "status": "pve-lab5 (idle, Wed Nov 18 12:40:02 2026)",
+  "timestamp": 1795002002,
+  "type": "lrm"
+ }
+]

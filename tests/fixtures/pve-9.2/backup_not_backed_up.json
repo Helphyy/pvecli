@@ -1,0 +1,12 @@
+[
+ {
+  "name": "vncprobe",
+  "type": "qemu",
+  "vmid": 901
+ },
+ {
+  "name": "ct900",
+  "type": "lxc",
+  "vmid": 900
+ }
+]

@@ -1,0 +1,6 @@
+{
+ "result": [
+  {"hardware-address": "00:00:00:00:00:00", "ip-addresses": [{"ip-address": "127.0.0.1", "ip-address-type": "ipv4", "prefix": 8}, {"ip-address": "::1", "ip-address-type": "ipv6", "prefix": 128}], "name": "lo"},
+  {"hardware-address": "bc:24:11:d8:c9:e0", "ip-addresses": [{"ip-address": "10.77.30.151", "ip-address-type": "ipv4", "prefix": 24}, {"ip-address": "fe80::be24:11ff:fed8:c9e0", "ip-address-type": "ipv6", "prefix": 64}], "name": "eth0"}
+ ]
+}

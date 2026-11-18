@@ -205,11 +205,13 @@ pip install -e ".[dev]"
 ```
 
 ```bash
-ruff format .     # Format
-ruff check .      # Lint
-mypy src/pvecli   # Type check
-pytest            # Test
+ruff check src tests   # Lint
+mypy src               # Type check
+pytest                 # Static, unit and functional tests, no network
+PVECLI_LAB=1 PVECLI_LAB_PROFILES=lab1 pytest -m lab   # Read-only, against a lab
 ```
+
+The functional tests run the real CLI against a fake Proxmox API fed with responses recorded on real clusters. How to write a test, record fixtures and work test first: [tests/README.md](tests/README.md). The CI runs all of it on Python 3.10 to 3.14 on every push.
 
 ---
 
