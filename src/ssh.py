@@ -5,7 +5,7 @@ import subprocess
 import sys
 
 from .api.exceptions import PVECliError
-from .utils.output import print_error, print_warning
+from .utils.output import print_error
 
 
 def build_ssh_command(

@@ -1,6 +1,7 @@
 """Configuration management commands for pvecli."""
 
 from getpass import getpass
+from typing import Any
 
 import typer
 from rich.panel import Panel
@@ -13,9 +14,9 @@ from ..utils import (
     clear_lines,
     confirm,
     console,
+    menu_prompt,
     print_cancelled,
     print_error,
-    menu_prompt,
     print_info,
     print_success,
     prompt,
@@ -74,7 +75,7 @@ def _collect_profile_values(
     verify_ssl: bool,
 ) -> tuple[dict, bool]:
     """Collect profile values interactively if not provided."""
-    config_values = {
+    config_values: dict[str, Any] = {
         "name": profile_name,
         "host": host,
         "port": port,
@@ -233,7 +234,7 @@ def add_profile(
     token_value: str = typer.Option(None, "--token-value", "-tv", help="API token value (UUID)"),
     password: str = typer.Option(None, "--password", "-pw", help="Password (not recommended)"),
     port: int = typer.Option(None, "--port", "-po", help="Proxmox port"),
-    verify_ssl: bool = typer.Option(False, "--verify-ssl", "-vs", is_flag=True, help="Verify SSL certificate"),
+    verify_ssl: bool = typer.Option(False, "--verify-ssl", "-vs", help="Verify SSL certificate"),
 ) -> None:
     """Add a new profile."""
     config_manager = ConfigManager()
@@ -283,7 +284,7 @@ def add_profile(
 @app.command("remove")
 def remove_profile(
     name: str = typer.Argument(None, help="Profile name"),
-    all_profiles: bool = typer.Option(False, "--all", "-al", is_flag=True, help="Remove all profiles"),
+    all_profiles: bool = typer.Option(False, "--all", "-al", help="Remove all profiles"),
 ) -> None:
     """Remove a profile or all profiles."""
     config_manager = ConfigManager()
@@ -346,7 +347,7 @@ def remove_profile(
 
 @app.command("edit")
 def edit_profile(
-    name: str = typer.Argument(None, help="Profile name"),
+    name: str | None = typer.Argument(None, help="Profile name"),
 ) -> None:
     """Interactively edit a profile."""
     config_manager = ConfigManager()
@@ -458,6 +459,7 @@ def edit_profile(
             if selected < len(fields):
                 key, label, original = fields[selected]
 
+                new_val: bool | int | str
                 if key == "auth_type":
                     idx = select_menu(["token", "password"], f"  {label}:")
                     if idx is not None:
@@ -504,7 +506,7 @@ def edit_profile(
         if "token_name" in changes:
             console.print(f"  Token name: {current.auth.token_name or ''} -> {changes['token_name']}")
         if "token_value" in changes:
-            console.print(f"  Token value: (will be changed)")
+            console.print("  Token value: (will be changed)")
 
         if not confirm("Apply these changes?", default=True):
             print_cancelled()
@@ -564,7 +566,7 @@ def edit_profile(
 
 @app.command("default")
 def set_default(
-    name: str = typer.Argument(None, help="Profile name"),
+    name: str | None = typer.Argument(None, help="Profile name"),
 ) -> None:
     """Set the default profile."""
     config_manager = ConfigManager()
@@ -630,8 +632,8 @@ def list_profiles() -> None:
 
 @app.command("info")
 def show_profile(
-    name: str = typer.Argument(None, help="Profile name"),
-    all_profiles: bool = typer.Option(False, "--all", "-a", is_flag=True, help="Show all profiles"),
+    name: str | None = typer.Argument(None, help="Profile name"),
+    all_profiles: bool = typer.Option(False, "--all", "-a", help="Show all profiles"),
 ) -> None:
     """Show profile details."""
     config_manager = ConfigManager()

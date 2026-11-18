@@ -15,7 +15,7 @@ import asyncio
 import ipaddress
 import re
 import time
-from typing import Any
+from typing import Any, cast
 
 import typer
 from rich.table import Table
@@ -33,12 +33,19 @@ from ..utils import (
 )
 from ..utils.fleet import fleet
 from ..utils.helpers import async_to_sync
+from ..utils.output import err_console
 
 _MAC_RE = re.compile(r"^([0-9a-f]{2}[:-]){5}[0-9a-f]{2}$", re.IGNORECASE)
 _NET_KEY = re.compile(r"^net\d+$")
 _DISK_KEY = re.compile(r"^(ide|sata|scsi|virtio|efidisk|tpmstate|unused|rootfs|mp)\d*$")
 # Guest agent and config reads: one call per guest, capped
 _CONCURRENCY = 16
+
+
+def _is_set(value: Any) -> bool:
+    """Whether a filter was given. 0 is a real value (--vlan 0), False and
+    None are not: `0 in (None, False)` is true in Python, hence this."""
+    return value is not None and value is not False
 
 
 def _parse_size(text: str) -> int:
@@ -145,7 +152,7 @@ class _Finder:
         configs = await self.configs()
 
         async def one(g: dict) -> list[tuple[str, str, str]]:
-            out = []
+            out: list[tuple[str, str, str]] = []
             if g["type"] == "qemu":
                 if not str(configs.get(g["vmid"], {}).get("agent", "0")).startswith(("1", "enabled=1")):
                     return out
@@ -156,11 +163,16 @@ class _Finder:
             else:
                 data = await self._get(f"/nodes/{g['node']}/lxc/{g['vmid']}/interfaces")
                 for iface in data or []:
-                    # inet/inet6 carry the prefix (10.0.0.5/24); ip-addresses
-                    # only exists on recent versions
+                    mac = str(iface.get("hwaddr", "")).upper()
+                    # inet/inet6 hold one address per family, with its prefix
+                    # (10.0.0.5/24); ip-addresses, on recent versions, lists
+                    # them all: read both so a secondary address is found too
                     for key in ("inet", "inet6"):
                         if iface.get(key):
-                            out.append((iface[key], str(iface.get("hwaddr", "")).upper(), iface.get("name", "")))
+                            out.append((iface[key], mac, iface.get("name", "")))
+                    for addr in iface.get("ip-addresses") or []:
+                        if addr.get("ip-address"):
+                            out.append((addr["ip-address"], mac, iface.get("name", "")))
             # Bare addresses only: prefixes and IPv6 zone ids break matching
             return [(ip.split("/")[0].split("%")[0], mac, name) for ip, mac, name in out if ip]
 
@@ -192,12 +204,14 @@ async def _search_query(f: _Finder, query: str) -> list[dict]:
     kind, target = _classify(query)
     rows: list[dict] = []
     guests = {g["vmid"]: g for g in await f.guests()}
+    g: dict | None
 
     if kind == "text":
         # A resolvable DNS name is searched as its addresses
         try:
             infos = await asyncio.get_running_loop().getaddrinfo(query, None)
-            addrs = sorted({i[4][0] for i in infos})
+            # AF_INET/AF_INET6 sockaddrs: the first item is the address string
+            addrs = sorted({cast(str, i[4][0]) for i in infos})
         except (OSError, UnicodeError):
             addrs = []
         if addrs and "." in query:
@@ -221,11 +235,15 @@ async def _search_query(f: _Finder, query: str) -> list[dict]:
         configs = await f.configs()
         for vmid, cfg in configs.items():
             for key, val in cfg.items():
-                if _DISK_KEY.match(key) and target in str(val).split(",")[0] and vmid in guests:
-                    rows.append(_row(guests[vmid], f"{key} {str(val).split(',')[0]}", "config"))
+                volid = str(val).split(",")[0]
+                # Exact name, with or without its storage: vm-301-disk-1 must
+                # not match vm-301-disk-10
+                if _DISK_KEY.match(key) and target in (volid, volid.split(":", 1)[-1]) and vmid in guests:
+                    rows.append(_row(guests[vmid], f"{key} {volid}", "config"))
         if not rows:
-            print_info(
-                f"No guest uses '{target}': if it still exists on a storage, it is orphaned"
+            # stderr: a --json result on stdout must stay parseable
+            err_console.print(
+                f"[cyan]No guest uses '{target}': if it still exists on a storage, it is orphaned[/cyan]"
             )
         return rows
 
@@ -249,8 +267,8 @@ async def _search_query(f: _Finder, query: str) -> list[dict]:
                 ip = _kv(val).get("ip", "")
                 if ip and ip not in ("dhcp", "manual") and _ip_matches(ip, kind, target) and vmid in guests:
                     rows.append(_row(guests[vmid], f"{key} {ip}", "config"))
-    for vmid, addrs in (await f.agent_ips()).items():
-        for ip, mac, iface in addrs:
+    for vmid, agent_addrs in (await f.agent_ips()).items():
+        for ip, mac, iface in agent_addrs:
             if _ip_matches(ip, kind, target) and not ipaddress.ip_address(ip).is_loopback:
                 g = guests[vmid]
                 rows.append(_row(g, f"{ip} on {iface} ({mac})", "agent" if g["type"] == "qemu" else "lxc"))
@@ -303,10 +321,10 @@ async def _apply_filters(f: _Finder, rows: list[dict] | None, opts: dict) -> lis
         rows = [_row(g, "", "cluster") for g in guests.values()]
     guest_rows = [r for r in rows if r["vmid"] is not None]
     infra_rows = [r for r in rows if r["vmid"] is None]
-    if not any(v not in (None, False) for v in opts.values()):
+    if not any(_is_set(v) for v in opts.values()):
         return rows
 
-    needs_config = any(opts[k] for k in ("on_vnet", "on_bridge", "vlan", "on_storage", "iso", "no_agent", "os"))
+    needs_config = any(_is_set(opts[k]) for k in ("on_vnet", "on_bridge", "vlan", "on_storage", "iso", "no_agent", "os"))
     configs = await f.configs() if needs_config else {}
     not_backed = None
     if opts["no_backup"]:
@@ -408,7 +426,7 @@ async def _apply_filters(f: _Finder, rows: list[dict] | None, opts: dict) -> lis
         kept = [r for r in await asyncio.gather(*(has_snap(r) for r in kept)) if r]
 
     # Infrastructure answers only survive when no guest filter applies
-    return kept + ([] if any(opts.values()) else infra_rows)
+    return kept + ([] if any(_is_set(v) for v in opts.values()) else infra_rows)
 
 
 async def _add_tasks(f: _Finder, rows: list[dict], limit: int = 3) -> None:
@@ -467,18 +485,18 @@ async def find(
     pool: str = typer.Option(None, "--pool", help="Guests of this resource pool"),
     tag: str = typer.Option(None, "--tag", help="Guests carrying this tag"),
     snapshot: str = typer.Option(None, "--snapshot", help="Guests having a snapshot with this name"),
-    stopped: bool = typer.Option(False, "--stopped", is_flag=True, help="Only stopped guests"),
-    running: bool = typer.Option(False, "--running", is_flag=True, help="Only running guests"),
-    template: bool = typer.Option(False, "--template", is_flag=True, help="Only templates"),
-    locked: bool = typer.Option(False, "--locked", is_flag=True, help="Only locked guests"),
-    no_agent: bool = typer.Option(False, "--no-agent", is_flag=True, help="VMs without the guest agent enabled"),
-    no_backup: bool = typer.Option(False, "--no-backup", is_flag=True, help="Guests no backup job covers"),
-    no_tags: bool = typer.Option(False, "--no-tags", is_flag=True, help="Guests without any tag"),
+    stopped: bool = typer.Option(False, "--stopped", help="Only stopped guests"),
+    running: bool = typer.Option(False, "--running", help="Only running guests"),
+    template: bool = typer.Option(False, "--template", help="Only templates"),
+    locked: bool = typer.Option(False, "--locked", help="Only locked guests"),
+    no_agent: bool = typer.Option(False, "--no-agent", help="VMs without the guest agent enabled"),
+    no_backup: bool = typer.Option(False, "--no-backup", help="Guests no backup job covers"),
+    no_tags: bool = typer.Option(False, "--no-tags", help="Guests without any tag"),
     old_snapshots: str = typer.Option(None, "--old-snapshots", help="Guests with snapshots older than this (30d, 12h, 2w)"),
     min_ram: str = typer.Option(None, "--min-ram", help="At least this much memory (8G, 512M)"),
     min_cores: int = typer.Option(None, "--min-cores", help="At least this many vCPUs"),
     os_type: str = typer.Option(None, "--os", help="windows, or part of the ostype (l26, win11...)"),
-    tasks: bool = typer.Option(False, "--tasks", is_flag=True, help="Show the last actions run on each guest"),
+    tasks: bool = typer.Option(False, "--tasks", help="Show the last actions run on each guest"),
     access: int = typer.Option(None, "--access", help="Who has access to this guest (ACL entries)"),
     user: str = typer.Option(None, "--user", help="What this user or token (user@realm!token) has access to"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile(s): name, list, pattern ('client-*') or @group"),
@@ -529,7 +547,7 @@ async def find(
         print_info("root@pam and the owner of a token's user also have access outside ACLs")
         return
 
-    if not query and not any(v not in (None, False) for v in opts.values()):
+    if not query and not any(_is_set(v) for v in opts.values()):
         print_error("Give something to find, or at least one filter (see --help)")
         raise typer.Exit(1)
 

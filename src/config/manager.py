@@ -1,6 +1,8 @@
 """Configuration manager for pvecli."""
 
+import contextlib
 import os
+import tempfile
 from pathlib import Path
 
 import yaml
@@ -8,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ..api.exceptions import ConfigError
 from ..crypto import decrypt, encrypt
-from ..models.config import AuthConfig, OutputConfig, ProfileConfig
+from ..models.config import OutputConfig, ProfileConfig
 
 
 class Config(BaseModel):
@@ -94,9 +96,20 @@ class ConfigManager:
         try:
             data = config.model_dump(exclude_none=True)
             self._encrypt_data(data)
-            with open(self.config_file, "w") as f:
-                yaml.safe_dump(data, f, default_flow_style=False)
-            os.chmod(self.config_file, 0o600)
+            # Atomic: write a private temporary file, then rename it over the
+            # config. Fleet mode loads the config from several threads, and a
+            # load may rewrite it (plain password encrypted on first read):
+            # an in-place write let another thread read a truncated file.
+            fd, tmp = tempfile.mkstemp(dir=self.config_dir, prefix=".config.", suffix=".tmp")
+            try:
+                with os.fdopen(fd, "w") as f:
+                    yaml.safe_dump(data, f, default_flow_style=False)
+                os.chmod(tmp, 0o600)
+                os.replace(tmp, self.config_file)
+            except BaseException:
+                with contextlib.suppress(OSError):
+                    os.unlink(tmp)
+                raise
             self._config = config
         except Exception as e:
             raise ConfigError(f"Failed to save config: {e}")

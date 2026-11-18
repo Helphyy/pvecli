@@ -7,13 +7,14 @@ reloads the network on every node of the cluster at once.
 
 import asyncio
 import re
+from typing import Any
 
 import typer
 from rich.table import Table
 
 from ..api.client import ProxmoxClient, is_not_implemented
 from ..api.exceptions import PVECliError
-from ..config import ConfigManager
+from ..config import ConfigManager, ProfileConfig
 from ..utils import (
     JSON_OPTION,
     confirm,
@@ -122,7 +123,7 @@ def _uses_vnet(net_value: str, vnet: str) -> bool:
     return False
 
 
-def _format_dhcp_ranges(raw) -> str:
+def _format_dhcp_ranges(raw: Any) -> str:
     """Render DHCP ranges as 'start - end'.
 
     The API returns them either as a string or as dicts carrying
@@ -142,7 +143,7 @@ def _format_dhcp_ranges(raw) -> str:
     return ", ".join(out)
 
 
-def _require_write(profile_config, profile_name: str | None) -> None:
+def _require_write(profile_config: ProfileConfig, profile_name: str | None) -> None:
     """Refuse any SDN write unless the profile opted in.
 
     Applying SDN reloads the network on every node, so this is deliberately
@@ -601,9 +602,9 @@ async def sdn_health(
 @app.command("apply")
 @async_to_sync
 async def sdn_apply(
-    force: bool = typer.Option(False, "--force", "-f", is_flag=True, help="Re-apply even when nothing is pending, to regenerate the node configuration"),
+    force: bool = typer.Option(False, "--force", "-f", help="Re-apply even when nothing is pending, to regenerate the node configuration"),
     diff: bool = typer.Option(True, "--diff/--no-diff", help="Show what the reload changes on a node first (PVE 9.2+)"),
-    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip the typed confirmation"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the typed confirmation"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Apply the pending SDN configuration on every node of the cluster.
@@ -789,7 +790,7 @@ async def _show_dry_run(client: ProxmoxClient, node: str, max_lines: int = 60) -
 @app.command("unlock")
 @async_to_sync
 async def sdn_unlock(
-    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip confirmation"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Release a stale global SDN lock left by another session."""
@@ -820,7 +821,7 @@ async def sdn_unlock(
 @app.command("discard")
 @async_to_sync
 async def sdn_discard(
-    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip confirmation"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Drop every pending SDN change, back to the applied configuration."""
@@ -876,8 +877,8 @@ async def sdn_zone_add(
     mtu: int = typer.Option(None, "--mtu", help="MTU of the vnet bridges"),
     nodes: str = typer.Option(None, "--nodes", "-n", help="Restrict the zone to these nodes"),
     ipam: str = typer.Option(None, "--ipam", help="IPAM to use (default pve)"),
-    dhcp: bool = typer.Option(False, "--dhcp", is_flag=True, help="Serve DHCP on this zone through dnsmasq (technology preview)"),
-    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip confirmation"),
+    dhcp: bool = typer.Option(False, "--dhcp", help="Serve DHCP on this zone through dnsmasq (technology preview)"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Create an SDN zone. The change stays pending until 'sdn apply'."""
@@ -1042,7 +1043,7 @@ async def sdn_zone_set(
     mtu: int = typer.Option(None, "--mtu", help="MTU of the vnet bridges"),
     nodes: str = typer.Option(None, "--nodes", "-n", help="Restrict the zone to these nodes"),
     peers: str = typer.Option(None, "--peers", help="Peer IPs for a vxlan zone"),
-    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip confirmation"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Change an existing SDN zone. The change stays pending until 'sdn apply'."""
@@ -1121,7 +1122,7 @@ async def sdn_zone_set(
 @async_to_sync
 async def sdn_zone_remove(
     zone: str = typer.Argument(None, help="Zone to remove"),
-    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip confirmation"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Remove an SDN zone. Refused while vnets still use it."""
@@ -1178,8 +1179,8 @@ async def sdn_vnet_add(
     zone: str = typer.Option(None, "--zone", "-z", help="Zone this vnet belongs to"),
     tag: int = typer.Option(None, "--tag", help="VLAN tag or VXLAN VNI"),
     alias: str = typer.Option(None, "--alias", "-a", help="Free description"),
-    vlanaware: bool = typer.Option(False, "--vlanaware", is_flag=True, help="Let guests tag their own VLANs"),
-    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip confirmation"),
+    vlanaware: bool = typer.Option(False, "--vlanaware", help="Let guests tag their own VLANs"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Create a vnet in a zone. The change stays pending until 'sdn apply'."""
@@ -1271,7 +1272,7 @@ async def sdn_vnet_add(
 @async_to_sync
 async def sdn_vnet_remove(
     vnet: str = typer.Argument(None, help="Vnet to remove"),
-    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip confirmation"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Remove a vnet. Refused while guests are still attached to it."""
@@ -1351,7 +1352,7 @@ async def sdn_vnet_remove(
 async def sdn_subnet_remove(
     cidr: str = typer.Argument(None, help="Subnet to detach, in CIDR form"),
     vnet: str = typer.Option(None, "--vnet", "-v", help="Vnet the subnet belongs to"),
-    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip confirmation"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Detach a subnet from a vnet. A vnet cannot be removed while it has one."""
@@ -1421,10 +1422,10 @@ async def sdn_subnet_add(
     cidr: str = typer.Argument(None, help="Subnet in CIDR form, e.g. 10.0.30.0/24"),
     vnet: str = typer.Option(None, "--vnet", "-v", help="Vnet to attach the subnet to"),
     gateway: str = typer.Option(None, "--gateway", "-g", help="Gateway address"),
-    snat: bool = typer.Option(False, "--snat", is_flag=True, help="Masquerade outgoing traffic"),
+    snat: bool = typer.Option(False, "--snat", help="Masquerade outgoing traffic"),
     dhcp_range: str = typer.Option(None, "--dhcp-range", help="DHCP range as start-ip:end-ip"),
     dhcp_dns: str = typer.Option(None, "--dhcp-dns", help="DNS server handed out by DHCP"),
-    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip confirmation"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Attach a subnet to a vnet, optionally with a gateway, SNAT and DHCP."""

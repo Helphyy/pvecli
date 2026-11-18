@@ -1,8 +1,15 @@
 """Network utilities for resolving VM/CT IP addresses."""
 
+from __future__ import annotations
+
 import socket
+from typing import TYPE_CHECKING
 
 from ..api.exceptions import PVECliError
+
+if TYPE_CHECKING:
+    from ..api.client import ProxmoxClient
+    from ..models.config import ProfileConfig
 
 
 def find_free_port() -> int:
@@ -40,7 +47,7 @@ def format_host_for_url(host: str) -> str:
     return host
 
 
-def resolve_node_host(profile_config) -> str:
+def resolve_node_host(profile_config: ProfileConfig) -> str:
     """Extract hostname from profile config (without scheme or port)."""
     host = profile_config.host
     if "://" in host:
@@ -116,7 +123,7 @@ def _extract_ct_ip(interfaces: list[dict]) -> str:
     raise PVECliError("No IP address found")
 
 
-async def resolve_vm_ip(client, node: str, vmid: int) -> str:
+async def resolve_vm_ip(client: ProxmoxClient, node: str, vmid: int) -> str:
     """Resolve VM IP via QEMU Guest Agent."""
     interfaces = await client.get_vm_interfaces(node, vmid)
     if not interfaces:
@@ -130,7 +137,7 @@ async def resolve_vm_ip(client, node: str, vmid: int) -> str:
         raise PVECliError(f"No IP address found for VM {vmid}")
 
 
-async def resolve_ct_ip(client, node: str, ctid: int) -> str:
+async def resolve_ct_ip(client: ProxmoxClient, node: str, ctid: int) -> str:
     """Resolve container IP via interfaces API."""
     interfaces = await client.get_container_interfaces(node, ctid)
     if not interfaces:

@@ -44,7 +44,7 @@ _VMS = typer.Option(None, "--vms", help="Guest IDs: 100,101 or 100-110")
 _TAG = typer.Option(None, "--tag", help="Guests carrying this tag")
 _POOL = typer.Option(None, "--pool", help="Guests of this resource pool")
 _NODE = typer.Option(None, "--node", help="Guests currently on this node")
-_ALL = typer.Option(False, "--all", is_flag=True, help="Every guest (when no other filter is given)")
+_ALL = typer.Option(False, "--all", help="Every guest (when no other filter is given)")
 _PROFILE = typer.Option(None, "--profile", "-p", help="Profile(s): name, list, pattern ('client-*') or @group")
 # Snapshot tasks running at once: each locks its own guest only
 _PARALLEL = 4
@@ -90,7 +90,10 @@ async def _snapshots(client: ProxmoxClient, guests: list[dict]) -> list[dict]:
         async with sem:
             try:
                 snaps = await client.get(f"{_base(g)}/snapshot") or []
-            except PVECliError:
+            except PVECliError as e:
+                # Said, not swallowed: an empty list here would let `add`
+                # miss a duplicate and `list` show a guest without snapshots
+                print_warning(f"Snapshots of {g['vmid']} ({g.get('name', '')}) unreadable: {e}")
                 return []
         rows = [
             {"vmid": g["vmid"], "name": g.get("name", ""), "type": "VM" if g["type"] == "qemu" else "CT",
@@ -114,8 +117,11 @@ def _age(ts: int) -> str:
 
 def _table(rows: list[dict], title: str) -> Table:
     table = Table(title=title, header_style="bold cyan")
-    for col, kw in (("ID", {"justify": "right"}), ("Name", {}), ("Type", {}), ("Snapshot", {"style": "cyan"}),
-                    ("Age", {"justify": "right"}), ("Taken", {}), ("RAM", {}), ("Description", {"overflow": "fold"})):
+    columns: tuple[tuple[str, dict[str, Any]], ...] = (
+        ("ID", {"justify": "right"}), ("Name", {}), ("Type", {}), ("Snapshot", {"style": "cyan"}),
+        ("Age", {"justify": "right"}), ("Taken", {}), ("RAM", {}), ("Description", {"overflow": "fold"}),
+    )
+    for col, kw in columns:
         table.add_column(col, **kw)
     for r in rows:
         table.add_row(
@@ -151,8 +157,8 @@ async def snapshot_add(
     name: str = typer.Argument(..., help="Snapshot name (letters, digits, - and _)"),
     vms: str = _VMS, tag: str = _TAG, pool: str = _POOL, node: str = _NODE, everything: bool = _ALL,
     description: str = typer.Option(None, "--description", "-d", help="Snapshot description"),
-    vmstate: bool = typer.Option(False, "--vmstate", is_flag=True, help="Include the RAM of running VMs"),
-    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip confirmation"),
+    vmstate: bool = typer.Option(False, "--vmstate", help="Include the RAM of running VMs"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
     profile: str = _PROFILE,
 ) -> None:
     """Take the same snapshot on every selected guest, before a risky change."""
@@ -238,7 +244,7 @@ async def snapshot_prune(
     name_prefix: str = typer.Option(None, "--name-prefix", help="Only snapshots whose name starts with this (e.g. pre-)"),
     keep: int = typer.Option(0, "--keep", help="Always keep the N most recent matching snapshots of each guest"),
     vms: str = _VMS, tag: str = _TAG, pool: str = _POOL, node: str = _NODE, everything: bool = _ALL,
-    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Delete without asking"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Delete without asking"),
     profile: str = _PROFILE,
 ) -> None:
     """Delete old snapshots. Shows what would go, deletes only once confirmed."""

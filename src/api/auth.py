@@ -1,6 +1,5 @@
 """Authentication handling for Proxmox VE API."""
 
-from typing import Any
 
 import httpx
 

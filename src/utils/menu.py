@@ -6,7 +6,7 @@ based on simple_term_menu, matching the pvecli UX conventions.
 
 import os
 
-from simple_term_menu import TerminalMenu
+from simple_term_menu import TerminalMenu  # type: ignore[import-untyped]  # no stubs nor py.typed, no types-simple-term-menu package exists
 
 
 def _interactive() -> bool:

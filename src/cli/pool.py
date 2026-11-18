@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from typing import Any
 
 import typer
 from rich.panel import Panel
@@ -297,7 +298,7 @@ async def export_pools(
 @async_to_sync
 async def import_pools(
     file: str = typer.Argument("pools.json", help="JSON file to import"),
-    force: bool = typer.Option(False, "--force", "-f", is_flag=True, help="Skip existing pools without warning"),
+    force: bool = typer.Option(False, "--force", "-f", help="Skip existing pools without warning"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Import pools from a JSON file."""
@@ -568,7 +569,7 @@ async def _pick_pool(client: ProxmoxClient) -> str | None:
 @content_app.command("add")
 @async_to_sync
 async def content_add(
-    poolid: str = typer.Argument(None, help="Pool ID"),
+    poolid: str | None = typer.Argument(None, help="Pool ID"),
     vmids: str = typer.Argument(None, help="VM or Container ID(s) (comma-separated, e.g. 100,101,102)"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
     force: bool = typer.Option(False, "--force", "-f", help="Allow moving VM/CT from another pool"),
@@ -648,7 +649,7 @@ async def content_add(
 
             # Add to pool (API accepts comma-separated string)
             valid_vmids = [item["vmid"] for item in added_items]
-            data = {"vms": ",".join(map(str, valid_vmids))}
+            data: dict[str, Any] = {"vms": ",".join(map(str, valid_vmids))}
 
             if force:
                 data["allow-move"] = 1
@@ -702,7 +703,7 @@ async def content_add(
 @content_app.command("remove")
 @async_to_sync
 async def content_remove(
-    poolid: str = typer.Argument(None, help="Pool ID"),
+    poolid: str | None = typer.Argument(None, help="Pool ID"),
     vmids: str = typer.Argument(None, help="VM or Container ID(s) (comma-separated, e.g. 100,101,102)"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),

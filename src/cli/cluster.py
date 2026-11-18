@@ -4,6 +4,7 @@ import asyncio
 import os
 import time
 from getpass import getpass
+from typing import Any
 
 import typer
 from rich.progress import Progress, SpinnerColumn, TextColumn
@@ -539,7 +540,7 @@ async def cluster_create(
     name: str = typer.Argument(None, help="Cluster name"),
     link0: str = typer.Option(None, "--link0", help="Address of this node on corosync link 0"),
     link1: str = typer.Option(None, "--link1", help="Address on corosync link 1"),
-    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip the typed confirmation"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the typed confirmation"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile of the standalone node"),
 ) -> None:
     """Turn the node of this profile into the first member of a new cluster."""
@@ -638,7 +639,7 @@ async def cluster_join(
     peer_password_env: str = typer.Option(None, "--peer-password-env", help="Env var holding the cluster's root password"),
     link0: str = typer.Option(None, "--link0", help="Address of the joining node on corosync link 0"),
     link1: str = typer.Option(None, "--link1", help="Address on corosync link 1"),
-    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip the typed confirmation"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the typed confirmation"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile of the cluster to join"),
 ) -> None:
     """Make a standalone node join the cluster of the current profile."""
@@ -1033,7 +1034,7 @@ async def cluster_resources(
 
             # Group by type if no filter
             if not resource_type:
-                types = {}
+                types: dict[str, list[dict[str, Any]]] = {}
                 for r in resources:
                     rtype = r.get("type", "unknown")
                     if rtype not in types:
@@ -1542,9 +1543,9 @@ async def _orchestrate_cluster_power(
             console.print(
                 f"[bold yellow]── After {when}, remember to: ──[/bold yellow]"
             )
-            for r in reminders:
-                console.print(f"  • {r}")
-                console.print()
+            for reminder in reminders:
+                console.print(f"  • {reminder}")
+            console.print()
 
         print_success(f"Cluster {command} complete.")
 
@@ -1670,7 +1671,7 @@ async def ha_disarm(
         "-m",
         help="freeze: keep every HA resource where it is. ignore: let them be managed by hand",
     ),
-    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip confirmation"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Disarm HA cluster wide: release every watchdog before maintenance."""
@@ -1835,7 +1836,7 @@ async def _run_bulk(
                 # datacenter.cfg sets one; 1 is the web UI default
                 p.setdefault("max-workers", 1)
 
-            async def call(params: dict) -> str:
+            async def call(params: dict, node: str = node) -> str:
                 if node_action == "migrateall":
                     return await client.migrate_all(node, **params)
                 return await client.node_bulk_action(node, node_action, **params)
@@ -1858,6 +1859,7 @@ async def _run_bulk(
                     f"{node}: this PVE version cannot limit the parallel tasks of "
                     f"{node_action}, its own default applies"
                 )
+            assert upid is not None  # the loop above always ends on a break or a raise
             tasks.append((node, upid))
         print_info(f"Running as {len(tasks)} task(s), one per node")
 
@@ -1888,6 +1890,11 @@ async def _finish_bulk(
     if failed:
         for f in failed:
             print_error(f)
+        if action == "shutdown" and not cluster_params.get("force-stop"):
+            print_info(
+                "A guest that ignores the shutdown request (no ACPI, no guest agent) "
+                "stays up. To hard stop what is left once the timeout runs out: --force-stop"
+            )
         raise typer.Exit(1)
     if errors:
         print_warning("The task ended with warnings, see: pvecli cluster tasks")
@@ -1973,7 +1980,7 @@ async def guests_start(
     pool: str = _GUEST_FILTERS["pool"],
     node: str = _GUEST_FILTERS["node"],
     max_workers: int = typer.Option(None, "--max-workers", help="Guests handled at the same time"),
-    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip confirmation"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Start (or resume) every guest matching the filters."""
@@ -1993,13 +2000,16 @@ async def guests_shutdown(
     pool: str = _GUEST_FILTERS["pool"],
     node: str = _GUEST_FILTERS["node"],
     timeout: int = typer.Option(None, "--timeout", "-t", help="Shutdown timeout per guest, in seconds"),
-    force_stop: bool = typer.Option(False, "--force-stop", is_flag=True, help="Hard stop guests still running after the timeout"),
+    force_stop: bool = typer.Option(False, "--force-stop", help="Hard stop guests still running after the timeout"),
     max_workers: int = typer.Option(None, "--max-workers", help="Guests handled at the same time"),
-    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip confirmation"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Shut down every guest matching the filters."""
-    params = {"max-workers": max_workers, "timeout": timeout, "force-stop": 1 if force_stop else None}
+    # Always sent: PVE defaults force-stop to 1 on both bulk-action shutdown
+    # and stopall, which would hard stop whatever is still running when the
+    # timeout runs out. A shutdown only becomes a stop when asked.
+    params = {"max-workers": max_workers, "timeout": timeout, "force-stop": 1 if force_stop else 0}
     await _guests_command("shutdown", vms, tag, pool, node, yes, profile, "Shut down", params, params)
 
 
@@ -2010,9 +2020,9 @@ async def guests_suspend(
     tag: str = _GUEST_FILTERS["tag"],
     pool: str = _GUEST_FILTERS["pool"],
     node: str = _GUEST_FILTERS["node"],
-    to_disk: bool = typer.Option(False, "--to-disk", is_flag=True, help="Hibernate to disk instead of pausing in memory"),
+    to_disk: bool = typer.Option(False, "--to-disk", help="Hibernate to disk instead of pausing in memory"),
     max_workers: int = typer.Option(None, "--max-workers", help="Guests handled at the same time"),
-    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip confirmation"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Suspend every VM matching the filters (containers cannot be suspended)."""
@@ -2032,9 +2042,9 @@ async def guests_migrate(
     tag: str = _GUEST_FILTERS["tag"],
     pool: str = _GUEST_FILTERS["pool"],
     node: str = _GUEST_FILTERS["node"],
-    with_local_disks: bool = typer.Option(False, "--with-local-disks", is_flag=True, help="Copy local disks during live migrations"),
+    with_local_disks: bool = typer.Option(False, "--with-local-disks", help="Copy local disks during live migrations"),
     max_workers: int = typer.Option(None, "--max-workers", help="Migrations running at the same time"),
-    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip confirmation"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Migrate every guest matching the filters to one node."""

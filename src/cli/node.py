@@ -1,6 +1,8 @@
 """Node management commands."""
 
 import re
+from pathlib import Path
+from typing import Any
 
 import typer
 from rich.panel import Panel
@@ -26,7 +28,6 @@ from ..utils import (
 )
 from ..utils.fleet import fleet
 from ..utils.helpers import async_to_sync, ordered_group
-from ..utils.menu import select_menu
 from ..utils.network import resolve_node_host
 from ._shared import detect_connected_node, pick_node
 
@@ -40,7 +41,7 @@ app = typer.Typer(
 @app.command("shutdown")
 @async_to_sync
 async def shutdown_node(
-    node: str = typer.Argument(None, help="Node name"),
+    node: str | None = typer.Argument(None, help="Node name"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ) -> None:
@@ -95,7 +96,7 @@ async def shutdown_node(
 @app.command("reboot")
 @async_to_sync
 async def reboot_node(
-    node: str = typer.Argument(None, help="Node name"),
+    node: str | None = typer.Argument(None, help="Node name"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ) -> None:
@@ -241,9 +242,9 @@ async def list_nodes(
 @app.command("info")
 @async_to_sync
 async def show_node(
-    node: str = typer.Argument(None, help="Node name"),
+    node: str | None = typer.Argument(None, help="Node name"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
-    all_nodes: bool = typer.Option(False, "--all", "-a", is_flag=True, help="Show all nodes"),
+    all_nodes: bool = typer.Option(False, "--all", "-a", help="Show all nodes"),
 ) -> None:
     """Show detailed information about a node."""
     config_manager = ConfigManager()
@@ -341,8 +342,8 @@ def _render_node_panel(node: str, status: dict, version: dict, node_status: str 
 @async_to_sync
 async def node_vnc(
     node: str = typer.Argument(None, help="Node name(s) - single or comma-separated"),
-    no_background: bool = typer.Option(False, "--no-background", "-b", is_flag=True, help="Run VNC server in foreground (blocking, single node only)"),
-    split: bool = typer.Option(False, "--split", "-s", is_flag=True, help="Open each shell in a separate browser window instead of tabs"),
+    no_background: bool = typer.Option(False, "--no-background", "-b", help="Run VNC server in foreground (blocking, single node only)"),
+    split: bool = typer.Option(False, "--split", "-s", help="Open each shell in a separate browser window instead of tabs"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Open authenticated VNC shell(s) for one or more nodes."""
@@ -393,6 +394,7 @@ async def node_vnc(
 
                 vnc_data = await client.create_vnc_shell(node_name, websocket=True)
 
+                assert client._headers is not None  # set by connect() in __aenter__
                 consoles.append((node_name, {
                     "proxmox_host": host,
                     "proxmox_port": profile_config.port,
@@ -431,7 +433,7 @@ async def node_vnc(
 @app.command("ssh")
 @async_to_sync
 async def node_ssh(
-    node: str = typer.Argument(None, help="Node name"),
+    node: str | None = typer.Argument(None, help="Node name"),
     user: str = typer.Option(None, "--user", "-u", help="SSH user"),
     port: int = typer.Option(None, "--port", "-P", help="SSH port"),
     key: str = typer.Option(None, "--key", "-i", help="Path to SSH key"),
@@ -471,9 +473,9 @@ async def node_ssh(
 async def evacuate_node(
     node: str = typer.Argument(..., help="Node to empty"),
     target: str = typer.Argument(..., help="Node receiving its guests"),
-    with_local_disks: bool = typer.Option(False, "--with-local-disks", is_flag=True, help="Copy local disks during live migrations"),
+    with_local_disks: bool = typer.Option(False, "--with-local-disks", help="Copy local disks during live migrations"),
     max_workers: int = typer.Option(None, "--max-workers", help="Migrations running at the same time"),
-    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip confirmation"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Move every guest off a node before maintenance.
@@ -505,8 +507,8 @@ async def evacuate_node(
 @async_to_sync
 async def node_updates(
     node: str = typer.Argument(None, help="Node (default: every online node)"),
-    refresh: bool = typer.Option(False, "--refresh", is_flag=True, help="Run apt update on the nodes first"),
-    packages: bool = typer.Option(False, "--packages", is_flag=True, help="List the packages, not only their count"),
+    refresh: bool = typer.Option(False, "--refresh", help="Run apt update on the nodes first"),
+    packages: bool = typer.Option(False, "--packages", help="List the packages, not only their count"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile(s): name, list, pattern ('client-*') or @group"),
     json_output: bool = JSON_OPTION,
 ) -> None:
@@ -598,15 +600,13 @@ maintenance_app = typer.Typer(
 app.add_typer(maintenance_app, name="maintenance")
 
 
-def _state_dir():
-    from pathlib import Path
-
+def _state_dir() -> Path:
     d = Path.home() / ".config" / "pvecli" / "maintenance"
     d.mkdir(parents=True, exist_ok=True)
     return d
 
 
-def _state_file(cluster: str, node: str):
+def _state_file(cluster: str, node: str) -> Path:
     # Keyed by cluster, not profile: two profiles on one cluster must see
     # the same maintenance records
     return _state_dir() / f"{cluster}__{node}.json"
@@ -621,7 +621,9 @@ async def _cluster_key(client: ProxmoxClient) -> str:
     cluster = next((x for x in status if x.get("type") == "cluster"), None)
     if cluster:
         return str(cluster.get("name"))
-    return "standalone-" + next((x.get("name", "?") for x in status if x.get("type") == "node"), "?")
+    # Every fresh install is called "pve": the address keeps two apart
+    node = next((x for x in status if x.get("type") == "node"), {})
+    return f"standalone-{node.get('name', '?')}-{node.get('ip', '')}".rstrip("-")
 
 
 async def _missing_privileges(
@@ -653,9 +655,9 @@ async def _missing_privileges(
 async def maintenance_enter(
     node: str = typer.Argument(..., help="Node going into maintenance"),
     target: str = typer.Option(None, "--target", "-t", help="Node receiving its guests (default: most free memory)"),
-    with_local_disks: bool = typer.Option(False, "--with-local-disks", is_flag=True, help="Copy local disks during live migrations"),
-    no_ceph_flag: bool = typer.Option(False, "--no-ceph-flag", is_flag=True, help="Do not set the Ceph noout flag"),
-    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip confirmation"),
+    with_local_disks: bool = typer.Option(False, "--with-local-disks", help="Copy local disks during live migrations"),
+    no_ceph_flag: bool = typer.Option(False, "--no-ceph-flag", help="Do not set the Ceph noout flag"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Empty a node and protect the cluster before working on it by hand.
@@ -740,7 +742,7 @@ async def maintenance_enter(
                 print_cancelled()
                 return
 
-            state = {
+            state: dict[str, Any] = {
                 "profile": name, "cluster": cluster_key, "node": node, "target": target,
                 "started": time.strftime("%Y-%m-%d %H:%M:%S"),
                 "guests": [{"vmid": g["vmid"], "type": g["type"], "status": g.get("status")} for g in guests],
@@ -806,9 +808,9 @@ async def maintenance_enter(
 @async_to_sync
 async def maintenance_exit(
     node: str = typer.Argument(..., help="Node coming back from maintenance"),
-    no_return: bool = typer.Option(False, "--no-return", is_flag=True, help="Leave the guests where they are"),
+    no_return: bool = typer.Option(False, "--no-return", help="Leave the guests where they are"),
     wait: int = typer.Option(600, "--wait", help="Seconds to wait for the node to be online again"),
-    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip confirmation"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Bring a node back: check the cluster, clear noout, move its guests home."""
@@ -859,15 +861,23 @@ async def maintenance_exit(
             other_maint = [p for p in _state_dir().glob(f"{cluster_key}__*.json") if p != state_path]
             if state.get("noout_set"):
                 if other_maint:
+                    # Hand the flag over to a node still in maintenance: the
+                    # last one out clears it. Without this, a node that entered
+                    # while noout was already set would leave it set forever.
+                    heir = sorted(other_maint)[0]
+                    heir_state = json.loads(heir.read_text())
+                    heir_state["noout_set"] = True
+                    heir.write_text(json.dumps(heir_state, indent=2))
                     print_warning(
                         "noout stays set: other node(s) are still in maintenance: "
                         + ", ".join(p.stem.split("__", 1)[1] for p in other_maint)
+                        + f". It will be cleared when {heir_state.get('node')} leaves maintenance"
                     )
                 else:
                     await client.unset_ceph_flag("noout")
                     print_success("Ceph noout flag cleared")
 
-            back = [g for g in state.get("guests", [])]
+            back = list(state.get("guests", []))
             if back and not no_return:
                 current = {
                     g["vmid"]: g for g in await client.get_cluster_resources(resource_type="vm")

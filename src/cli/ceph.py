@@ -204,7 +204,7 @@ async def ceph_osd(
             # The tree is nested; walk it and keep the OSD leaves
             osds: list[dict] = []
 
-            def walk(nodes, host=""):
+            def walk(nodes: list[dict] | None, host: str = "") -> None:
                 for item in nodes or []:
                     if item.get("type") == "osd":
                         osds.append({**item, "host": host})

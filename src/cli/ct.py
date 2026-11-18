@@ -2,11 +2,11 @@
 
 import asyncio
 import re
-from typing import Any
+from typing import Any, cast
 
 import typer
 from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.progress import Progress, SpinnerColumn, TaskID, TextColumn
 from rich.prompt import Confirm, IntPrompt, Prompt
 
 from ..api.client import ProxmoxClient
@@ -28,10 +28,10 @@ from ..utils import (
     print_cancelled,
     print_error,
     print_info,
-    prompt,
-    prompt_vlan,
     print_success,
     print_warning,
+    prompt,
+    prompt_vlan,
     select_menu,
     usage_bar,
 )
@@ -39,19 +39,18 @@ from ..utils.fleet import fleet
 from ..utils.helpers import async_to_sync, ordered_group
 from ..utils.menu import menu_row
 from ..utils.network import resolve_node_host
-from .tag import _parse_color_map
 from ._shared import (
     NODE_FILTER,
     POOL_FILTER,
     TAG_FILTER,
-    has_filters,
-    resolve_targets,
     bridge_choices,
     build_kv,
     confirm_action,
     extract_size,
+    has_filters,
     parse_id_list,
     parse_kv,
+    resolve_targets,
     run_with_spinner,
     shared_add_tag,
     shared_create_snapshot,
@@ -68,6 +67,7 @@ from ._shared import (
     storage_choices,
     validate_resources,
 )
+from .tag import _parse_color_map
 
 _CMD_ORDER = [
     "start", "stop", "shutdown", "reboot",
@@ -372,7 +372,14 @@ _CT_DISK_RE = re.compile(r"^(rootfs|mp\d+)$")
 _CT_NET_RE = re.compile(r"^net\d+$")
 
 
-async def _edit_ct_disks(config, changes, resizes, deletes, client, node):
+async def _edit_ct_disks(
+    config: dict[str, Any],
+    changes: dict[str, Any],
+    resizes: dict[str, str],
+    deletes: set[str],
+    client: ProxmoxClient,
+    node: str,
+) -> None:
     """Disk sub-menu for CT edit."""
 
 
@@ -459,7 +466,13 @@ async def _edit_ct_disks(config, changes, resizes, deletes, client, node):
                     print_error("Invalid number")
 
 
-async def _edit_ct_network(config, changes, deletes, client, node):
+async def _edit_ct_network(
+    config: dict[str, Any],
+    changes: dict[str, Any],
+    deletes: set[str],
+    client: ProxmoxClient,
+    node: str,
+) -> None:
     """Network sub-menu for CT edit."""
 
 
@@ -806,6 +819,7 @@ async def edit_container(
                     original = bool(raw) if ftype is bool else raw
                     current = changes.get(key, original)
 
+                    new_val: bool | int | str
                     if ftype is bool:
                         si = select_menu(["Yes", "No"], f"  {label}:")
                         if si is not None:
@@ -959,7 +973,7 @@ async def _select_cts(client: ProxmoxClient) -> list[int] | None:
     indices = multi_select_menu(items, "  Select container(s):")
     if not indices:
         return None
-    return [cts[i].get("vmid") for i in indices]
+    return [cast(int, cts[i].get("vmid")) for i in indices]
 
 
 @app.command("start")
@@ -971,7 +985,7 @@ async def start_container(
     tag: str = TAG_FILTER,
     pool: str = POOL_FILTER,
     node_filter: str = NODE_FILTER,
-    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip confirmation"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ) -> None:
     """Start one or more containers."""
     config_manager = ConfigManager()
@@ -1322,7 +1336,7 @@ def clone_container(
                 print_cancelled()
                 return
 
-        async def get_source_ct_data():
+        async def get_source_ct_data() -> dict[str, Any]:
             async with ProxmoxClient(profile_config) as client:
                 resources = await client.get_cluster_resources(resource_type="vm")
                 ct_resource = next((r for r in resources if r.get("vmid") == ctid), None)
@@ -1330,7 +1344,7 @@ def clone_container(
                 if not ct_resource:
                     raise PVECliError(f"Source container {ctid} not found")
 
-                source_node = ct_resource.get("node")
+                source_node = cast(str, ct_resource.get("node"))
                 source_config = await client.get_container_config(source_node, vmid=ctid)
 
                 # Check if rootfs storage supports linked clones (thinprovisioned)
@@ -1377,7 +1391,7 @@ def clone_container(
             if onboot is not None:
                 post_config["onboot"] = 1 if onboot else 0
 
-            async def clone_noninteractive():
+            async def clone_noninteractive() -> int:
                 async with ProxmoxClient(profile_config) as client:
                     upid = await client.clone_container(**clone_params)
                     console.print(f"\n[cyan]Cloning container {ctid} to {newid}...[/cyan]")
@@ -1512,7 +1526,7 @@ def clone_container(
             clone_snapshot["target"] = target_node
         post_snapshot = dict(post_cfg)
 
-        async def clone():
+        async def clone() -> Any:
             async with ProxmoxClient(profile_config) as client:
                 clone_params = {
                     "node": source_node,
@@ -1605,7 +1619,7 @@ async def delete_container(
                             client, node,
                             f"Stopping container {ctid}...",
                             client.stop_container(node, vmid=ctid),
-                            wait_desc=f"Waiting for container to stop...",
+                            wait_desc="Waiting for container to stop...",
                         )
 
                     # Delete container (always wait to catch errors)
@@ -1613,7 +1627,7 @@ async def delete_container(
                         client, node,
                         f"Deleting container {ctid}...",
                         client.delete_container(node, ctid, purge=purge),
-                        wait_desc=f"Waiting for deletion to complete...",
+                        wait_desc="Waiting for deletion to complete...",
                     )
 
                     print_success(f"Container {ctid} deleted successfully")
@@ -1834,7 +1848,7 @@ async def ha_set(
     tag: str = TAG_FILTER,
     pool: str = POOL_FILTER,
     node_filter: str = NODE_FILTER,
-    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip confirmation"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
     state: str = typer.Option(None, "--state", "-s", help="State: started|stopped|enabled|disabled|ignored"),
     group: str = typer.Option(None, "--group", "-g", help="HA group (clusters still using groups)"),
     nodes: str = typer.Option(None, "--nodes", "-n", help="Preferred nodes '<node>[:<priority>],...' (clusters using HA rules, PVE 9). '' drops the pin"),
@@ -2175,7 +2189,7 @@ def _print_ct_create_command(node: str, config: dict, ctid: int, profile_name: s
 
 @app.command("add")
 def create_container(
-    node: str = typer.Argument(None, help="Node name"),
+    node: str | None = typer.Argument(None, help="Node name"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
     ctid: int = typer.Option(None, "--ctid", "-c", help="Container ID (auto-assigned if not specified)"),
     hostname: str = typer.Option(None, "--hostname", "-ho", help="Container hostname"),
@@ -2214,7 +2228,7 @@ def create_container(
         # Node selection if not provided; validate it if it is
         node = node.strip() if node else None
 
-        async def _get_nodes():
+        async def _get_nodes() -> list[dict[str, Any]]:
             async with ProxmoxClient(profile_config) as client:
                 return await client.get_nodes()
 
@@ -2251,9 +2265,9 @@ def create_container(
             config: dict[str, Any] = {}
 
             # Helper function to run async code
-            async def get_data():
+            async def get_data() -> dict[str, Any]:
                 async with ProxmoxClient(profile_config) as client:
-                    data = {
+                    data: dict[str, Any] = {
                         "next_vmid": await client.get_next_vmid(),
                     }
                     # Get templates to validate
@@ -2376,7 +2390,7 @@ def create_container(
             config["features"] = ",".join(features)
 
             # Create container
-            async def create():
+            async def create() -> Any:
                 async with ProxmoxClient(profile_config) as client:
                     ct_id = config.pop("vmid")
                     upid = await client.create_container(node, ct_id, **config)
@@ -2390,7 +2404,7 @@ def create_container(
 
         # Mixed interactive mode - ask only for missing parameters
         # Helper function to run async code
-        async def get_data():
+        async def get_data() -> dict[str, Any]:
             async with ProxmoxClient(profile_config) as client:
                 resources = await client.get_cluster_resources(resource_type="vm")
                 cluster_opts = await client.get_cluster_options()
@@ -2406,7 +2420,7 @@ def create_container(
         data = asyncio.run(get_data())
 
         # Configuration dict
-        config: dict[str, Any] = {}
+        config = {}
 
         console.print("\n[bold cyan]═══ Container Creation Wizard ═══[/bold cyan]\n")
 
@@ -2483,7 +2497,7 @@ def create_container(
         # 5. Image Selection
         if template_storage and template:
             # Use provided arguments
-            async def get_templates():
+            async def get_templates() -> list[dict[str, Any]]:
                 async with ProxmoxClient(profile_config) as client:
                     return await client.get_storage_content(node, template_storage, "vztmpl")
 
@@ -2529,7 +2543,7 @@ def create_container(
             selected_storage = storage_names[storage_idx]
 
             # Get images from selected storage
-            async def get_templates():
+            async def get_templates() -> list[dict[str, Any]]:
                 async with ProxmoxClient(profile_config) as client:
                     return await client.get_storage_content(node, selected_storage, "vztmpl")
 
@@ -2760,7 +2774,7 @@ def create_container(
             return
 
         # Create container
-        async def create():
+        async def create() -> Any:
             async with ProxmoxClient(profile_config) as client:
                 vmid = config.pop("vmid")
                 upid = await client.create_container(node, vmid, **config)
@@ -2966,7 +2980,9 @@ async def add_template(
                             return
 
                         # Map back to full template data
-                        selected_names = [(name, template_map[name]) for name in selected_display]
+                        selected_names: list[tuple[str, dict[str, Any] | None]] = [
+                            (name, template_map[name]) for name in selected_display
+                        ]
 
                     except FileNotFoundError:
                         print_error("fzf is not installed. Please install fzf to use image selection.")
@@ -2989,7 +3005,7 @@ async def add_template(
                 ) as progress:
                     progress.add_task(description=f"Downloading image '{template_name}'...", total=None)
                     upid = await client.download_template(node, storage, template_name, template_data)
-                    progress.update(0, description=f"Waiting for download to complete...")
+                    progress.update(TaskID(0), description="Waiting for download to complete...")
                     await client.wait_for_task(node, upid, timeout=600)
 
                 print_success(f"Image '{template_name}' downloaded successfully to '{storage}'")
@@ -3106,13 +3122,13 @@ async def remove_template(
 @async_to_sync
 async def ct_vnc(
     ctids: str = typer.Argument(None, help="Container ID(s) - single, comma-separated, or range (e.g., 200, 200,201, 200-205)"),
-    no_background: bool = typer.Option(False, "--no-background", "-b", is_flag=True, help="Run VNC server in foreground (blocking, single CT only)"),
-    split: bool = typer.Option(False, "--split", "-s", is_flag=True, help="Open each console in a separate browser window instead of tabs"),
+    no_background: bool = typer.Option(False, "--no-background", "-b", help="Run VNC server in foreground (blocking, single CT only)"),
+    split: bool = typer.Option(False, "--split", "-s", help="Open each console in a separate browser window instead of tabs"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
     tag: str = TAG_FILTER,
     pool: str = POOL_FILTER,
     node_filter: str = NODE_FILTER,
-    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip confirmation"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ) -> None:
     """Open authenticated VNC console(s) for one or more containers."""
     from ..utils import open_browser_window
@@ -3147,7 +3163,7 @@ async def ct_vnc(
                     print_error(f"Container {ctid} not found")
                     continue
 
-                node = ct.get("node")
+                node = cast(str, ct.get("node"))
                 ct_name = ct.get("name", "").strip()
                 ct_status = ct.get("status", "unknown")
 
@@ -3160,6 +3176,7 @@ async def ct_vnc(
 
                 vnc_data = await client.create_ct_vncproxy(node, ctid, websocket=True)
 
+                assert client._headers is not None  # set by connect() in __aenter__
                 consoles.append((ctid, ct_name, {
                     "proxmox_host": host,
                     "proxmox_port": profile_config.port,
@@ -3203,7 +3220,7 @@ async def ct_ssh(
     user: str = typer.Option(None, "--user", "-u", help="SSH user"),
     port: int = typer.Option(None, "--port", "-P", help="SSH port"),
     key: str = typer.Option(None, "--key", "-i", help="Path to SSH key"),
-    jump: bool = typer.Option(False, "--jump", "-j", is_flag=True, help="Use node as jump host"),
+    jump: bool = typer.Option(False, "--jump", "-j", help="Use node as jump host"),
     command: str = typer.Option(None, "--command", "-c", help="Execute command instead of shell"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
@@ -3233,7 +3250,7 @@ async def ct_ssh(
                 print_error(f"Container {ctid} is not running")
                 raise typer.Exit(1)
 
-            node = ct.get("node")
+            node = cast(str, ct.get("node"))
             ip = await resolve_ct_ip(client, node, ctid)
 
         ssh_user = user or profile_config.ssh_user or "root"
@@ -3315,10 +3332,10 @@ async def convert_ct_template(
 async def migrate_ct(
     ctid: int = typer.Argument(None, help="CT ID"),
     target: str = typer.Argument(None, help="Target node (menu when omitted)"),
-    restart: bool = typer.Option(False, "--restart", is_flag=True, help="Stop a running container, move it and start it again"),
+    restart: bool = typer.Option(False, "--restart", help="Stop a running container, move it and start it again"),
     timeout: int = typer.Option(None, "--timeout", "-t", help="Shutdown timeout in seconds for --restart"),
     target_storage: str = typer.Option(None, "--target-storage", help="Storage on the target, or a source:target mapping"),
-    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip confirmation"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Migrate a container to another node of the cluster.

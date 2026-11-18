@@ -5,17 +5,16 @@ from typing import Any
 
 import httpx
 
+from ..models.config import ProfileConfig
 from .auth import AuthHandler
 from .exceptions import (
     APIError,
     AuthenticationError,
     NetworkError,
     PermissionError,
-    PVECliError,
     ResourceNotFoundError,
     TimeoutError,
 )
-from ..models.config import ProfileConfig
 
 
 def is_not_implemented(err: Exception) -> bool:
@@ -116,7 +115,7 @@ class ProxmoxClient:
             await self._client.aclose()
             self._client = None
 
-    async def get_fresh_ticket(self) -> str:
+    async def get_fresh_ticket(self) -> str | None:
         """Get a fresh authentication ticket for web console.
 
         Only works with password authentication. For token auth,
@@ -184,7 +183,9 @@ class ProxmoxClient:
                     detail = self._extract_error_message(response)
                     raise PermissionError(
                         f"Permission denied: {method} /{endpoint.lstrip('/')}"
-                        + (f": {detail}" if detail and detail != response.reason_phrase else "")
+                        # pveproxy puts the missing privilege in the status
+                        # line itself: only the bare "Forbidden" says nothing
+                        + (f": {detail}" if detail and detail.strip().lower() != "forbidden" else "")
                     )
                 elif response.status_code == 404:
                     raise ResourceNotFoundError("resource", endpoint)
@@ -1651,7 +1652,7 @@ class ProxmoxClient:
         )
 
         all_tasks: list[dict[str, Any]] = []
-        for node_name, tasks in zip(node_names, results):
+        for node_name, tasks in zip(node_names, results, strict=True):
             for t in tasks:
                 t.setdefault("node", node_name)
                 all_tasks.append(t)
@@ -1668,11 +1669,11 @@ class ProxmoxClient:
         """
         return await self.get("/cluster/backup")
 
-    async def get_cluster_ha_status(self) -> dict[str, Any]:
+    async def get_cluster_ha_status(self) -> list[dict[str, Any]]:
         """Get cluster HA status.
 
         Returns:
-            HA status information
+            HA status entries (one per service, node and manager)
         """
         return await self.get("/cluster/ha/status/current")
 
@@ -2138,16 +2139,6 @@ class ProxmoxClient:
         Returns:
             List of available templates
         """
-        # Execute pveam available command on the node
-        data = {
-            "commands": [
-                {
-                    "method": "GET",
-                    "path": f"/nodes/{node}/aplinfo",
-                }
-            ]
-        }
-
         try:
             # Try to get appliance list
             result = await self.get(f"/nodes/{node}/aplinfo")

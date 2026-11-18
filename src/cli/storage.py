@@ -5,7 +5,7 @@ import os
 import re
 from getpass import getpass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import typer
 from rich.panel import Panel
@@ -136,7 +136,7 @@ _STORAGE_TYPES: dict[str, dict] = {
 
 
 async def _probe_from_all_nodes(
-    client: ProxmoxClient, nodes: list[str], scan_type: str, **params
+    client: ProxmoxClient, nodes: list[str], scan_type: str, **params: Any
 ) -> dict[str, list | str]:
     """Run the same scan from every node at once. Returns {node: entries or error}.
 
@@ -187,7 +187,7 @@ async def add_storage(
     password_env: str = typer.Option(None, "--password-env", help="Env var holding the CIFS or PBS password"),
     content: str = typer.Option(None, "--content", "-c", help="Content types, comma separated"),
     nodes: str = typer.Option(None, "--nodes", "-n", help="Restrict to these nodes, comma separated"),
-    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip confirmation"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Add a shared storage to the cluster, checking every node can reach it."""
@@ -617,7 +617,7 @@ async def add_storage(
 @async_to_sync
 async def remove_storage(
     storage_id: str = typer.Argument(None, help="Storage ID to remove"),
-    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip confirmation"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Remove a storage definition. The data on the backend is left untouched."""
@@ -691,7 +691,7 @@ async def list_storage(
                 nodes = await client.get_nodes()
                 storage_list = []
                 for n in nodes:
-                    node_storage = await client.get_storage_list(n.get("node"))
+                    node_storage = await client.get_storage_list(cast(str, n.get("node")))
                     for s in node_storage:
                         s["_node"] = n.get("node")
                     storage_list.extend(node_storage)
@@ -814,7 +814,7 @@ def _render_storage_panel(node: str, storage: str, status: dict, config: dict) -
 @app.command("info")
 @async_to_sync
 async def show_storage(
-    node: str = typer.Argument(None, help="Node name"),
+    node: str | None = typer.Argument(None, help="Node name"),
     storage: str = typer.Argument(None, help="Storage ID"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
@@ -1036,7 +1036,7 @@ async def add_content(
 
             file_size = file.stat().st_size
 
-            console.print(f"\n[bold]Upload details:[/bold]")
+            console.print("\n[bold]Upload details:[/bold]")
             console.print(f"  File:    {file.name}")
             console.print(f"  Size:    {format_bytes(file_size)}")
             console.print(f"  Storage: {storage}")
@@ -1167,7 +1167,7 @@ async def download_content(
                 print_error(f"Invalid content type '{content_type}'. Valid: {', '.join(valid_types)}")
                 raise typer.Exit(1)
 
-            console.print(f"\n[bold]Download details:[/bold]")
+            console.print("\n[bold]Download details:[/bold]")
             console.print(f"  URL:      {url}")
             console.print(f"  Filename: {filename}")
             console.print(f"  Storage:  {storage}")
@@ -1261,7 +1261,7 @@ async def remove_content(
             else:
                 selected_volumes = [volume]
 
-            console.print(f"\n[bold red]Delete volume(s):[/bold red]")
+            console.print("\n[bold red]Delete volume(s):[/bold red]")
             for vol in selected_volumes:
                 console.print(f"  {vol}")
             console.print(f"  Storage: {storage}")

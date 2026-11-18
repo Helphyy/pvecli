@@ -5,14 +5,15 @@ import re
 import subprocess
 import time
 from enum import Enum
-from typing import Any
+from typing import Any, cast
 
 import typer
 from rich.panel import Panel
 from rich.prompt import Confirm, IntPrompt, Prompt
 
 from ..api.client import ProxmoxClient
-from ..api.exceptions import PVECliError, PermissionError as PVEPermissionError
+from ..api.exceptions import PermissionError as PVEPermissionError
+from ..api.exceptions import PVECliError
 from ..config import ConfigManager
 from ..utils import (
     build_ordered_table,
@@ -41,19 +42,18 @@ from ..utils.fleet import fleet
 from ..utils.helpers import async_to_sync, ordered_group
 from ..utils.menu import menu_row
 from ..utils.network import resolve_node_host
-from .tag import _parse_color_map
 from ._shared import (
     NODE_FILTER,
     POOL_FILTER,
     TAG_FILTER,
-    has_filters,
-    resolve_targets,
     bridge_choices,
     build_kv,
     confirm_action,
     extract_size,
+    has_filters,
     parse_id_list,
     parse_kv,
+    resolve_targets,
     run_with_spinner,
     shared_add_tag,
     shared_create_snapshot,
@@ -70,6 +70,7 @@ from ._shared import (
     storage_choices,
     validate_resources,
 )
+from .tag import _parse_color_map
 
 _CMD_ORDER = [
     "start", "stop", "shutdown", "reboot", "suspend", "resume",
@@ -130,7 +131,7 @@ async def _select_vms(client: ProxmoxClient) -> list[int] | None:
     indices = multi_select_menu(items, "  Select VM(s):")
     if not indices:
         return None
-    return [vms[i].get("vmid") for i in indices]
+    return [cast(int, vms[i].get("vmid")) for i in indices]
 
 
 @app.command("list")
@@ -520,7 +521,14 @@ def _is_cdrom(val: str) -> bool:
     return "media=cdrom" in val
 
 
-async def _edit_vm_disks(config, changes, resizes, deletes, client, node):
+async def _edit_vm_disks(
+    config: dict[str, Any],
+    changes: dict[str, Any],
+    resizes: dict[str, str],
+    deletes: set[str],
+    client: ProxmoxClient,
+    node: str,
+) -> None:
     """Disk sub-menu for VM edit."""
 
     while True:
@@ -699,7 +707,13 @@ async def _edit_vm_disks(config, changes, resizes, deletes, client, node):
                     print_error("Invalid number")
 
 
-async def _edit_vm_network(config, changes, deletes, client, node):
+async def _edit_vm_network(
+    config: dict[str, Any],
+    changes: dict[str, Any],
+    deletes: set[str],
+    client: ProxmoxClient,
+    node: str,
+) -> None:
     """Network sub-menu for VM edit."""
 
 
@@ -998,6 +1012,7 @@ async def edit_vm(
                     original = bool(raw) if ftype is bool else raw
                     current = changes.get(key, original)
 
+                    new_val: bool | int | str
                     if key == "vcpus":
                         max_vcpus = int(changes.get("sockets", config.get("sockets", 1))) * int(
                             changes.get("cores", config.get("cores", 1))
@@ -1134,7 +1149,7 @@ async def start_vm(
     tag: str = TAG_FILTER,
     pool: str = POOL_FILTER,
     node_filter: str = NODE_FILTER,
-    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip confirmation"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ) -> None:
     """Start one or more VMs."""
     config_manager = ConfigManager()
@@ -1668,6 +1683,12 @@ async def _exec_on_vm(
 ) -> int:
     """Execute a command on a single VM. Returns the exit code."""
     node, vm_status = await _get_vm_node(client, vmid)
+    # /cluster/resources lags behind a start: ask the node for the live state
+    try:
+        current = await client.get(f"/nodes/{node}/qemu/{vmid}/status/current") or {}
+        vm_status = current.get("status", vm_status)
+    except PVECliError:
+        pass
 
     if vm_status != "running":
         print_warning(f"VM {vmid} is not running")
@@ -1748,7 +1769,7 @@ class ExecShell(str, Enum):
 @async_to_sync
 async def exec_vm_command(
     ctx: typer.Context,
-    vmids: str = typer.Argument(None, help="VM ID(s) - single, comma-separated, or range (e.g., 100, 100,101, 100-105)"),
+    vmids: str | None = typer.Argument(None, help="VM ID(s) - single, comma-separated, or range (e.g., 100, 100,101, 100-105)"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
     timeout: int = typer.Option(30, "--timeout", "-t", help="Timeout in seconds"),
     quiet: bool = typer.Option(False, "--quiet", "-q", help="Suppress stderr output"),
@@ -1756,7 +1777,7 @@ async def exec_vm_command(
     tag: str = TAG_FILTER,
     pool: str = POOL_FILTER,
     node_filter: str = NODE_FILTER,
-    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip the confirmation asked when targeting by filter"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation asked when targeting by filter"),
 ) -> None:
     """Execute a command in one or more VMs via QEMU Guest Agent.
 
@@ -1880,7 +1901,7 @@ def clone_vm(
                 print_cancelled()
                 return
 
-        async def get_source_vm_data():
+        async def get_source_vm_data() -> dict[str, Any]:
             async with ProxmoxClient(profile_config) as client:
                 resources = await client.get_cluster_resources(resource_type="vm")
                 vm_resource = next((r for r in resources if r.get("vmid") == vmid), None)
@@ -1888,7 +1909,7 @@ def clone_vm(
                 if not vm_resource:
                     raise PVECliError(f"Source VM {vmid} not found")
 
-                source_node = vm_resource.get("node")
+                source_node = cast(str, vm_resource.get("node"))
                 source_config = await client.get_vm_config(source_node, vmid)
 
                 return {
@@ -1924,7 +1945,7 @@ def clone_vm(
             if onboot is not None:
                 post_config["onboot"] = 1 if onboot else 0
 
-            async def clone_noninteractive():
+            async def clone_noninteractive() -> int:
                 async with ProxmoxClient(profile_config) as client:
                     upid = await client.clone_vm(**clone_params)
                     console.print(f"\n[cyan]Cloning VM {vmid} to {newid}...[/cyan]")
@@ -2059,7 +2080,7 @@ def clone_vm(
             clone_snapshot["target"] = target_node
         post_snapshot = dict(post_cfg)
 
-        async def clone():
+        async def clone() -> Any:
             async with ProxmoxClient(profile_config) as client:
                 clone_params = {
                     "node": source_node,
@@ -2155,7 +2176,7 @@ async def delete_vm(
                             client, node,
                             f"Stopping VM {vmid}...",
                             client.stop_vm(node, vmid),
-                            f"Waiting for VM to stop...",
+                            "Waiting for VM to stop...",
                         )
 
                     # Delete VM (always wait to catch errors)
@@ -2163,7 +2184,7 @@ async def delete_vm(
                         client, node,
                         f"Deleting VM {vmid}...",
                         client.delete_vm(node, vmid, purge=purge),
-                        f"Waiting for deletion to complete...",
+                        "Waiting for deletion to complete...",
                     )
 
                     print_success(f"VM {vmid} deleted successfully")
@@ -2384,7 +2405,7 @@ async def ha_set(
     tag: str = TAG_FILTER,
     pool: str = POOL_FILTER,
     node_filter: str = NODE_FILTER,
-    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip confirmation"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
     state: str = typer.Option(None, "--state", "-s", help="State: started|stopped|enabled|disabled|ignored"),
     group: str = typer.Option(None, "--group", "-g", help="HA group (clusters still using groups)"),
     nodes: str = typer.Option(None, "--nodes", "-n", help="Preferred nodes '<node>[:<priority>],...' (clusters using HA rules, PVE 9). '' drops the pin"),
@@ -2781,7 +2802,7 @@ def _print_clone_command(
 
 @app.command("add")
 def create_vm(
-    node: str = typer.Argument(None, help="Node name"),
+    node: str | None = typer.Argument(None, help="Node name"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
     vmid: int = typer.Option(None, "--vmid", "-id", help="VM ID (auto-assigned if not specified)"),
     name: str = typer.Option(None, "--name", "-na", help="VM name"),
@@ -2825,7 +2846,7 @@ def create_vm(
         # Node selection if not provided; validate it if it is
         node = node.strip() if node else None
 
-        async def _get_nodes():
+        async def _get_nodes() -> list[dict[str, Any]]:
             async with ProxmoxClient(profile_config) as client:
                 return await client.get_nodes()
 
@@ -2862,7 +2883,7 @@ def create_vm(
             config: dict[str, Any] = {}
 
             # Helper function to run async code
-            async def get_data():
+            async def get_data() -> dict[str, Any]:
                 async with ProxmoxClient(profile_config) as client:
                     return {
                         "next_vmid": await client.get_next_vmid(),
@@ -2980,7 +3001,7 @@ def create_vm(
                 config["net0"] = net_config
 
             # Create VM
-            async def create():
+            async def create() -> Any:
                 async with ProxmoxClient(profile_config) as client:
                     vm_id = config.pop("vmid")
                     upid = await client.create_vm(node, vm_id, **config)
@@ -2994,7 +3015,7 @@ def create_vm(
 
         # Interactive mode (original code)
         # Helper function to run async code
-        async def get_data():
+        async def get_data() -> dict[str, Any]:
             async with ProxmoxClient(profile_config) as client:
                 resources = await client.get_cluster_resources(resource_type="vm")
                 cluster_opts = await client.get_cluster_options()
@@ -3010,7 +3031,7 @@ def create_vm(
         data = asyncio.run(get_data())
 
         # Configuration dict
-        config: dict[str, Any] = {}
+        config = {}
 
         console.print("\n[bold cyan]═══ VM Creation Wizard ═══[/bold cyan]\n")
 
@@ -3122,7 +3143,7 @@ def create_vm(
                 selected_storage = storage_names[storage_idx]
 
             # Get ISOs from selected storage
-            async def get_isos():
+            async def get_isos() -> list[dict[str, Any]]:
                 async with ProxmoxClient(profile_config) as client:
                     return await client.get_storage_content(node, selected_storage, "iso")
 
@@ -3225,7 +3246,7 @@ def create_vm(
                     virtio_selected_storage = storage_names[virtio_storage_idx]
 
                     # Get all ISOs from selected storage
-                    async def get_virtio_isos():
+                    async def get_virtio_isos() -> list[dict[str, Any]]:
                         async with ProxmoxClient(profile_config) as client:
                             return await client.get_storage_content(node, virtio_selected_storage, "iso")
 
@@ -3442,7 +3463,7 @@ def create_vm(
             return
 
         # Create VM
-        async def create():
+        async def create() -> Any:
             async with ProxmoxClient(profile_config) as client:
                 vmid = config.pop("vmid")
                 upid = await client.create_vm(node, vmid, **config)
@@ -3472,13 +3493,13 @@ def create_vm(
 @async_to_sync
 async def vm_vnc(
     vmids: str = typer.Argument(None, help="VM ID(s) - single, comma-separated, or range (e.g., 100, 100,101, 100-105)"),
-    no_background: bool = typer.Option(False, "--no-background", "-b", is_flag=True, help="Run VNC server in foreground (blocking, single VM only)"),
-    split: bool = typer.Option(False, "--split", "-s", is_flag=True, help="Open each console in a separate browser window instead of tabs"),
+    no_background: bool = typer.Option(False, "--no-background", "-b", help="Run VNC server in foreground (blocking, single VM only)"),
+    split: bool = typer.Option(False, "--split", "-s", help="Open each console in a separate browser window instead of tabs"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
     tag: str = TAG_FILTER,
     pool: str = POOL_FILTER,
     node_filter: str = NODE_FILTER,
-    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip confirmation"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ) -> None:
     """Open authenticated VNC console(s) for one or more VMs."""
     from ..utils import open_browser_window
@@ -3513,7 +3534,7 @@ async def vm_vnc(
                     print_error(f"VM {vmid} not found")
                     continue
 
-                node = vm.get("node")
+                node = cast(str, vm.get("node"))
                 vm_name = vm.get("name", "").strip()
                 vm_status = vm.get("status", "unknown")
 
@@ -3528,6 +3549,7 @@ async def vm_vnc(
                     node, vmid, websocket=True, generate_password=True
                 )
 
+                assert client._headers is not None  # set by connect() in __aenter__
                 consoles.append((vmid, vm_name, {
                     "proxmox_host": host,
                     "proxmox_port": profile_config.port,
@@ -3570,7 +3592,7 @@ async def vm_ssh(
     user: str = typer.Option(None, "--user", "-u", help="SSH user"),
     port: int = typer.Option(None, "--port", "-P", help="SSH port"),
     key: str = typer.Option(None, "--key", "-i", help="Path to SSH key"),
-    jump: bool = typer.Option(False, "--jump", "-j", is_flag=True, help="Use node as jump host"),
+    jump: bool = typer.Option(False, "--jump", "-j", help="Use node as jump host"),
     command: str = typer.Option(None, "--command", "-c", help="Execute command instead of shell"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
@@ -3600,7 +3622,7 @@ async def vm_ssh(
                 print_error(f"VM {vmid} is not running")
                 raise typer.Exit(1)
 
-            node = vm.get("node")
+            node = cast(str, vm.get("node"))
             ip = await resolve_vm_ip(client, node, vmid)
 
         ssh_user = user or profile_config.ssh_user or "root"
@@ -3629,12 +3651,12 @@ async def vm_rdp(
     user: str = typer.Option(None, "--user", "-u", help="RDP user"),
     domain: str = typer.Option(None, "--domain", "-d", help="RDP domain"),
     port: int = typer.Option(None, "--port", "-P", help="RDP port"),
-    fullscreen: bool = typer.Option(False, "--fullscreen", "-f", is_flag=True, help="Fullscreen mode"),
+    fullscreen: bool = typer.Option(False, "--fullscreen", "-f", help="Fullscreen mode"),
     resolution: str = typer.Option(None, "--resolution", "-r", help="Fixed resolution, e.g. 1920x1080 (disables dynamic resize)"),
     scale: int = typer.Option(None, "--scale", "-s", help="Desktop scale factor for HiDPI/4K, e.g. 200"),
-    smart_sizing: bool = typer.Option(False, "--smart-sizing", "-S", is_flag=True, help="Scale remote desktop to window size"),
+    smart_sizing: bool = typer.Option(False, "--smart-sizing", "-S", help="Scale remote desktop to window size"),
     mount: list[str] = typer.Option([], "--mount", "-m", help="Share a local folder (repeatable, e.g. -m ~/Documents)"),
-    jump: bool = typer.Option(False, "--jump", "-j", is_flag=True, help="Use node as jump host for RDP"),
+    jump: bool = typer.Option(False, "--jump", "-j", help="Use node as jump host for RDP"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """RDP into a VM (IP resolved via QEMU Guest Agent)."""
@@ -3675,7 +3697,7 @@ async def vm_rdp(
                 print_error(f"VM {vmid} is not running")
                 raise typer.Exit(1)
 
-            node = vm.get("node")
+            node = cast(str, vm.get("node"))
 
             # Warn if VM appears to be Linux
             osinfo = await client.get_vm_osinfo(node, vmid)
@@ -3824,7 +3846,7 @@ async def convert_vm_template(
                     if status == "running":
                         print_warning(f"VM {vmid} is running - stop it first")
                         continue
-                    upid = await run_with_spinner(
+                    await run_with_spinner(
                         client, node,
                         f"Converting VM {vmid} to template...",
                         client.convert_vm_to_template(node, vmid),
@@ -3849,9 +3871,9 @@ async def migrate_vm(
     vmid: int = typer.Argument(None, help="VM ID"),
     target: str = typer.Argument(None, help="Target node (menu when omitted)"),
     online: bool = typer.Option(None, "--online/--offline", help="Live migration (default when the VM runs)"),
-    with_local_disks: bool = typer.Option(False, "--with-local-disks", is_flag=True, help="Copy local disks during a live migration"),
+    with_local_disks: bool = typer.Option(False, "--with-local-disks", help="Copy local disks during a live migration"),
     target_storage: str = typer.Option(None, "--target-storage", help="Storage on the target, or a source:target mapping"),
-    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip confirmation"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Migrate a VM to another node of the cluster.

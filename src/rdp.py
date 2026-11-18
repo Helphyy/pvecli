@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from typing import IO
 
 from .api.exceptions import PVECliError
 
@@ -115,7 +116,7 @@ def build_rdp_command(
     raise PVECliError(f"Unknown RDP client type: {client_type}")
 
 
-def exec_rdp(args: list[str]) -> tuple[subprocess.Popen, tempfile.TemporaryFile]:
+def exec_rdp(args: list[str]) -> tuple[subprocess.Popen, IO[bytes]]:
     """Launch the RDP client and return (process, stderr_file)."""
     stderr_file = tempfile.TemporaryFile()
     proc = subprocess.Popen(args, stderr=stderr_file)

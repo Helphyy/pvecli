@@ -73,7 +73,8 @@ async def _certificates(a: _Audit, nodes: list[str], warn_days: int) -> None:
                 problems.append(("FAIL", f"{name} expires in {int(left)} day(s)"))
             elif left < warn_days:
                 problems.append(("WARN", f"{name} expires in {int(left)} day(s)"))
-    if not problems and len(blind) < len(nodes):
+    # OK is a claim about every node: not made when one could not be read
+    if not problems and not blind:
         a.add("Certificates", "OK", f"no certificate expires within {warn_days} days")
     for level, detail in problems:
         a.add("Certificates", level, detail)
@@ -172,7 +173,7 @@ async def _guests(a: _Audit, guests: list[dict], snapshot_age: int) -> None:
     # Backups
     missing = await a.get("/cluster/backup-info/not-backed-up")
     if missing is None:
-        a.add("Backups", "INFO", "backup coverage unreadable on this version")
+        a.unreadable("Backups", a.reason("/cluster/backup-info/not-backed-up", "backup coverage unreadable on this version"))
     elif missing:
         a.add(
             "Backups", "WARN",
@@ -278,8 +279,8 @@ async def _ha_and_ceph(a: _Audit) -> None:
 async def audit(
     cert_days: int = typer.Option(30, "--cert-days", help="Warn on certificates expiring within this many days"),
     snapshot_age: str = typer.Option("30d", "--snapshot-age", help="Warn on snapshots older than this (30d, 2w)"),
-    skip_orphans: bool = typer.Option(False, "--skip-orphans", is_flag=True, help="Skip the orphan disk scan (lists every storage)"),
-    only_problems: bool = typer.Option(False, "--problems", is_flag=True, help="Hide OK lines"),
+    skip_orphans: bool = typer.Option(False, "--skip-orphans", help="Skip the orphan disk scan (lists every storage)"),
+    only_problems: bool = typer.Option(False, "--problems", help="Hide OK lines"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile(s): name, list, pattern ('client-*') or @group"),
     json_output: bool = JSON_OPTION,
 ) -> None:

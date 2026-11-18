@@ -35,7 +35,7 @@ _MAX_PARALLEL = 8
 
 def is_multi_profile(spec: str | None) -> bool:
     """Whether a -p value can designate more than one profile."""
-    return bool(spec) and ("," in spec or spec.startswith("@") or any(c in spec for c in _PATTERN_CHARS))
+    return bool(spec and ("," in spec or spec.startswith("@") or any(c in spec for c in _PATTERN_CHARS)))
 
 
 def resolve_profiles(spec: str | None) -> list[str]:
@@ -71,7 +71,13 @@ def resolve_profiles(spec: str | None) -> list[str]:
                 raise ConfigError(
                     f"Group '{item[1:]}' lists unknown profile(s): {', '.join(unknown)}"
                 )
-            names += [g for g in group if in_fleet(g)]
+            members = [g for g in group if in_fleet(g)]
+            if not members:
+                raise ConfigError(
+                    f"Group '{item[1:]}' only holds profiles marked fleet: false; "
+                    "name them explicitly to reach them"
+                )
+            names += members
         elif any(c in item for c in _PATTERN_CHARS):
             matched = [p for p in profiles if fnmatch.fnmatchcase(p, item) and in_fleet(p)]
             if not matched:
@@ -94,7 +100,7 @@ def _cluster_identity(name: str) -> tuple | str:
     from ..api.client import ProxmoxClient
     from ..config import ConfigManager
 
-    async def probe() -> tuple | None:
+    async def probe() -> tuple | str:
         try:
             async with ProxmoxClient(ConfigManager().get_profile(name)) as client:
                 status = await client.get_cluster_status() or []
@@ -104,7 +110,10 @@ def _cluster_identity(name: str) -> tuple | str:
         nodes = tuple(sorted(x.get("name", "") for x in status if x.get("type") == "node"))
         if cluster:
             return ("cluster", cluster.get("name"), nodes)
-        return ("node", nodes)
+        # A standalone node: its name alone is not enough, every fresh
+        # install is called "pve". Its address tells two of them apart.
+        ips = tuple(sorted(str(x.get("ip", "")) for x in status if x.get("type") == "node"))
+        return ("node", nodes, ips)
 
     return asyncio.run(probe())
 

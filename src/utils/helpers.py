@@ -1,8 +1,9 @@
 """Helper utilities."""
 
 import asyncio
+from collections.abc import Callable
 from functools import wraps
-from typing import Any, Callable
+from typing import Any
 
 from typer.core import TyperGroup
 
@@ -37,8 +38,8 @@ def open_browser_window(url: str, new_window: bool = True) -> None:
         new_window: Open a dedicated browser window. When False, the URL
             opens as a tab in the already-running browser instance.
     """
-    import subprocess
     import shutil
+    import subprocess
     import webbrowser
 
     flag = ["--new-window"] if new_window else []

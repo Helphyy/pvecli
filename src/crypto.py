@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-import pyrage
+import pyrage  # type: ignore[import-untyped]  # pyrage ships no stubs nor py.typed, no types-pyrage package exists
 
 AGE_PREFIX = "AGE:"
 _IDENTITY_FILE = Path.home() / ".config" / "pvecli" / ".age-identity"

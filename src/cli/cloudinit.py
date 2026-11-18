@@ -61,23 +61,37 @@ def _read_keys(keys: list[str]) -> str:
 
 
 def _ipconfig(ip: str | None, gw: str | None, ip6: str | None, gw6: str | None) -> str | None:
-    """Build an ipconfigN value, validating the addresses on the way."""
+    """Build an ipconfigN value, validating the addresses on the way.
+
+    PVE's format keeps the families apart (ip/gw IPv4, ip6/gw6 IPv6) and
+    wants addresses in CIDR form: anything else is a 400 at creation time,
+    after the clone is made. Checked here, before anything exists.
+    """
+
+    def cidr(value: str, option: str, version: int, keywords: tuple[str, ...]) -> None:
+        if value in keywords:
+            return
+        if "/" not in value:
+            raise PVECliError(f"{option} needs a prefix length, e.g. {value}/{24 if version == 4 else 64}")
+        if ipaddress.ip_interface(value).version != version:
+            raise PVECliError(f"{option} takes an IPv{version} address, got {value}")
+
+    def address(value: str, option: str, version: int) -> None:
+        if ipaddress.ip_address(value).version != version:
+            raise PVECliError(f"{option} takes an IPv{version} address, got {value}")
+
     parts = []
     if ip:
-        if ip != "dhcp":
-            ipaddress.ip_interface(ip)  # raises on a bad address or prefix
-            if "/" not in ip:
-                raise PVECliError(f"--ip needs a prefix length, e.g. {ip}/24 (or 'dhcp')")
+        cidr(ip, "--ip", 4, ("dhcp",))
         parts.append(f"ip={ip}")
     if gw:
-        ipaddress.ip_address(gw)
+        address(gw, "--gw", 4)
         parts.append(f"gw={gw}")
     if ip6:
-        if ip6 not in ("dhcp", "auto"):
-            ipaddress.ip_interface(ip6)
+        cidr(ip6, "--ip6", 6, ("dhcp", "auto"))
         parts.append(f"ip6={ip6}")
     if gw6:
-        ipaddress.ip_address(gw6)
+        address(gw6, "--gw6", 6)
         parts.append(f"gw6={gw6}")
     return ",".join(parts) or None
 
@@ -111,17 +125,44 @@ def _ci_params(
     return params
 
 
+# The volume of a cloud-init drive: <storage>:vm-<id>-cloudinit[.qcow2], or
+# <storage>:cloudinit when asked for. A storage merely named "cloudinit-nfs"
+# holding a real disk must not match.
+_CI_VOLUME = re.compile(r"^[^:,]+:(vm-\d+-)?cloudinit(\.\w+)?$")
+
+
 def _cloudinit_drive(cfg: dict[str, Any]) -> str | None:
-    return next((k for k, v in cfg.items() if "cloudinit" in str(v) and _DISK_KEY.match(k)), None)
+    return next(
+        (k for k, v in cfg.items() if _DISK_KEY.match(k) and _CI_VOLUME.match(str(v).split(",")[0])),
+        None,
+    )
 
 
 def _boot_storage(cfg: dict[str, Any]) -> str | None:
     """Storage of the first real disk, where the cloud-init drive goes by default."""
     for k in sorted(cfg):
         v = str(cfg[k])
-        if _DISK_KEY.match(k) and "media=cdrom" not in v and "cloudinit" not in v and ":" in v:
+        if _DISK_KEY.match(k) and "media=cdrom" not in v and not _CI_VOLUME.match(v.split(",")[0]) and ":" in v:
             return v.split(":", 1)[0]
     return None
+
+
+def _is_data_disk(cfg: dict[str, Any], key: str) -> bool:
+    value = str(cfg.get(key, ""))
+    return bool(_DISK_KEY.match(key)) and "media=cdrom" not in value and not _CI_VOLUME.match(value.split(",")[0])
+
+
+def _boot_disk(cfg: dict[str, Any]) -> str | None:
+    """The disk the VM boots from: first disk of `boot: order=...`, else the
+    legacy `bootdisk`, else the first disk by name. Growing a data disk by
+    mistake would leave the system disk at its template size."""
+    order = re.search(r"order=([^,]+)", str(cfg.get("boot", "")))
+    for key in (order.group(1).split(";") if order else []):
+        if _is_data_disk(cfg, key):
+            return key
+    if cfg.get("bootdisk") and _is_data_disk(cfg, str(cfg["bootdisk"])):
+        return str(cfg["bootdisk"])
+    return next((k for k in sorted(cfg) if _is_data_disk(cfg, k)), None)
 
 
 async def _locate(client: ProxmoxClient, vmid: int) -> dict:
@@ -268,7 +309,7 @@ async def deploy(
     template: int = typer.Argument(..., help="Template VM ID to clone"),
     name: str = typer.Argument(..., help="Name of the new VM"),
     vmid: int = typer.Option(None, "--vmid", help="ID of the new VM (default: next free)"),
-    full: bool = typer.Option(False, "--full", is_flag=True, help="Full clone instead of a linked clone"),
+    full: bool = typer.Option(False, "--full", help="Full clone instead of a linked clone"),
     storage: str = typer.Option(None, "--storage", help="Target storage (implies --full)"),
     cores: int = typer.Option(None, "--cores", help="vCPUs"),
     memory: str = typer.Option(None, "--memory", help="Memory: 2G, 4096M..."),
@@ -332,11 +373,7 @@ async def deploy(
                 await client.put(f"/nodes/{node}/qemu/{newid}/config", data=hw)
             if disk_size:
                 cfg = await client.get(f"/nodes/{node}/qemu/{newid}/config") or {}
-                boot = next(
-                    (k for k in sorted(cfg) if _DISK_KEY.match(k) and "media=cdrom" not in str(cfg[k])
-                     and "cloudinit" not in str(cfg[k])),
-                    None,
-                )
+                boot = _boot_disk(cfg)
                 if not boot:
                     raise PVECliError(f"VM {newid} created, but no disk to resize")
                 await client.resize_vm_disk(node, newid, boot, disk_size)

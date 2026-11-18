@@ -13,7 +13,7 @@ from typing import Any
 
 import typer
 from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.progress import Progress, SpinnerColumn, TaskID, TextColumn
 from rich.table import Table
 
 from ..api.client import ProxmoxClient, is_not_implemented
@@ -352,7 +352,7 @@ async def run_with_spinner(
         progress.add_task(description=action_desc, total=None)
         upid = await coro
         if wait_desc:
-            progress.update(0, description=wait_desc)
+            progress.update(TaskID(0), description=wait_desc)
             kwargs = {"timeout": timeout} if timeout else {}
             await client.wait_for_task(node, upid, **kwargs)
     return upid
@@ -667,7 +667,7 @@ async def shared_create_snapshot(
         upid = await create_fn()
 
         if wait or always_wait:
-            progress.update(0, description="Waiting for snapshot to complete...")
+            progress.update(TaskID(0), description="Waiting for snapshot to complete...")
             await client.wait_for_task(node, upid, timeout=600)
 
     print_success(f"Snapshot '{name}' created for {label} {resource_id}")
@@ -710,7 +710,7 @@ async def shared_rollback_snapshot(
             upid = await rollback_fn()
 
             if wait or reboot:
-                progress.update(0, description="Waiting for rollback to complete...")
+                progress.update(TaskID(0), description="Waiting for rollback to complete...")
                 await client.wait_for_task(node, upid, timeout=600)
 
         print_success(f"{label} {resource_id} rolled back to snapshot '{name}'")
@@ -750,13 +750,13 @@ async def shared_rollback_snapshot(
                 if current_status != "running":
                     progress.add_task(description=f"Starting {label} {resource_id}...", total=None)
                     upid = await start_fn()
-                    progress.update(0, description=f"Waiting for {label} {resource_id} to start...")
+                    progress.update(TaskID(0), description=f"Waiting for {label} {resource_id} to start...")
                     await client.wait_for_task(node, upid)
                     print_success(f"{label} {resource_id} started successfully")
                 else:
                     progress.add_task(description=f"Rebooting {label} {resource_id}...", total=None)
                     upid = await reboot_fn()
-                    progress.update(0, description=f"Waiting for {label} {resource_id} to reboot...")
+                    progress.update(TaskID(0), description=f"Waiting for {label} {resource_id} to reboot...")
                     await client.wait_for_task(node, upid)
                     print_success(f"{label} {resource_id} rebooted successfully")
 
@@ -795,7 +795,7 @@ async def shared_delete_snapshot(
         upid = await delete_fn()
 
         # Always wait to catch errors
-        progress.update(0, description="Waiting for deletion to complete...")
+        progress.update(TaskID(0), description="Waiting for deletion to complete...")
         await client.wait_for_task(node, upid, timeout=600)
 
     print_success(f"Snapshot '{name}' deleted from {label} {resource_id}")
@@ -857,6 +857,7 @@ async def shared_vnc(
     # the official client prefers; older hosts only return the ticket.
     vnc_password = vnc_data.get("password") or vnc_data["ticket"]
 
+    assert client._headers is not None  # the caller hands over a connected client
     server_config = {
         "proxmox_host": host,
         "proxmox_port": profile_config.port,
@@ -985,7 +986,9 @@ async def _validate_ha_nodes(client: ProxmoxClient, nodes: str) -> str:
     for entry in (e.strip() for e in nodes.split(",")):
         if not entry:
             continue
-        name, _, prio = entry.partition(":")
+        name, sep, prio = entry.partition(":")
+        if sep and not prio:
+            raise PVECliError(f"Empty priority in '{entry}': use {name} or {name}:<number>")
         if name not in members:
             raise PVECliError(
                 f"Unknown node '{name}'. Cluster members: {', '.join(sorted(members))}"
@@ -1282,8 +1285,20 @@ async def shared_ha_add(
             state = "started"
 
     if nodes:
-        # Fail before registering anything when a node name is wrong
+        # Fail before registering anything when a node name is wrong, or
+        # when a rule pvecli did not create already places the guest:
+        # registering first would leave it under HA without its placement
         nodes = await _validate_ha_nodes(client, nodes)
+        foreign = [
+            r for r in await client.get_ha_rules(rule_type="node-affinity")
+            if r.get("rule") != _ha_rule_name(kind, resource_id) and sid in _rule_resources(r)
+        ]
+        if foreign:
+            raise PVECliError(
+                f"{sid} is already placed by rule(s) "
+                + ", ".join(str(r.get("rule")) for r in foreign)
+                + ", which pvecli did not create. Nothing was registered."
+            )
 
     params: dict[str, Any] = {
         "type": kind,
@@ -2191,7 +2206,7 @@ def bridge_choices(interfaces: list[dict]) -> tuple[list[str], list[str]]:
         names.append(name)
         items.append(f"{name}  ({desc_str})" if desc_str else name)
     if names:
-        names, items = (list(t) for t in zip(*sorted(zip(names, items))))
+        names, items = (list(t) for t in zip(*sorted(zip(names, items, strict=True)), strict=True))
     return names, items
 
 

@@ -2,14 +2,25 @@
 
 import json
 from pathlib import Path
+from typing import cast
 
 import typer
 import yaml
 from rich.table import Table
+
 from ..api.client import ProxmoxClient
 from ..api.exceptions import PVECliError
 from ..config import ConfigManager
-from ..utils import build_ordered_table, confirm, console, print_cancelled, print_error, print_success, print_warning, prompt
+from ..utils import (
+    build_ordered_table,
+    confirm,
+    console,
+    print_cancelled,
+    print_error,
+    print_success,
+    print_warning,
+    prompt,
+)
 from ..utils.helpers import async_to_sync, ordered_group
 from ..utils.menu import multi_select_menu, require_terminal, select_menu
 
@@ -70,9 +81,9 @@ def _get_full_palette() -> list[tuple[str, str, str]]:
     return result
 
 
-def _parse_color_map(tag_style) -> dict[str, str]:
+def _parse_color_map(tag_style: object) -> dict[str, str]:
     """Parse color-map from tag-style (dict or string)."""
-    colors = {}
+    colors: dict[str, str] = {}
     if not tag_style:
         return colors
 
@@ -99,7 +110,7 @@ def _parse_color_map(tag_style) -> dict[str, str]:
     return colors
 
 
-def _build_tag_style(color_map: dict[str, str], existing_style) -> str:
+def _build_tag_style(color_map: dict[str, str], existing_style: object) -> str:
     """Rebuild tag-style with an updated color-map.
 
     Every other tag-style option already set (shape, ordering,
@@ -152,7 +163,7 @@ def _pick_color(tag_name: str) -> str | None:
     n = len(palette)
     menu_lines = n + 2  # title + blank + entries
 
-    def _render():
+    def _render() -> str:
         buf = StringIO()
         rc = RichConsole(file=buf, force_terminal=True, width=console.width)
         rc.print(f"  Color for '[cyan]{tag_name}[/cyan]':")
@@ -166,7 +177,7 @@ def _pick_color(tag_name: str) -> str | None:
 
     fd = sys.stdin.fileno()
 
-    def _read_key():
+    def _read_key() -> str:
         old = termios.tcgetattr(fd)
         try:
             tty.setraw(fd)
@@ -314,7 +325,7 @@ async def list_tags(
 @async_to_sync
 async def add_tag(
     tag: str = typer.Argument(None, help="Tag name"),
-    color: str = typer.Option(None, "--color", "-c", help="Hex color (e.g. ff4444)"),
+    color: str | None = typer.Option(None, "--color", "-c", help="Hex color (e.g. ff4444)"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Add or update a tag color in the cluster."""
@@ -361,7 +372,7 @@ async def add_tag(
 async def edit_tag(
     tag: str = typer.Argument(None, help="Tag name to edit"),
     name: str = typer.Option(None, "--name", "-n", help="New tag name (rename)"),
-    color: str = typer.Option(None, "--color", "-c", help="New hex color (e.g. ff4444)"),
+    color: str | None = typer.Option(None, "--color", "-c", help="New hex color (e.g. ff4444)"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Rename a tag and/or change its color."""
@@ -427,9 +438,9 @@ async def edit_tag(
                         continue
                     new_tags = ";".join(dict.fromkeys(new_name if x == tag else x for x in tags))
                     if r.get("type") == "qemu":
-                        await client.update_vm_config(r.get("node", ""), r.get("vmid"), tags=new_tags)
+                        await client.update_vm_config(r.get("node", ""), cast(int, r.get("vmid")), tags=new_tags)
                     else:
-                        await client.update_container_config(r.get("node", ""), r.get("vmid"), tags=new_tags)
+                        await client.update_container_config(r.get("node", ""), cast(int, r.get("vmid")), tags=new_tags)
                     renamed_count += 1
 
             # Update the color map: move the key on rename, set the new color
@@ -460,7 +471,7 @@ async def edit_tag(
 @async_to_sync
 async def remove_tag(
     tag: str = typer.Argument(None, help="Tag(s) - single or comma/semicolon-separated (e.g., web or web,db,cache)"),
-    yes: bool = typer.Option(False, "--yes", "-y", is_flag=True, help="Skip confirmation"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Remove one or more tags from all VMs and CTs in the cluster."""
@@ -543,16 +554,18 @@ async def remove_tag(
             for t, affected, has_color in actionable:
                 for r in affected:
                     node = r.get("node", "")
-                    vmid = r.get("vmid")
+                    vmid = cast(int, r.get("vmid"))
                     tags_str = r.get("tags", "")
                     tags = [x.strip() for x in tags_str.split(";") if x.strip()]
                     tags.remove(t)
                     new_tags = ";".join(tags)
+                    # An empty value leaves "tags: " in the config: drop the key
+                    change = {"tags": new_tags} if new_tags else {"delete": "tags"}
 
                     if r.get("type") == "qemu":
-                        await client.update_vm_config(node, vmid, tags=new_tags)
+                        await client.update_vm_config(node, vmid, **change)
                     else:
-                        await client.update_container_config(node, vmid, tags=new_tags)
+                        await client.update_container_config(node, vmid, **change)
                 total_removed += len(affected)
 
                 if has_color:
@@ -565,7 +578,7 @@ async def remove_tag(
 
             if len(actionable) == 1:
                 t = actionable[0][0]
-                print_success(f"Tag '{t}' removed from {total_removed} resource(s)" + (f" + color mapping" if actionable[0][2] else ""))
+                print_success(f"Tag '{t}' removed from {total_removed} resource(s)" + (" + color mapping" if actionable[0][2] else ""))
             else:
                 names = ", ".join(t for t, _, _ in actionable)
                 suffix = f" + {color_removed} color mapping(s)" if color_removed else ""
@@ -627,7 +640,7 @@ async def export_tags(
 @async_to_sync
 async def import_tags(
     file: str = typer.Argument("tags.json", help="JSON file to import"),
-    force: bool = typer.Option(False, "--force", "-f", is_flag=True, help="Skip existing tags without warning"),
+    force: bool = typer.Option(False, "--force", "-f", help="Skip existing tags without warning"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Import tags and their colors from a JSON file."""
@@ -703,7 +716,7 @@ async def import_tags(
 
 @color_app.command("init")
 def color_init(
-    force: bool = typer.Option(False, "--force", "-f", is_flag=True, help="Overwrite existing file"),
+    force: bool = typer.Option(False, "--force", "-f", help="Overwrite existing file"),
 ) -> None:
     """Initialize the color palette file with default colors."""
     if _COLOR_FILE.exists() and not force:
@@ -749,7 +762,7 @@ def color_add(
     """Add a color to the palette."""
     try:
         if not _COLOR_FILE.exists():
-            print_warning(f"Color palette not found. Run 'pvecli tag color init' first.")
+            print_warning("Color palette not found. Run 'pvecli tag color init' first.")
             raise typer.Exit(1)
 
         if not (name and hex_color and font):
@@ -785,7 +798,7 @@ def color_add(
                 raise typer.Exit(1)
 
         if not font:
-            console.print(f"\n  Preview:")
+            console.print("\n  Preview:")
             console.print(f"    [#ffffff on #{hex_color}] {name} [/]")
             console.print(f"    [black on #{hex_color}] {name} [/]")
             console.print()
@@ -824,7 +837,7 @@ def color_remove(
         palette = _load_palette()
 
         if not palette:
-            print_warning(f"No colors configured. Run 'pvecli tag color init' first.")
+            print_warning("No colors configured. Run 'pvecli tag color init' first.")
             return
 
         if name is None:
