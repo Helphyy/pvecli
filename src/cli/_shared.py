@@ -756,7 +756,9 @@ async def shared_vnc(
 
     host = resolve_node_host(profile_config)
 
-    vnc_password = vnc_data.get("password") if generate_password else vnc_data["ticket"]
+    # PVE 9.1.9+ (PSA-2026-00014-1) returns a dedicated VNC password, which
+    # the official client prefers; older hosts only return the ticket.
+    vnc_password = vnc_data.get("password") or vnc_data["ticket"]
 
     server_config = {
         "proxmox_host": host,

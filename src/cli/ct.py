@@ -3114,7 +3114,7 @@ async def ct_vnc(
                     "auth_headers": dict(client._headers),
                     "local_port": find_free_port(),
                     "verify_ssl": profile_config.verify_ssl,
-                    "vnc_password": vnc_data["ticket"],
+                    "vnc_password": vnc_data.get("password") or vnc_data["ticket"],
                 }))
 
         if not consoles:
