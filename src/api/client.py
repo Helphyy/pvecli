@@ -179,7 +179,13 @@ class ProxmoxClient:
                 if response.status_code == 401:
                     raise AuthenticationError("Authentication failed or expired")
                 elif response.status_code == 403:
-                    raise PermissionError("Permission denied for this operation")
+                    # Say which call was refused: with a restricted user, the
+                    # missing privilege is only findable from the endpoint
+                    detail = self._extract_error_message(response)
+                    raise PermissionError(
+                        f"Permission denied: {method} /{endpoint.lstrip('/')}"
+                        + (f": {detail}" if detail and detail != response.reason_phrase else "")
+                    )
                 elif response.status_code == 404:
                     raise ResourceNotFoundError("resource", endpoint)
                 elif response.status_code >= 400:
@@ -2282,7 +2288,9 @@ class ProxmoxClient:
                 if response.status_code == 401:
                     raise AuthenticationError("Authentication failed or expired")
                 elif response.status_code == 403:
-                    raise PermissionError("Permission denied for this operation")
+                    raise PermissionError(
+                        f"Permission denied: POST /nodes/{node}/storage/{storage}/upload"
+                    )
                 elif response.status_code == 404:
                     raise ResourceNotFoundError("resource", f"/nodes/{node}/storage/{storage}")
                 elif response.status_code >= 400:
