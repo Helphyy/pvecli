@@ -1928,7 +1928,32 @@ async def _bulk_missed(
             return None
         return f"{g['vmid']} ({status}{', locked ' + lock if lock else ''})"
 
-    results = await asyncio.gather(*(check(g) for g in guests))
+    if action != "migrate":
+        results = await asyncio.gather(*(check(g) for g in guests))
+        return [r for r in results if r]
+
+    # An HA-managed guest is only queued by the bulk task and moved by the
+    # HA manager afterwards. Its config can reach the target while the HA
+    # state is still 'migrate', and a new request sent then is ignored:
+    # follow the HA state itself until the guest is settled on the target.
+    from ._shared import _wait_ha_migration
+
+    try:
+        ha_sids = {r.get("sid") for r in await client.get_ha_resources()}
+    except PVECliError:
+        ha_sids = set()
+
+    async def check_one(g: dict) -> str | None:
+        sid = f"{'vm' if g.get('type') == 'qemu' else 'ct'}:{g['vmid']}"
+        if sid not in ha_sids:
+            return await check(g)
+        try:
+            await _wait_ha_migration(client, sid, target or "", timeout=600)
+            return None
+        except PVECliError as e:
+            return f"{g['vmid']} ({e})"
+
+    results = await asyncio.gather(*(check_one(g) for g in guests))
     return [r for r in results if r]
 
 

@@ -7,7 +7,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from ..api.client import ProxmoxClient
-from ..api.exceptions import PVECliError
+from ..api.exceptions import PermissionError, PVECliError
 from ..config import ConfigManager
 from ..utils import (
     JSON_OPTION,
@@ -585,12 +585,46 @@ def _state_dir():
     return d
 
 
-def _state_file(profile_name: str, node: str):
-    return _state_dir() / f"{profile_name}__{node}.json"
+def _state_file(cluster: str, node: str):
+    # Keyed by cluster, not profile: two profiles on one cluster must see
+    # the same maintenance records
+    return _state_dir() / f"{cluster}__{node}.json"
 
 
 def _profile_name(profile: str | None) -> str:
     return profile or ConfigManager().get().default_profile or "default"
+
+
+async def _cluster_key(client: ProxmoxClient) -> str:
+    status = await client.get_cluster_status() or []
+    cluster = next((x for x in status if x.get("type") == "cluster"), None)
+    if cluster:
+        return str(cluster.get("name"))
+    return "standalone-" + next((x.get("name", "?") for x in status if x.get("type") == "node"), "?")
+
+
+async def _missing_privileges(
+    client: ProxmoxClient, guests: list[dict], ceph_flag: bool, ha_failback: bool
+) -> list[str]:
+    """Privileges the current user lacks for a maintenance, read from its
+    effective permissions so nothing starts that cannot be finished."""
+    import asyncio
+
+    async def privs(path: str) -> dict:
+        data = await client.get("/access/permissions", params={"path": path}) or {}
+        return data.get(path, {})
+
+    missing: list[str] = []
+    root = await privs("/")
+    if ceph_flag and not root.get("Sys.Modify"):
+        missing.append("Sys.Modify on / (Ceph noout flag, or pass --no-ceph-flag)")
+    if ha_failback and not root.get("Sys.Console"):
+        missing.append("Sys.Console on / (HA failback)")
+    per_guest = await asyncio.gather(*(privs(f"/vms/{g['vmid']}") for g in guests))
+    blocked = [str(g["vmid"]) for g, p in zip(guests, per_guest, strict=True) if not p.get("VM.Migrate")]
+    if blocked:
+        missing.append(f"VM.Migrate on {', '.join(blocked)}")
+    return missing
 
 
 @maintenance_app.command("enter")
@@ -615,14 +649,15 @@ async def maintenance_enter(
     from .cluster import _run_bulk
 
     name = _profile_name(profile)
-    state_path = _state_file(name, node)
-    if state_path.exists():
-        print_error(f"{node} is already in maintenance (since {json.loads(state_path.read_text()).get('started')})")
-        raise typer.Exit(1)
 
     config_manager = ConfigManager()
     try:
         async with ProxmoxClient(config_manager.get_profile(profile)) as client:
+            cluster_key = await _cluster_key(client)
+            state_path = _state_file(cluster_key, node)
+            if state_path.exists():
+                started = json.loads(state_path.read_text()).get("started")
+                raise PVECliError(f"{node} is already in maintenance (since {started})")
             status = await client.get_cluster_status() or []
             cluster = next((x for x in status if x.get("type") == "cluster"), {})
             if cluster and not cluster.get("quorate"):
@@ -657,26 +692,68 @@ async def maintenance_enter(
             console.print(f"  [bold]Guests to move:[/bold] {len(guests)} to {target}")
             if ceph_present and not no_ceph_flag:
                 console.print("  [bold]Ceph:[/bold]           " + ("noout already set" if noout_already else "set noout"))
-            if ha_here:
+            ha_mode = await client.get_ha_placement_mode() if ha_here else None
+            if ha_here and ha_mode == "rules":
+                console.print(
+                    f"  [bold]HA:[/bold]             {len(ha_here)} guest(s), failback paused until exit"
+                )
+            elif ha_here:
+                # Groups carry nofailback for every guest of the group: not
+                # something to flip for one node's maintenance
                 print_warning(
-                    f"{len(ha_here)} guest(s) are under HA. Proxmox has no API for the HA node "
-                    "maintenance mode: to keep HA from moving them back while the node "
-                    f"reboots, run on {node}: ha-manager crm-command node-maintenance enable {node}"
+                    f"{len(ha_here)} guest(s) are under HA groups. To keep HA from moving them "
+                    f"back while {node} reboots, run on it (root): "
+                    f"ha-manager crm-command node-maintenance enable {node}"
+                )
+            missing = await _missing_privileges(
+                client, guests,
+                ceph_flag=ceph_present and not no_ceph_flag and not noout_already,
+                ha_failback=bool(ha_here) and ha_mode == "rules",
+            )
+            if missing:
+                raise PVECliError(
+                    "This user cannot carry out the maintenance, nothing was changed. "
+                    "Missing: " + "; ".join(missing)
                 )
             if not yes and not confirm(f"Put {node} into maintenance?", default=False):
                 print_cancelled()
                 return
 
             state = {
-                "profile": name, "node": node, "target": target,
+                "profile": name, "cluster": cluster_key, "node": node, "target": target,
                 "started": time.strftime("%Y-%m-%d %H:%M:%S"),
                 "guests": [{"vmid": g["vmid"], "type": g["type"], "status": g.get("status")} for g in guests],
                 "noout_set": False,
+                "failback_paused": [],
             }
             if ceph_present and not no_ceph_flag and not noout_already:
-                await client.set_ceph_flag("noout")
+                try:
+                    await client.set_ceph_flag("noout")
+                except PermissionError as e:
+                    # Nothing has changed yet: stop here with the way out
+                    raise PVECliError(
+                        f"{e}. This user cannot set Ceph flags. Nothing was changed. "
+                        "Run with a user holding Sys.Modify on /, or pass --no-ceph-flag "
+                        "to skip noout (Ceph then rebalances when the node's OSDs go down)"
+                    )
                 state["noout_set"] = True
                 print_success("Ceph noout flag set")
+            # HA brings a guest back to its preferred node as soon as that
+            # node is up (failback), which would happen at every reboot of
+            # the maintenance. Pause it on the guests leaving, through the
+            # API: no root shell on the node is needed.
+            if ha_here and ha_mode == "rules":
+                for g in ha_here:
+                    sid = f"{'vm' if g['type'] == 'qemu' else 'ct'}:{g['vmid']}"
+                    try:
+                        cfg = await client.get_ha_resource(sid) or {}
+                        if str(cfg.get("failback", 1)) != "0":
+                            await client.update_ha_resource(sid, failback=0)
+                            state["failback_paused"].append(sid)
+                    except PVECliError as e:
+                        print_warning(f"Could not pause failback of {sid}: {e}")
+                if state["failback_paused"]:
+                    print_success(f"HA failback paused on {len(state['failback_paused'])} guest(s)")
             # Recorded before moving anything: an interrupted evacuation can
             # still be undone with `exit`
             state_path.write_text(json.dumps(state, indent=2))
@@ -720,16 +797,30 @@ async def maintenance_exit(
 
     from .cluster import _run_bulk
 
-    name = _profile_name(profile)
-    state_path = _state_file(name, node)
-    if not state_path.exists():
-        print_error(f"No maintenance recorded for {node} with profile {name}")
-        raise typer.Exit(1)
-    state = json.loads(state_path.read_text())
-
     config_manager = ConfigManager()
     try:
         async with ProxmoxClient(config_manager.get_profile(profile)) as client:
+            cluster_key = await _cluster_key(client)
+            state_path = _state_file(cluster_key, node)
+            if not state_path.exists():
+                raise PVECliError(f"No maintenance recorded for {node} on cluster {cluster_key}")
+            state = json.loads(state_path.read_text())
+            current_all = [
+                g for g in await client.get_cluster_resources(resource_type="vm")
+                if g.get("type") in ("qemu", "lxc")
+            ]
+            recorded = {g["vmid"] for g in state.get("guests", [])}
+            missing = await _missing_privileges(
+                client,
+                [] if no_return else [g for g in current_all if g["vmid"] in recorded],
+                ceph_flag=bool(state.get("noout_set")),
+                ha_failback=bool(state.get("failback_paused")),
+            )
+            if missing:
+                raise PVECliError(
+                    "This user cannot bring the node back, nothing was changed. "
+                    "Missing: " + "; ".join(missing)
+                )
             deadline = time.time() + wait
             while True:
                 nodes = {n["node"]: n for n in await client.get_nodes()}
@@ -744,7 +835,7 @@ async def maintenance_exit(
             if cluster and not cluster.get("quorate"):
                 raise PVECliError("The cluster is not quorate yet: wait before leaving maintenance")
 
-            other_maint = [p for p in _state_dir().glob(f"{name}__*.json") if p != state_path]
+            other_maint = [p for p in _state_dir().glob(f"{cluster_key}__*.json") if p != state_path]
             if state.get("noout_set"):
                 if other_maint:
                     print_warning(
@@ -770,6 +861,14 @@ async def maintenance_exit(
                             client, "migrate", movable, True,
                             {"target": node, "online": 1}, {"target": node}, f"Return to {node}",
                         )
+            paused = state.get("failback_paused") or []
+            for sid in paused:
+                try:
+                    await client.update_ha_resource(sid, failback=1)
+                except PVECliError as e:
+                    print_warning(f"Could not restore failback of {sid}: {e}")
+            if paused:
+                print_success(f"HA failback restored on {len(paused)} guest(s)")
             state_path.unlink()
             print_success(f"{node} is out of maintenance")
     except PVECliError as e:
@@ -787,10 +886,11 @@ def maintenance_status() -> None:
         print_info("No node in maintenance")
         return
     table = Table(header_style="bold cyan")
-    for col in ("Profile", "Node", "Since", "Guests moved to", "noout set by pvecli"):
+    for col in ("Cluster", "Node", "By profile", "Since", "Guests moved to", "noout set by pvecli"):
         table.add_column(col)
     for p in records:
         st = json.loads(p.read_text())
-        table.add_row(st.get("profile", "?"), st.get("node", "?"), st.get("started", "?"),
+        table.add_row(st.get("cluster", p.stem.split("__")[0]), st.get("node", "?"), st.get("profile", "?"),
+                      st.get("started", "?"),
                       f"{len(st.get('guests', []))} -> {st.get('target')}", "yes" if st.get("noout_set") else "no")
     console.print(table)

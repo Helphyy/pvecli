@@ -78,7 +78,11 @@ pvecli node maintenance enter pve2 -t pve3  # or to a chosen node
 pvecli node maintenance exit pve2
 ```
 
-`enter` checks the quorum, sets the Ceph `noout` flag (OSDs going down trigger no rebalance), evacuates the node and records what it did in `~/.config/pvecli/maintenance/`. `exit` waits for the node, checks the quorum, clears `noout` only if it set it and no other node is still in maintenance, and moves the guests back. The upgrade itself is never automated. Proxmox has no API for the HA node maintenance mode: when HA guests are involved, pvecli prints the `ha-manager crm-command node-maintenance` line to run on the node.
+`enter` checks the quorum, sets the Ceph `noout` flag (OSDs going down trigger no rebalance), evacuates the node and records what it did in `~/.config/pvecli/maintenance/`, per cluster. `exit` waits for the node, checks the quorum, clears `noout` only if it set it and no other node of the cluster is still in maintenance, and moves the guests back. The upgrade itself is never automated.
+
+HA guests: HA would bring them back to their preferred node as soon as it is up again (failback), at every reboot of the maintenance. On clusters using HA rules (PVE 9), `enter` pauses failback on the guests it moves and `exit` restores it, through the API: no root shell on the node is needed. On clusters still using HA groups, failback is a setting of the whole group, so pvecli leaves it alone and prints the `ha-manager crm-command node-maintenance` line to run on the node.
+
+Before changing anything, both commands check the effective privileges of the user (`VM.Migrate` on each guest, `Sys.Modify` on `/` for the Ceph flag, `Sys.Console` on `/` for HA failback) and stop with the list of what is missing. A user without `Sys.Modify` can still run a maintenance with `--no-ceph-flag`.
 
 ---
 
