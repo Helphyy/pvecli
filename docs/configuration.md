@@ -54,6 +54,8 @@ profiles:
 | `host` | string | - | Proxmox hostname, IPv4 or IPv6 (bare or bracketed, e.g. `2001:db8::1` or `[2001:db8::1]`) |
 | `port` | integer | `8006` | Proxmox API port |
 | `verify_ssl` | boolean | `true` | Verify TLS certificate. Set to `false` for self-signed certs |
+| `timeout` | integer | `30` | API request timeout in seconds |
+| `sdn_write` | boolean | `false` | Allow `sdn` commands to modify the cluster. Every SDN write is refused unless this is set by hand, so a profile pointing at production stays read only |
 | `auth` | object | - | Authentication block |
 
 ### auth block

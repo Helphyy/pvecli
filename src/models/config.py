@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class AuthConfig(BaseModel):
@@ -37,6 +37,11 @@ class AuthConfig(BaseModel):
 class ProfileConfig(BaseModel):
     """Profile configuration for a Proxmox cluster."""
 
+    # Keep keys this version does not know about: an older pvecli writing the
+    # file would otherwise drop them silently, which is how sdn_write can
+    # disappear from a profile without anyone noticing.
+    model_config = ConfigDict(extra="allow")
+
     host: str
     port: int = 8006
     verify_ssl: bool = True
@@ -47,6 +52,9 @@ class ProfileConfig(BaseModel):
     ssh_key: str | None = None
     rdp_user: str | None = None
     rdp_port: int = 3389
+    # Opt-in required before any SDN write command touches this cluster.
+    # Absent or false means pvecli refuses to create, edit or apply SDN here.
+    sdn_write: bool = False
 
 
 class OutputConfig(BaseModel):

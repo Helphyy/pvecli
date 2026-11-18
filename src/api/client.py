@@ -1718,6 +1718,88 @@ class ProxmoxClient:
     # SDN. Config lives in /etc/pve/sdn, replicated to every node, and stays
     # pending until apply_sdn() regenerates the network configuration.
 
+    async def get_sdn_zones(self, pending: bool = False) -> list[dict[str, Any]]:
+        """SDN zones. pending=True also reports unapplied changes."""
+        return await self.get("/cluster/sdn/zones", params={"pending": 1} if pending else None)
+
+    async def get_sdn_vnets(self, pending: bool = False) -> list[dict[str, Any]]:
+        """SDN vnets. pending=True also reports unapplied changes."""
+        return await self.get("/cluster/sdn/vnets", params={"pending": 1} if pending else None)
+
+    async def get_sdn_vnet(self, vnet: str) -> dict[str, Any]:
+        """One vnet definition."""
+        return await self.get(f"/cluster/sdn/vnets/{vnet}")
+
+    async def get_sdn_subnets(
+        self, vnet: str, pending: bool = False
+    ) -> list[dict[str, Any]]:
+        """Subnets attached to a vnet. pending=True reports unapplied changes."""
+        return await self.get(
+            f"/cluster/sdn/vnets/{vnet}/subnets",
+            params={"pending": 1} if pending else None,
+        )
+
+    async def get_sdn_zone_status(self, node: str) -> list[dict[str, Any]]:
+        """Zone status as seen by one node."""
+        return await self.get(f"/nodes/{node}/sdn/zones")
+
+    async def get_sdn_zone_content(self, node: str, zone: str) -> list[dict[str, Any]]:
+        """Per-vnet status inside a zone, on one node."""
+        return await self.get(f"/nodes/{node}/sdn/zones/{zone}/content")
+
+    async def create_sdn_zone(self, zone: str, zone_type: str, **params: Any) -> None:
+        """Create an SDN zone. Stays pending until apply_sdn()."""
+        data: dict[str, Any] = {"zone": zone, "type": zone_type}
+        for key, value in params.items():
+            if value is not None:
+                data[key] = value
+        await self.post("/cluster/sdn/zones", data=data)
+
+    async def update_sdn_zone(self, zone: str, **params: Any) -> None:
+        """Change an existing SDN zone. Stays pending until apply_sdn()."""
+        data = {k: v for k, v in params.items() if v is not None}
+        if data:
+            await self.put(f"/cluster/sdn/zones/{zone}", data=data)
+
+    async def delete_sdn_zone(self, zone: str) -> None:
+        """Delete an SDN zone."""
+        await self.delete(f"/cluster/sdn/zones/{zone}")
+
+    async def create_sdn_vnet(self, vnet: str, zone: str, **params: Any) -> None:
+        """Create a vnet inside a zone. Stays pending until apply_sdn()."""
+        data: dict[str, Any] = {"vnet": vnet, "zone": zone}
+        for key, value in params.items():
+            if value is not None:
+                data[key] = value
+        await self.post("/cluster/sdn/vnets", data=data)
+
+    async def delete_sdn_vnet(self, vnet: str) -> None:
+        """Delete a vnet."""
+        await self.delete(f"/cluster/sdn/vnets/{vnet}")
+
+    async def create_sdn_subnet(self, vnet: str, subnet: str, **params: Any) -> None:
+        """Attach a subnet to a vnet. Stays pending until apply_sdn()."""
+        # vnet is required both in the path and in the body
+        data: dict[str, Any] = {"subnet": subnet, "type": "subnet", "vnet": vnet}
+        for key, value in params.items():
+            if value is not None and key != "vnet":
+                data[key] = value
+        await self.post(f"/cluster/sdn/vnets/{vnet}/subnets", data=data)
+
+    async def delete_sdn_subnet(self, vnet: str, subnet: str) -> None:
+        """Detach a subnet from a vnet. Stays pending until apply_sdn()."""
+        await self.delete(f"/cluster/sdn/vnets/{vnet}/subnets/{subnet}")
+
+    async def apply_sdn(self) -> str:
+        """Apply the pending SDN configuration on every node.
+
+        This reloads the network configuration cluster wide.
+
+        Returns:
+            UPID of the reload task
+        """
+        return await self.put("/cluster/sdn")
+
     async def create_cluster(self, clustername: str, **params: Any) -> str:
         """Turn the node this client talks to into the first cluster member.
 

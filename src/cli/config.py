@@ -210,6 +210,9 @@ def _render_profile_panel(name: str, profile: ProfileConfig, is_default: bool = 
     lines.append(f"[bold]SSH user:[/bold]    {profile.ssh_user or 'root'}")
     lines.append(f"[bold]RDP user:[/bold]    {profile.rdp_user or 'Administrator'}")
     lines.append(f"[bold]Timeout:[/bold]     {profile.timeout}s")
+    lines.append(
+        f"[bold]SDN write:[/bold]   {'[yellow]Yes[/yellow]' if profile.sdn_write else 'No'}"
+    )
 
     if is_default:
         lines.append("")
@@ -525,16 +528,20 @@ def edit_profile(
                 password=changes.get("password", current.auth.password),
             )
 
-        profile = ProfileConfig(
-            host=changes.get("host", current.host),
-            port=changes.get("port", current.port),
-            verify_ssl=changes.get("verify_ssl", current.verify_ssl),
-            auth=auth_config,
-            ssh_user=changes.get("ssh_user", current.ssh_user) if changes.get("ssh_user", current.ssh_user or "root") != "root" else None,
-            ssh_port=changes.get("ssh_port", current.ssh_port),
-            ssh_key=current.ssh_key,
-            rdp_user=changes.get("rdp_user", current.rdp_user) if changes.get("rdp_user", current.rdp_user or "Administrator") != "Administrator" else None,
-            rdp_port=changes.get("rdp_port", current.rdp_port),
+        # Copy from the current profile rather than rebuilding it: fields this
+        # menu does not edit (timeout, sdn_write, any forward-compatible extra
+        # key) must survive the edit instead of falling back to their default.
+        profile = current.model_copy(
+            update={
+                "host": changes.get("host", current.host),
+                "port": changes.get("port", current.port),
+                "verify_ssl": changes.get("verify_ssl", current.verify_ssl),
+                "auth": auth_config,
+                "ssh_user": changes.get("ssh_user", current.ssh_user) if changes.get("ssh_user", current.ssh_user or "root") != "root" else None,
+                "ssh_port": changes.get("ssh_port", current.ssh_port),
+                "rdp_user": changes.get("rdp_user", current.rdp_user) if changes.get("rdp_user", current.rdp_user or "Administrator") != "Administrator" else None,
+                "rdp_port": changes.get("rdp_port", current.rdp_port),
+            }
         )
 
         # If renamed, remove old profile

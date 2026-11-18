@@ -6,7 +6,7 @@ import typer
 from rich.console import Console
 
 from .. import __version__
-from . import ceph, cluster, config, ct, node, pool, storage, tag, vm
+from . import ceph, cluster, config, ct, node, pool, sdn, storage, tag, vm
 
 console = Console()
 
@@ -25,6 +25,7 @@ app.add_typer(storage.app, name="storage")
 app.add_typer(cluster.app, name="cluster")
 app.add_typer(pool.app, name="pool")
 app.add_typer(ceph.app, name="ceph")
+app.add_typer(sdn.app, name="sdn")
 app.add_typer(tag.app, name="tag")
 
 
