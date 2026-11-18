@@ -6,7 +6,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.10+-3776AB?logo=python&logoColor=white)](https://www.python.org)
 [![License](https://img.shields.io/badge/license-GPLv3-22c55e)](LICENSE.txt)
-[![Version](https://img.shields.io/badge/version-1.11.0-6366f1)](https://github.com/Helphyy/pvecli/releases)
+[![Version](https://img.shields.io/badge/version-1.12.0-6366f1)](https://github.com/Helphyy/pvecli/releases)
 [![Proxmox VE](https://img.shields.io/badge/Proxmox-VE-E57000?logo=proxmox&logoColor=white)](https://www.proxmox.com)
 [![pipx](https://img.shields.io/badge/install%20with-pipx-0ea5e9)](https://pipx.pypa.io)
 
@@ -27,6 +27,10 @@
 - 🧭 **Cluster lifecycle** - Preflight checks, health with failure tolerance, create and join
 - 🚚 **Migration & bulk actions** - Migrate VMs and containers, evacuate a node, start/stop/suspend/migrate guests by tag, pool or node
 - 🛡 **HA rules** - Pin guests with PVE 9 HA rules (groups still supported on older clusters), arm/disarm HA for maintenance
+- 🌐 **Several clusters at once** - `-p 'client-*'`, `-p @prod`: read commands, find, audit and power actions across your whole fleet
+- 🔎 **find** - Who has this IP, MAC, disk or name, on which cluster, and who can access it
+- 🩺 **audit** - Certificates, access, firewall, backups, old snapshots, orphan disks, in one read-only report
+- ☁️ **Cloud-init deploy** - A configured VM from a template in one command, plus bulk snapshots with retention
 - 🕸 **SDN** - Zones, vnets, subnets and DHCP, with a per-profile write lock
 - 🐙 **Ceph** - Health, OSDs, pools, flags and versions across your whole fleet
 - 📊 **Usage reporting** - Aggregate CPU, memory and provisioned disk per cluster or per pool
@@ -86,8 +90,8 @@ pvecli ct list
 | Group | Description |
 |:------|:------------|
 | `pvecli config` | Manage cluster profiles (add, edit, remove, test, default, login) |
-| `pvecli node` | Node info, shutdown, reboot, evacuate, VNC shell, SSH |
-| `pvecli vm` | Full VM lifecycle - start, stop, clone, migrate, template, snapshot, HA, exec, VNC, SSH, RDP |
+| `pvecli node` | Node info, shutdown, reboot, evacuate, maintenance, updates, VNC shell, SSH |
+| `pvecli vm` | Full VM lifecycle - start, stop, deploy, cloud-init, clone, migrate, template, snapshot, HA, exec, VNC, SSH, RDP |
 | `pvecli ct` | LXC container lifecycle - start, stop, clone, migrate, template, snapshot, HA, VNC, SSH |
 | `pvecli storage` | Add and remove shared storage, listing, content management, config |
 | `pvecli pool` | Resource pool management with usage reporting and export/import |
@@ -95,6 +99,9 @@ pvecli ct list
 | `pvecli sdn` | SDN zones, vnets, subnets and DHCP (writes locked behind `sdn_write`) |
 | `pvecli ceph` | Ceph health, OSDs, pools, flags, versions and log (read only) |
 | `pvecli tag` | Global tag management with color palette and export/import |
+| `pvecli find` | Find guests, IPs, MACs, disks and access across clusters |
+| `pvecli audit` | Read-only health and hygiene report |
+| `pvecli snapshot` | Snapshots across many guests: add, list, prune |
 
 → **[Full command reference](docs/commands.md)**
 
@@ -161,6 +168,19 @@ pvecli ceph status --profile production
 # Empty a node before maintenance, then shut down every guest tagged "lab"
 pvecli node evacuate pve1 pve2
 pvecli cluster guests shutdown --tag lab --timeout 120 --force-stop
+
+# Who has this IP, on any of your clusters?
+pvecli find 10.20.3.14 -p '*'
+
+# Morning check across every client
+pvecli audit -p 'client-*' --problems
+
+# A ready VM from a cloud-init template
+pvecli vm deploy 9000 web01 --ip dhcp --ssh-key ~/.ssh/id_ed25519.pub --wait-ip 120
+
+# Run a command on every Debian VM, snapshot before an upgrade
+pvecli vm exec --tag debian -- apt update
+pvecli snapshot add pre-upgrade --tag debian
 ```
 
 ---

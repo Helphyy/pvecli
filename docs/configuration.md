@@ -46,6 +46,7 @@ profiles:
 | Field | Type | Description |
 |:------|:-----|:------------|
 | `default_profile` | string | Profile used when `--profile` is not specified |
+| `groups` | map | Named sets of profiles, used as `-p @name` (see [Several profiles at once](#several-profiles-at-once)) |
 
 ### Profile
 
@@ -56,6 +57,7 @@ profiles:
 | `verify_ssl` | boolean | `true` | Verify TLS certificate. Set to `false` for self-signed certs |
 | `timeout` | integer | `30` | API request timeout in seconds |
 | `sdn_write` | boolean | `false` | Allow `sdn` commands to modify the cluster. Every SDN write is refused unless this is set by hand, so a profile pointing at production stays read only |
+| `fleet` | boolean | `true` | `false` keeps the profile out of every pattern (`-p '*'`) and group: it is then only reached when named explicitly |
 | `auth` | object | - | Authentication block |
 
 ### auth block
@@ -68,6 +70,28 @@ profiles:
 | `token_value` | string | Token secret (UUID format) |
 
 ---
+
+## Several profiles at once
+
+Many commands accept several profiles in `-p` and run once per profile, each result under a header line (or gathered into one JSON document keyed by profile with `--json`):
+
+```bash
+pvecli cluster health -p lab1,lab4       # a list
+pvecli audit -p 'client-*'               # a pattern ('*' for every profile)
+pvecli find 10.20.3.14 -p @prod          # a group
+```
+
+Groups are defined at the top level of `config.yaml`:
+
+```yaml
+groups:
+  prod: [client-a, client-b]
+  lab: [lab1, lab6]
+```
+
+Read-only commands query the profiles in parallel; an unreachable cluster is reported in the result without stopping the others, and the command then exits 1. Commands that may ask for a confirmation run the profiles one after the other.
+
+Two profiles pointing at the same cluster make a command run twice on it: harmless for a read, not for `vm exec`. Keep one profile per cluster in groups and patterns.
 
 ## Managing profiles
 

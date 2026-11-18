@@ -3,8 +3,21 @@
 Every command supports `--profile, -p` to target a specific cluster profile.
 Most commands work **interactively** when called without arguments.
 
+Read commands, power commands, `find`, `audit`, `snapshot` and `node updates` also accept **several profiles**: `-p lab1,lab4`, `-p 'client-*'`, `-p @prod` (see [configuration](configuration.md#several-profiles-at-once)).
+
 Multi-target commands accept single IDs, comma-separated lists, or ranges:
 `100`, `100,101,102`, `100-105`, `100-103,200,300-302`
+
+They also pick guests by **tag, pool or node** instead of IDs (combinable, restricted to the IDs when both are given). The selection is printed first, and commands that change something ask before acting (`-y` to skip):
+
+```bash
+pvecli vm exec --tag debian -- apt update
+pvecli vm shutdown --pool LAB
+pvecli ct start --node pve2 --tag web
+pvecli vm ha add --tag critical --nodes pve1,pve2
+```
+
+This applies to `vm/ct start, stop, shutdown, reboot`, `vm suspend, resume, exec`, `vm/ct ha status, add, set, remove` and `vm/ct vnc`. `remove` and template conversion stay ID only, on purpose.
 
 List commands (`vm`, `ct`, `node`, `storage`, `pool`, `tag`) accept `--order/-o COLUMN` to sort by a column (case-insensitive, prefix match). The sorted column is moved to the first position:
 
@@ -44,6 +57,10 @@ pvecli config login                Open Proxmox web UI in browser
 pvecli node shutdown [NODE]        Shutdown a node (stops all guests, then powers off)
 pvecli node reboot [NODE]          Reboot a node (stops all guests, then reboots)
 pvecli node evacuate NODE TARGET   Move every guest off a node before maintenance
+pvecli node maintenance enter NODE Empty a node, set Ceph noout, before working on it by hand
+pvecli node maintenance exit NODE  Check the cluster, clear noout, bring its guests back
+pvecli node maintenance status     Nodes currently in maintenance
+pvecli node updates [NODE]         Pending package updates per node (--refresh, --packages)
 pvecli node vnc [NODES]            Open VNC shell(s) as browser tabs (--split for windows)
 pvecli node ssh [NODE]             SSH into a node (--user, --port, --key, --command)
 pvecli node list                   List all cluster nodes
@@ -51,6 +68,17 @@ pvecli node info [NODE]            Show node details (--all for all)
 ```
 
 Node shutdown/reboot auto-detects if you are connected to the target node and warns before losing CLI access.
+
+### node maintenance
+
+```bash
+pvecli node maintenance enter pve2          # guests to the node with most free memory
+pvecli node maintenance enter pve2 -t pve3  # or to a chosen node
+# upgrade / reboot pve2 by hand
+pvecli node maintenance exit pve2
+```
+
+`enter` checks the quorum, sets the Ceph `noout` flag (OSDs going down trigger no rebalance), evacuates the node and records what it did in `~/.config/pvecli/maintenance/`. `exit` waits for the node, checks the quorum, clears `noout` only if it set it and no other node is still in maintenance, and moves the guests back. The upgrade itself is never automated. Proxmox has no API for the HA node maintenance mode: when HA guests are involved, pvecli prints the `ha-manager crm-command node-maintenance` line to run on the node.
 
 ---
 
@@ -67,6 +95,9 @@ pvecli vm lock [VMID] [TYPE]       Lock a VM (requires root@pam)
 pvecli vm unlock [VMID]            Unlock a VM (requires root@pam)
 pvecli vm add [NODE]               Create a new VM (interactive wizard or CLI options)
 pvecli vm clone [VMID]             Clone a VM
+pvecli vm deploy TEMPLATE NAME     Clone a cloud-init template, configure it and start it
+pvecli vm cloudinit show VMID      Cloud-init settings, with pending changes
+pvecli vm cloudinit set VMID       Change user, keys, IP, DNS; adds the drive if missing
 pvecli vm migrate [VMID] [TARGET]  Migrate a VM to another node (live when it runs)
 pvecli vm edit [VMID]              Edit VM configuration interactively
 pvecli vm remove [VMIDS]           Delete VMs (--purge, --force)
@@ -139,6 +170,18 @@ pvecli vm ha remove 100 --yes                          # also drops it from the 
 ```
 
 `vm ha status` shows the group or the rules of each guest, with its live state and node. Without flags, `vm ha add` opens a wizard: the HA group on a groups cluster, the preferred nodes on a rules cluster.
+
+### vm deploy / vm cloudinit
+
+```bash
+pvecli vm deploy 9000 web01 --ip dhcp --ssh-key ~/.ssh/id_ed25519.pub --wait-ip 120
+pvecli vm deploy 9000 db01 --ip 10.0.0.31/24 --gw 10.0.0.1 --dns 10.0.0.1 \
+    --user admin --cores 4 --memory 8G --disk-size 50G --tags db,prod --pool PROD
+pvecli vm cloudinit set 120 --ip 10.0.0.22/24 --gw 10.0.0.1   # applied at next reboot
+pvecli vm cloudinit show 120
+```
+
+`deploy` makes a linked clone (`--full` or `--storage` for a full one), sets CPU, memory, tags and pool, grows the boot disk, writes the cloud-init settings (adding a cloud-init drive if the template has none), starts the VM, and with `--wait-ip` prints its address from the guest agent. Passwords only come from an environment variable (`--password-env`); SSH keys are given as files.
 
 ### vm migrate
 
@@ -574,6 +617,67 @@ for p in cluster-a cluster-b cluster-c; do
     echo "== $p"; pvecli ceph status -p "$p" --json | jq -r .health
 done
 ```
+
+---
+
+## find
+
+Where something lives and what it belongs to, read only, on one or many clusters.
+
+```bash
+pvecli find 10.20.3.14 -p '*'           # an IP: guests and infrastructure
+pvecli find 10.20.3.0/24                # a network
+pvecli find bc:24:11:ee:5a:c4           # a MAC
+pvecli find vm-105-disk-1               # which guest uses this volume
+pvecli find web01.example.com           # resolved, then searched as its IPs
+pvecli find web                         # name, notes
+```
+
+An IP is searched in the guest configs (cloud-init, LXC), live from the guest agent and LXC interfaces, in the SDN IPAM, and in the infrastructure: node addresses, storage servers (NFS, CIFS, PBS, Ceph monitors), SDN gateways, firewall aliases and IP sets. Every answer says where it came from.
+
+Filters narrow the query, or list guests on their own:
+
+```
+--on-vnet / --on-bridge / --vlan       attached to a network
+--on-storage / --iso                   with a disk on a storage, an ISO mounted
+--rule / --pool / --tag / --snapshot   HA rule, pool, tag, snapshot name
+--stopped --running --template --locked
+--no-agent --no-backup --no-tags --old-snapshots 30d
+--min-ram 8G --min-cores 8 --os windows
+--tasks                                last actions run on each guest (who, what, when)
+```
+
+Access: `pvecli find --access 105` lists who can act on guest 105 (ACL entries on the guest, its pool and above); `pvecli find --user alice@pve` what a user or token can reach.
+
+---
+
+## audit
+
+Read-only health and hygiene report, per cluster or across many:
+
+```bash
+pvecli audit
+pvecli audit -p '*' --problems          # only WARN and FAIL
+pvecli audit -p @prod --json            # for a cron job or a dashboard
+```
+
+Checks: certificates expiring (`--cert-days`, default 30), expired users and tokens, tokens without privilege separation, broad Administrator grants, datacenter firewall disabled, PVE versions mixed across nodes, subscription, pending updates, guests in no backup job, snapshots older than `--snapshot-age` (default 30d), ISOs left mounted, orphan disks (volumes of guests that no longer exist, `--skip-orphans` to skip the storage scan), HA disarmed, Ceph health and maintenance flags left set.
+
+Exit code: 0 when nothing fails (warnings included), 2 when a check fails, 1 when the audit could not run.
+
+---
+
+## snapshot
+
+Snapshots across many guests, VMs and containers alike. Guests are picked with `--vms`, `--tag`, `--pool`, `--node`, or `--all`.
+
+```bash
+pvecli snapshot add pre-upgrade --tag web          # same snapshot on every web guest
+pvecli snapshot list --older-than 30d -p '*'
+pvecli snapshot prune --older-than 7d --name-prefix pre- --keep 1
+```
+
+`add` skips guests that already have a snapshot with that name. `prune` always shows what it would delete and asks first; `--keep N` spares the N most recent matching snapshots of each guest.
 
 ---
 
