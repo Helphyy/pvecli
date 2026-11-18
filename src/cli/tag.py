@@ -11,7 +11,7 @@ from ..api.exceptions import PVECliError
 from ..config import ConfigManager
 from ..utils import build_ordered_table, confirm, console, print_cancelled, print_error, print_success, print_warning, prompt
 from ..utils.helpers import async_to_sync, ordered_group
-from ..utils.menu import multi_select_menu, select_menu
+from ..utils.menu import multi_select_menu, require_terminal, select_menu
 
 app = typer.Typer(help="Manage tags globally", no_args_is_help=True, cls=ordered_group(["add", "edit", "remove", "color", "export", "import", "list"]))
 color_app = typer.Typer(help="Manage color palette", no_args_is_help=True, cls=ordered_group(["add", "remove", "init", "list"]))
@@ -728,6 +728,9 @@ def color_add(
             print_warning(f"Color palette not found. Run 'pvecli tag color init' first.")
             raise typer.Exit(1)
 
+        if not (name and hex_color and font):
+            require_terminal()
+
         if not name:
             name = prompt("  Color name")
             if not name.strip():
@@ -783,6 +786,9 @@ def color_add(
     except KeyboardInterrupt:
         console.print()
         print_cancelled()
+    except PVECliError as e:
+        print_error(str(e))
+        raise typer.Exit(1)
 
 
 @color_app.command("remove")
@@ -827,3 +833,6 @@ def color_remove(
     except KeyboardInterrupt:
         console.print()
         print_cancelled()
+    except PVECliError as e:
+        print_error(str(e))
+        raise typer.Exit(1)
