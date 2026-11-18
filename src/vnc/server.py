@@ -1,12 +1,15 @@
 """Local VNC proxy server with embedded noVNC client."""
 
 import asyncio
+import json
 import mimetypes
 import ssl
+import subprocess
 import sys
 import time
 from http import HTTPStatus
 from pathlib import Path, PurePosixPath
+from typing import Any
 from urllib.parse import quote, unquote, urlparse
 
 import websockets.exceptions
@@ -204,3 +207,22 @@ class VNCProxyServer:
                         idle = time.monotonic() - self._last_disconnect
                         if idle >= self.DISCONNECT_GRACE:
                             break
+
+
+def spawn_background_server(config: dict[str, Any]) -> subprocess.Popen:
+    """Start a detached VNC proxy server, handing it its config over stdin.
+
+    The config carries the Proxmox session cookie: as a command line argument
+    any local user could read it in /proc/<pid>/cmdline.
+    """
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "src.vnc"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    assert proc.stdin is not None
+    proc.stdin.write(json.dumps(config).encode())
+    proc.stdin.close()
+    return proc

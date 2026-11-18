@@ -343,7 +343,7 @@ async def node_vnc(
     """Open authenticated VNC shell(s) for one or more nodes."""
     from ..utils import open_browser_window, print_success
     from ..utils.network import find_free_port
-    from ..vnc.server import VNCProxyServer
+    from ..vnc.server import VNCProxyServer, spawn_background_server
 
     config_manager = ConfigManager()
 
@@ -411,19 +411,10 @@ async def node_vnc(
             console.print("[dim]Press Enter to stop the server[/dim]")
             await server.run()
         else:
-            import json
-            import subprocess
-            import sys
 
             for node_name, server_config in consoles:
                 server = VNCProxyServer(**server_config)
-                proc = subprocess.Popen(
-                    [sys.executable, "-m", "src.vnc", json.dumps(server_config)],
-                    stdin=subprocess.DEVNULL,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    start_new_session=True,
-                )
+                proc = spawn_background_server(server_config)
                 open_browser_window(server.get_browser_url(), new_window=split)
                 print_success(f"VNC shell for node '{node_name}' running in background (PID: {proc.pid})")
 
