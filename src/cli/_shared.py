@@ -62,6 +62,17 @@ from .tag import _parse_color_map
 # Helpers
 # ---------------------------------------------------------------------------
 
+# A cluster without Ceph answers with this, which is not a failure. Anything
+# else is: reading "no permission" or a dead monitor as "no Ceph here" would
+# let cluster shutdown skip the maintenance flags on a cluster that has them.
+CEPH_ABSENT_MARKER = "binary not installed"
+
+
+def ceph_absent(err: Exception) -> bool:
+    """Whether this error means Ceph is not installed, rather than unreachable."""
+    return CEPH_ABSENT_MARKER in str(err)
+
+
 async def detect_connected_node(client: ProxmoxClient, profile_host: str) -> str | None:
     """Detect which cluster node the API is connected to.
 

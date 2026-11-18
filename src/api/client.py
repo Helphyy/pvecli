@@ -1634,6 +1634,64 @@ class ProxmoxClient:
         """
         return await self.get(f"/storage/{storage}")
 
+    # Ceph, read only. Writing is limited to the maintenance flags, which
+    # cluster shutdown already uses.
+
+    async def get_ceph_cluster_status(self) -> dict[str, Any]:
+        """Cluster wide Ceph status, the equivalent of ceph -s."""
+        return await self.get("/cluster/ceph/status")
+
+    async def get_ceph_flags(self) -> list[dict[str, Any]]:
+        """All Ceph OSD flags with their current value."""
+        return await self.get("/cluster/ceph/flags")
+
+    async def get_ceph_metadata(self, scope: str | None = None) -> dict[str, Any]:
+        """Ceph daemon metadata. scope='versions' compares daemon versions."""
+        return await self.get(
+            "/cluster/ceph/metadata", params={"scope": scope} if scope else None
+        )
+
+    async def get_ceph_osds(self, node: str) -> dict[str, Any]:
+        """OSD tree as seen from one node."""
+        return await self.get(f"/nodes/{node}/ceph/osd")
+
+    async def get_ceph_pools(self, node: str) -> list[dict[str, Any]]:
+        """Ceph pools with their size, min_size and usage."""
+        return await self.get(f"/nodes/{node}/ceph/pool")
+
+    async def get_ceph_log(self, node: str, limit: int = 50) -> list[dict[str, Any]]:
+        """Tail of the Ceph log on one node.
+
+        The endpoint paginates from the beginning, so asking for a limit alone
+        returns the oldest lines. The Total header gives the offset of the end.
+        """
+        endpoint = f"/nodes/{node}/ceph/log"
+
+        async def has_line(offset: int) -> bool:
+            return bool(await self.get(endpoint, params={"limit": 1, "start": offset}))
+
+        # No Total header on this endpoint, so locate the end: double the
+        # offset until it falls past the last line, then bisect.
+        low, high = 0, 1024
+        while await has_line(high):
+            low, high = high, high * 2
+            if high > 1_000_000:
+                break
+        while low + 1 < high:
+            mid = (low + high) // 2
+            if await has_line(mid):
+                low = mid
+            else:
+                high = mid
+
+        start = max(0, low + 1 - limit)
+        return await self.get(endpoint, params={"limit": limit, "start": start}) or []
+
+    # SDN. Config lives in /etc/pve/sdn, replicated to every node, and stays
+    # pending until apply_sdn() regenerates the network configuration.
+
+    # Cluster membership and node health, used by cluster preflight/health
+
     async def update_storage_config(
         self,
         storage: str,
