@@ -1131,7 +1131,7 @@ async def download_content(
     filename: str = typer.Option(None, "--filename", "-f", help="Target filename (default: extracted from URL)"),
     content_type: str = typer.Option(None, "--type", "-t", help="Content type: iso or vztmpl"),
     checksum: str = typer.Option(None, "--checksum", "-c", help="Expected checksum"),
-    checksum_algorithm: str = typer.Option(
+    checksum_algorithm: str | None = typer.Option(
         None, "--checksum-algorithm", "-ca", help="Checksum algorithm (md5, sha1, sha256, sha512)"
     ),
     background: bool = typer.Option(False, "--background", "-b", help="Start download and return immediately"),
