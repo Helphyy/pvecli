@@ -20,6 +20,11 @@ nav = [
       { "Connect to a cluster" = "start/connect.md" },
       { "First commands" = "start/first-commands.md" },
     ] },
+    { "Reference" = [
+      { "Configuration file" = "reference/config-file.md" },
+      { "Permissions" = "reference/permissions.md" },
+      { "All commands" = ["cli/index.md"] },
+    ] },
     { "Commands" = [
       { "config" = ["cli/config/index.md",
         { "add" = "cli/config/add.md" },
@@ -45,6 +50,9 @@ nav = [
       { "Take and roll back snapshots" = "guests/snapshots.md" },
       { "Make a guest highly available" = "guests/ha.md" },
       { "Organize guests with tags and pools" = "guests/tags-pools.md" },
+    ] },
+    { "Reference" = [
+      { "Deploy file format" = "reference/deploy-file.md" },
     ] },
     { "Commands" = [
       { "vm" = ["cli/vm/index.md",
@@ -226,18 +234,13 @@ nav = [
       { "Audit a cluster" = "fleet/audit.md" },
       { "Use pvecli in scripts" = "fleet/scripting.md" },
     ] },
+    { "Reference" = [
+      { "Exit codes" = "reference/exit-codes.md" },
+    ] },
     { "Commands" = [
       { "find" = "cli/find.md" },
       { "audit" = "cli/audit.md" },
     ] },
-  ] },
-  { "Reference" = [
-    "reference/index.md",
-    { "Configuration file" = "reference/config-file.md" },
-    { "Deploy file format" = "reference/deploy-file.md" },
-    { "Permissions" = "reference/permissions.md" },
-    { "Exit codes" = "reference/exit-codes.md" },
-    { "All commands" = "cli/index.md" },
   ] },
 ]
 # --- end of nav ---

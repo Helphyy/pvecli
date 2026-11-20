@@ -120,6 +120,6 @@ flowchart TB
 
 </div>
 
-Command reference: [vm](../cli/vm/index.md), [ct](../cli/ct/index.md), [deploy](../cli/deploy.md), [snapshot](../cli/snapshot/index.md), [tag](../cli/tag/index.md), [pool](../cli/pool/index.md).
+Reference: [deploy file format](../reference/deploy-file.md), [vm](../cli/vm/index.md), [ct](../cli/ct/index.md), [deploy](../cli/deploy.md), [snapshot](../cli/snapshot/index.md), [tag](../cli/tag/index.md), [pool](../cli/pool/index.md).
 
 [Create a VM](create-vm.md){ .md-button .md-button--primary }

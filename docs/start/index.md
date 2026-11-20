@@ -75,4 +75,4 @@ Follow these pages in order:
 
 [Install pvecli](install.md){ .md-button .md-button--primary }
 
-Command reference: [config](../cli/config/index.md).
+Reference: [configuration file](../reference/config-file.md), [permissions](../reference/permissions.md), [all commands](../cli/index.md), [config](../cli/config/index.md).

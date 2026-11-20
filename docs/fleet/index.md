@@ -86,4 +86,4 @@ flowchart TB
 
 [Run a command on several clusters](several-clusters.md){ .md-button .md-button--primary }
 
-Command reference: [find](../cli/find.md), [audit](../cli/audit.md).
+Reference: [exit codes](../reference/exit-codes.md), [find](../cli/find.md), [audit](../cli/audit.md).

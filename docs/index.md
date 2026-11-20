@@ -30,7 +30,6 @@ The Ceph line on this lab cluster is a warning: [Check cluster health](infrastru
 - [Infrastructure](infrastructure/index.md): health, capacity, nodes, cluster power, storage, SDN and Ceph.
 - [Backups](backups/index.md): coverage, backups now and on a schedule, restores, retention.
 - [Fleet](fleet/index.md): several clusters at once, find, audit, scripting.
-- [Reference](reference/index.md): configuration file, deploy file, permissions, exit codes.
 - [All commands](cli/index.md): the full command list, one page per command.
 
 pvecli is free software under the GPL-3.0-or-later, developed on [GitHub](https://github.com/Helphyy/pvecli). It is not affiliated with Proxmox Server Solutions GmbH.

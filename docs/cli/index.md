@@ -1,4 +1,5 @@
 ---
+icon: lucide/square-terminal
 title: "All commands"
 description: "Every command of pvecli."
 ---
