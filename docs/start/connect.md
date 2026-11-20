@@ -10,17 +10,39 @@ pvecli reaches a cluster through a profile: a name, the address of one node, and
 
 ## Create an API token
 
-An API token is the recommended way in. On any node of the cluster, as root, create a user for pvecli, give it a role, and create a token for it:
+An API token is the recommended way in. Create a user for pvecli, give it a role, and create a token for it, from a shell or from the web interface:
 
-```bash
-pveum user add pvecli@pve
-pveum acl modify / --users pvecli@pve --roles Administrator
-pveum user token add pvecli@pve cli --privsep 0
-```
+=== "Shell"
 
-The last command prints the token value once, in the `value` row: copy it now. The token ID is `pvecli@pve!cli`; pvecli asks for its two halves separately, the user `pvecli@pve` and the token name `cli`.
+    On any node of the cluster, as root:
 
-In the web interface, the same token is under **Datacenter > Permissions > API Tokens > Add**, with **Privilege Separation** unticked so the token has the permissions of its user.
+    ```bash
+    pveum user add pvecli@pve
+    pveum acl modify / --users pvecli@pve --roles Administrator
+    pveum user token add pvecli@pve cli --privsep 0
+    ```
+
+    The last command prints the token value once, in the `value` row: copy it now.
+
+=== "Web interface"
+
+    1. **Datacenter > Permissions > Users > Add**: user name `pvecli`, realm *Proxmox VE authentication server*. No password is needed: pvecli logs in with the token.
+
+        ![Add: User dialog with the user name pvecli](../assets/images/webui-user-add.png){ width="560" }
+
+    2. **Datacenter > Permissions > Add > User Permission**: path `/`, user `pvecli@pve`, role `Administrator`.
+
+        ![Add: User Permission dialog, path /, role Administrator](../assets/images/webui-permission-add.png){ width="400" }
+
+    3. **Datacenter > Permissions > API Tokens > Add**: user `pvecli@pve`, token ID `cli`, **Privilege Separation** unticked so the token has the permissions of its user.
+
+        ![Add: Token dialog with Privilege Separation unticked](../assets/images/webui-token-add.png){ width="560" }
+
+    4. The secret is shown once: copy it now.
+
+        ![Token Secret dialog showing the token ID and its secret](../assets/images/webui-token-secret.png){ width="560" }
+
+The token ID is `pvecli@pve!cli`; pvecli asks for its two halves separately, the user `pvecli@pve` and the token name `cli`.
 
 The Administrator role on `/` lets every pvecli command work. To give the token less, see [Permissions](../reference/permissions.md).
 

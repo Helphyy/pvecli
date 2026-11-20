@@ -118,6 +118,18 @@ VMs `web-01`, `db-01`, addresses `10.0.0.0/24`, `10.1.0.0/24`.
 Output that cannot be produced on the lab (an interruption, a failure) is
 written by hand in a plain ```` ```text ```` block.
 
+## Web interface screenshots
+
+When the reader may do in the browser what pvecli needs first (create its
+user and token), show the dialog next to the shell commands, in content
+tabs `=== "Shell"` / `=== "Web interface"`. The shots come from
+`scripts/docs/webui.py` (`.venv/bin/python -m scripts.docs.webui`): it logs
+in to the lab profile of `screens.local.toml` (a password profile), fills
+the dialogs and captures only the dialog, never the tree of the cluster,
+the logo or a lab name. A secret is replaced by a documentation value
+before the shot, and what the script creates is removed at the end. Add a
+step to the script rather than taking a screenshot by hand.
+
 ## The lab
 
 Captures run against your own test cluster, configured in

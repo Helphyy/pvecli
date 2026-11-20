@@ -146,6 +146,9 @@
   box-shadow: inset 0 0 0 0.05rem #ffffff14;
 }
 .sketch .mermaid { margin: 0; }
+/* Diagrams narrower than the page sit in its middle (text-align reaches
+   the drawing inside the shadow root) */
+.md-typeset div.mermaid { text-align: center; }
 
 /* The published site has its diagrams drawn at build time
    (scripts/docs/prerender_diagrams.py). In a local preview they are drawn
@@ -155,3 +158,10 @@
   background: none;
 }
 .md-typeset pre.mermaid > code { visibility: hidden; }
+
+/* Screenshots of the Proxmox VE web interface (scripts/docs/webui.py):
+   a dialog lifted off the page */
+.md-typeset img[src*="webui-"] {
+  border-radius: 0.3rem;
+  box-shadow: 0 0.2rem 1rem #0000002e, 0 0 0 0.05rem #00000014;
+}
