@@ -18,6 +18,7 @@ from ..utils import (
     confirm,
     console,
     create_table,
+    exit_interrupted,
     format_bytes,
     format_percentage,
     format_tags_colored,
@@ -919,8 +920,7 @@ async def edit_container(
             print_success(f"Container {ctid} configuration updated")
 
     except KeyboardInterrupt:
-        console.print()
-        print_cancelled()
+        exit_interrupted()
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)
@@ -1045,7 +1045,7 @@ async def start_container(
                         await client.stop_task(node, upid)
                     print_cancelled()
                     print_info("Check Proxmox to verify task status")
-                    raise typer.Exit(1)
+                    raise typer.Exit(130)
 
             # Summary for multiple containers
             if len(ctid_list) > 1:
@@ -1120,7 +1120,7 @@ async def stop_container(
                         await client.stop_task(node, upid)
                     print_cancelled()
                     print_info("Check Proxmox to verify task status")
-                    raise typer.Exit(1)
+                    raise typer.Exit(130)
 
             # Summary for multiple containers
             if len(ctid_list) > 1:
@@ -1196,7 +1196,7 @@ async def shutdown_container(
                         await client.stop_task(node, upid)
                     print_cancelled()
                     print_info("Check Proxmox to verify task status")
-                    raise typer.Exit(1)
+                    raise typer.Exit(130)
 
             # Summary for multiple containers
             if len(ctid_list) > 1:
@@ -1271,7 +1271,7 @@ async def reboot_container(
                         await client.stop_task(node, upid)
                     print_cancelled()
                     print_info("Check Proxmox to verify task status")
-                    raise typer.Exit(1)
+                    raise typer.Exit(130)
 
             # Summary for multiple containers
             if len(ctid_list) > 1:
@@ -1587,9 +1587,7 @@ def clone_container(
         print_error(str(e))
         raise typer.Exit(1)
     except KeyboardInterrupt:
-        console.print()
-        print_cancelled()
-        raise typer.Exit(0)
+        exit_interrupted()
 
 
 @app.command("remove")
@@ -2219,7 +2217,10 @@ def create_container(
     onboot: bool = typer.Option(None, "--onboot/--no-onboot", "-ob", help="Start at boot"),
     template_storage: str = typer.Option(None, "--template-storage", "-ts", help="Storage for LXC image"),
     template: str = typer.Option(None, "--template", "-t", help="LXC image file name (from template-storage)"),
-    unprivileged: bool = typer.Option(True, "--unprivileged/--privileged", "-u/-pr", help="Unprivileged container"),
+    unprivileged: bool | None = typer.Option(
+        None, "--unprivileged/--privileged", "-u/-pr",
+        help="Unprivileged container (default: unprivileged; the wizard asks)",
+    ),
     password: str = typer.Option(None, "--password", "-pw", help="Root password"),
     cores: int = typer.Option(None, "--cores", "-co", help="Number of CPU cores"),
     memory: int = typer.Option(None, "--memory", "-me", help="RAM in MiB"),
@@ -2336,8 +2337,8 @@ def create_container(
                     config["ostemplate"] = f"{template_storage}:vztmpl/{template}"
                     print_warning(f"Template '{template}' not found in storage '{template_storage}', using constructed path")
 
-            # Container type
-            config["unprivileged"] = 1 if unprivileged else 0
+            # Container type: unprivileged unless --privileged
+            config["unprivileged"] = 0 if unprivileged is False else 1
 
             # Password
             if password is not None:
@@ -2818,9 +2819,7 @@ def create_container(
         print_error(str(e))
         raise typer.Exit(1)
     except KeyboardInterrupt:
-        console.print()
-        print_cancelled()
-        raise typer.Exit(0)
+        exit_interrupted()
 
 
 image_app = typer.Typer(help="Manage LXC image files", no_args_is_help=True, cls=ordered_group(["add", "remove", "list"]))
@@ -3038,8 +3037,7 @@ async def add_template(
                 print_success(f"Image '{template_name}' downloaded successfully to '{storage}'")
 
     except KeyboardInterrupt:
-        console.print()
-        print_cancelled()
+        exit_interrupted()
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)
@@ -3138,8 +3136,7 @@ async def remove_template(
             print_success(f"Image '{name}' removed successfully from '{storage}'")
 
     except KeyboardInterrupt:
-        console.print()
-        print_cancelled()
+        exit_interrupted()
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)
@@ -3405,8 +3402,7 @@ async def migrate_ct(
                     return
             await shared_migrate(client, "ct", ctid, target, None, False, target_storage, restart, timeout, yes)
     except KeyboardInterrupt:
-        console.print()
-        print_cancelled()
+        exit_interrupted()
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)

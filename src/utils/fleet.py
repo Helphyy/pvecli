@@ -148,6 +148,19 @@ def dedupe_by_cluster(names: list[str]) -> tuple[list[str], dict[str, str], dict
     return kept, skipped, unreachable
 
 
+def _fleet_exit_code(codes: list[int]) -> int:
+    """One exit code for several profiles, from what failed on each.
+
+    130 if one was interrupted, 1 if one could not run, else 2 when every
+    failure was a finding (audit FAIL): a script can still tell them apart.
+    """
+    if 130 in codes:
+        return 130
+    if any(c not in (0, 2) for c in codes):
+        return 1
+    return 2 if 2 in codes else 0
+
+
 def _run_one(func: Callable[..., Any], args: tuple, kwargs: dict) -> int:
     """Run the command for one profile and return its exit code."""
     try:
@@ -271,6 +284,7 @@ def fleet(func: Callable[..., Any] | None = None, *, parallel: bool = False) -> 
 
         documents: dict[str, Any] = {}
         failed: list[str] = []
+        codes: list[int] = []
         ordered = [n for n in all_names if n in results or n in names]
         for name in ordered:
             if name in unreachable and not capture:
@@ -278,6 +292,7 @@ def fleet(func: Callable[..., Any] | None = None, *, parallel: bool = False) -> 
                 print_error(unreachable[name])
                 console.print()
                 failed.append(name)
+                codes.append(1)
                 continue
             if capture:
                 code, out_text, err_text = results[name]
@@ -304,6 +319,7 @@ def fleet(func: Callable[..., Any] | None = None, *, parallel: bool = False) -> 
                 console.print()
             if code:
                 failed.append(name)
+                codes.append(code)
 
         if json_mode:
             emit_json(documents)
@@ -312,7 +328,7 @@ def fleet(func: Callable[..., Any] | None = None, *, parallel: bool = False) -> 
             err_console.print(
                 f"[yellow]Failed on {len(failed)}/{len(ordered)} profile(s): {', '.join(failed)}[/yellow]"
             )
-            raise typer.Exit(1)
+            raise typer.Exit(_fleet_exit_code(codes))
         return None
 
     return wrapper

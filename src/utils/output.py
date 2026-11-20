@@ -2,7 +2,7 @@
 
 import json
 import sys
-from typing import Any
+from typing import Any, NoReturn
 
 import typer
 from rich.console import Console
@@ -55,6 +55,17 @@ def print_info(msg: str) -> None:
         msg: The info message to display.
     """
     console.print(f"[cyan]{msg}[/cyan]")
+
+
+def exit_interrupted() -> NoReturn:
+    """End the command after Ctrl+C: say so, and exit 130 like a shell does.
+
+    The same status whatever the command, so a script can tell an
+    interruption (130) from a refusal at a prompt (0) or an error (1).
+    """
+    console.print()
+    print_cancelled()
+    raise typer.Exit(130)
 
 
 def print_cancelled(msg: str = "Cancelled") -> None:

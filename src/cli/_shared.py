@@ -768,7 +768,7 @@ async def shared_rollback_snapshot(
             await client.stop_task(node, upid)
         print_cancelled()
         print_info("Check Proxmox to verify task status")
-        raise typer.Exit(1) from None
+        raise typer.Exit(130) from None
 
 
 async def shared_delete_snapshot(

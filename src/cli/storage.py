@@ -20,6 +20,7 @@ from ..utils import (
     confirm,
     console,
     emit_json,
+    exit_interrupted,
     format_bytes,
     format_percentage,
     menu_prompt,
@@ -638,8 +639,7 @@ async def add_storage(
                 print_success(f"Storage '{storage_id}' is active on all {len(target_nodes)} node(s)")
 
     except KeyboardInterrupt:
-        console.print()
-        print_cancelled()
+        exit_interrupted()
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)
@@ -689,8 +689,7 @@ async def remove_storage(
             print_success(f"Storage '{storage_id}' removed")
 
     except KeyboardInterrupt:
-        console.print()
-        print_cancelled()
+        exit_interrupted()
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)
@@ -885,8 +884,7 @@ async def show_storage(
                 console.print(_render_storage_panel(node, sid, status, config))
 
     except KeyboardInterrupt:
-        console.print()
-        print_cancelled()
+        exit_interrupted()
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)
@@ -958,9 +956,7 @@ async def config_storage(
         print_error(str(e))
         raise typer.Exit(1)
     except KeyboardInterrupt:
-        console.print()
-        print_cancelled()
-        raise typer.Exit(0)
+        exit_interrupted()
 
 
 # ── storage content list / add / delete ──────────────────────────────────
@@ -1115,8 +1111,7 @@ async def add_content(
                 raise typer.Exit(1)
 
     except KeyboardInterrupt:
-        console.print()
-        print_cancelled()
+        exit_interrupted()
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)
@@ -1261,6 +1256,7 @@ async def download_content(
             print_warning(f"Download continues on Proxmox (task: {upid})")
             print_info("Check progress with: pvecli cluster tasks --running")
         print_cancelled()
+        raise typer.Exit(130)
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)
@@ -1330,8 +1326,7 @@ async def remove_content(
                 print_success(f"{len(selected_volumes)} volumes deleted")
 
     except KeyboardInterrupt:
-        console.print()
-        print_cancelled()
+        exit_interrupted()
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)

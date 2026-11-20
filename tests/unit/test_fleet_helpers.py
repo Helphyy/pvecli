@@ -181,3 +181,17 @@ def test_two_standalone_hosts_with_the_same_name_are_both_kept(settled_home, api
                     "online": 1, "type": "node"}], host=host)
     kept, skipped, _ = dedupe_by_cluster(["p1", "p2"])
     assert kept == ["p1", "p2"] and skipped == {}
+
+
+def test_fleet_exit_code_keeps_findings_apart_from_errors():
+    from src.utils.fleet import _fleet_exit_code
+
+    # audit FAIL on every failed profile: still 2, like on one profile
+    assert _fleet_exit_code([2]) == 2
+    assert _fleet_exit_code([2, 2]) == 2
+    # one profile could not run: an error wins over a finding
+    assert _fleet_exit_code([2, 1]) == 1
+    assert _fleet_exit_code([1]) == 1
+    assert _fleet_exit_code([3]) == 1
+    # Ctrl+C wins over everything
+    assert _fleet_exit_code([1, 130, 2]) == 130

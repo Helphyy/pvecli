@@ -19,6 +19,7 @@ from ..utils import (
     confirm,
     console,
     emit_json,
+    exit_interrupted,
     format_bytes,
     format_percentage,
     format_uptime,
@@ -501,7 +502,9 @@ async def cluster_health(
                 # standby: armed, but no watchdog active since nothing is under HA
                 style = {"armed": "green", "standby": "dim"}.get(ha_armed, "yellow")
                 ha_detail += (
-                    ". Re-arm with: pvecli cluster ha arm" if ha_armed == "disarmed" else ""
+                    f". Re-arm with: pvecli cluster ha arm{_on_profile(profile)}"
+                    if ha_armed == "disarmed"
+                    else ""
                 )
                 table.add_row("HA", f"[{style}]{ha_armed}[/{style}]", ha_detail)
             else:
@@ -597,9 +600,7 @@ async def cluster_create(
             await client.create_cluster(name, **links)
 
     except KeyboardInterrupt:
-        console.print()
-        print_cancelled()
-        return
+        exit_interrupted()
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)
@@ -897,9 +898,7 @@ async def cluster_join(
                 print_info(f"Connection dropped during the join ({e}), verifying from the cluster")
 
     except KeyboardInterrupt:
-        console.print()
-        print_cancelled()
-        return
+        exit_interrupted()
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)
@@ -1281,6 +1280,21 @@ async def cluster_tasks(
 _CEPH_FLAGS = ["noout", "nobackfill", "norecover", "norebalance"]
 
 
+def _on_profile(profile: str | None) -> str:
+    """The ` -p NAME` to append to a command we tell the user to run.
+
+    Always the profile this run used, the default one included: a command
+    copied without -p would hit whatever the default is at that time.
+    """
+    name = profile
+    if name is None:
+        try:
+            name = ConfigManager().get().default_profile
+        except Exception:
+            name = None
+    return f" -p {name}" if name else ""
+
+
 async def _orchestrate_cluster_power(
     client: ProxmoxClient,
     profile_host: str,
@@ -1293,7 +1307,7 @@ async def _orchestrate_cluster_power(
 ) -> None:
     """Orchestrate a full cluster shutdown or reboot."""
     # Flags are cleared through the API, never by SSH to a node
-    on_profile = f" -p {profile}" if profile else ""
+    on_profile = _on_profile(profile)
     action = "Shutdown" if command == "shutdown" else "Reboot"
 
     # Track what was done for interrupt recovery messages
@@ -1305,7 +1319,7 @@ async def _orchestrate_cluster_power(
     def left_behind() -> None:
         """Say what this run changed and did not undo, on any abort."""
         if ha_disarmed:
-            print_warning("The HA stack was disarmed. Re-arm it with: pvecli cluster ha arm")
+            print_warning(f"The HA stack was disarmed. Re-arm it with: pvecli cluster ha arm{on_profile}")
         if ha_disabled:
             print_warning(f"HA resources were disabled: {', '.join(ha_disabled)}")
             print_warning("You may need to re-enable them manually.")
@@ -1562,7 +1576,7 @@ async def _orchestrate_cluster_power(
                 f"Unset Ceph flags: pvecli ceph unset {','.join(flags_set)}{on_profile}"
             )
         if ha_disarmed:
-            reminders.append("Re-arm HA: pvecli cluster ha arm")
+            reminders.append(f"Re-arm HA: pvecli cluster ha arm{on_profile}")
         if ha_disabled:
             reminders.append(
                 "Re-enable HA resources: " + ", ".join(ha_disabled)
@@ -1585,7 +1599,7 @@ async def _orchestrate_cluster_power(
         console.print()
         print_warning("Interrupted!")
         left_behind()
-        raise typer.Exit(1)
+        raise typer.Exit(130)
     except (typer.Exit, PVECliError):
         # An abort on an error must say the same as an interruption: what
         # was changed (HA disarmed, flags set) stays changed
@@ -1728,7 +1742,7 @@ async def ha_disarm(
                     print_error(_HA_ARM_UNSUPPORTED)
                     raise typer.Exit(1)
                 raise
-            print_success(f"HA disarmed ({mode}). Re-arm it with: pvecli cluster ha arm")
+            print_success(f"HA disarmed ({mode}). Re-arm it with: pvecli cluster ha arm{_on_profile(profile)}")
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)
@@ -2164,8 +2178,7 @@ async def _guests_command(
                 return
             await _run_bulk(client, action, guests, yes, cluster_params, node_params, describe)
     except KeyboardInterrupt:
-        console.print()
-        print_cancelled()
+        exit_interrupted()
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)

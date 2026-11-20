@@ -135,9 +135,15 @@ def test_read_keys_rejects_a_private_key(tmp_path):
         _read_keys([str(f)])
 
 
-@pytest.mark.parametrize("value", ["hello", "/no/such/file.pub", "AAAAC3NzaC1lZDI1NTE5"])
+@pytest.mark.parametrize("value", ["hello", "AAAAC3NzaC1lZDI1NTE5"])
 def test_read_keys_rejects_non_keys(value):
     with pytest.raises(PVECliError, match="Not an SSH public key"):
+        _read_keys([value])
+
+
+@pytest.mark.parametrize("value", ["/no/such/file.pub", "~/.ssh/missing", "id_none.pub"])
+def test_read_keys_names_a_missing_file(value):
+    with pytest.raises(PVECliError, match="SSH key file not found"):
         _read_keys([value])
 
 

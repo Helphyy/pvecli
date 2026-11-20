@@ -14,6 +14,7 @@ from ..utils import (
     clear_lines,
     confirm,
     console,
+    exit_interrupted,
     menu_prompt,
     print_cancelled,
     print_error,
@@ -271,8 +272,7 @@ def add_profile(
             print_success(f"Profile '{config_values['name']}' added")
 
     except KeyboardInterrupt:
-        console.print()
-        print_cancelled()
+        exit_interrupted()
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)
@@ -559,8 +559,7 @@ def edit_profile(
         print_success(f"Profile '{final_name}' updated successfully")
 
     except KeyboardInterrupt:
-        console.print()
-        print_cancelled()
+        exit_interrupted()
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)

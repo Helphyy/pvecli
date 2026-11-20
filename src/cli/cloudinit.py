@@ -52,6 +52,10 @@ def _read_keys(keys: list[str]) -> str:
     lines: list[str] = []
     for k in keys:
         path = Path(k).expanduser()
+        inline = re.match(r"^(ssh-|ecdsa-|sk-)", k.strip())
+        if not path.is_file() and not inline and ("/" in k or k.startswith("~") or k.endswith(".pub")):
+            # A path, not a key given inline: say the file is missing
+            raise PVECliError(f"SSH key file not found: {k}")
         text = path.read_text() if path.is_file() else k
         for line in text.splitlines():
             line = line.strip()

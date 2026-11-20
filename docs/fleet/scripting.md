@@ -106,7 +106,7 @@ chmod 600 ~/.config/pvecli/config.yaml
 
 pvecli exits 0 on success and 1 on an error. `audit` exits 2 when a check fails, so a script can tell "act now" from "the audit did not run". A wrong option or argument also exits 2: run the command line by hand once. The full list is in [Exit codes](../reference/exit-codes.md).
 
-On several profiles, any profile that does not end with 0 makes the command exit 1, including an audit that ends with 2. Loop over the profiles to keep the code of each one:
+On several profiles, the command exits 1 as soon as one profile could not run, 2 when every failure is an audit `FAIL`, and 130 after ++ctrl+c++. Loop over the profiles to keep the code of each one:
 
 ```mermaid
 flowchart TD

@@ -87,7 +87,7 @@ flowchart TD
 
 A wrong option or argument also exits `2`, as for every command ([Exit codes](../reference/exit-codes.md)): try a new command line by hand before you put it in a script.
 
-With several profiles, a profile that ends with `2` counts as failed, and the command exits `1`. To tell "a check failed" from "the audit did not run" on each cluster, run one profile per call: see [Use pvecli in scripts](scripting.md).
+With several profiles, the command exits `2` when every failed profile found a `FAIL`, and `1` as soon as one profile could not run. To know which cluster is in which case, run one profile per call: see [Use pvecli in scripts](scripting.md).
 
 ## When a check says "not checked"
 

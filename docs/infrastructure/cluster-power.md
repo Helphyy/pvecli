@@ -63,7 +63,7 @@ It ends with the list of what to undo once the nodes are back:
 ```text
 ── After the nodes are back up, remember to: ──
   • Unset Ceph flags: pvecli ceph unset noout,nobackfill,norecover,norebalance -p prod
-  • Re-arm HA: pvecli cluster ha arm
+  • Re-arm HA: pvecli cluster ha arm -p prod
 
 ✓ Shutdown sent to every node
 ```

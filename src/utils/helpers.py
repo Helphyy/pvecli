@@ -1,19 +1,53 @@
 """Helper utilities."""
 
 import asyncio
+import signal
+import threading
 from collections.abc import Callable
 from functools import wraps
+from types import FrameType
 from typing import Any
 
 from typer.core import TyperGroup
 
 
+def _waiting_on_io(frame: FrameType | None) -> bool:
+    """Whether a signal arrived while the event loop waited for the network."""
+    return frame is not None and frame.f_code.co_filename.endswith("selectors.py")
+
+
 def async_to_sync(func: Callable[..., Any]) -> Callable[..., Any]:
-    """Decorator to run async functions synchronously."""
+    """Decorator to run async functions synchronously.
+
+    asyncio.run turns Ctrl+C into a cancellation of the task. That is right
+    while a request is in flight (handlers stop the Proxmox task), but a
+    menu or a prompt blocks the loop and never sees the cancellation: the
+    first Ctrl+C was lost. Ctrl+C now cancels the task only while the loop
+    waits on the network, and raises KeyboardInterrupt anywhere else.
+    """
 
     @wraps(func)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
-        return asyncio.run(func(*args, **kwargs))
+        if threading.current_thread() is not threading.main_thread():
+            return asyncio.run(func(*args, **kwargs))
+
+        async def main() -> Any:
+            cancel_task = signal.getsignal(signal.SIGINT)
+
+            def on_sigint(signum: int, frame: FrameType | None) -> None:
+                if _waiting_on_io(frame) and callable(cancel_task):
+                    cancel_task(signum, frame)
+                    return
+                raise KeyboardInterrupt
+
+            signal.signal(signal.SIGINT, on_sigint)
+            return await func(*args, **kwargs)
+
+        previous = signal.getsignal(signal.SIGINT)
+        try:
+            return asyncio.run(main())
+        finally:
+            signal.signal(signal.SIGINT, previous)
 
     return wrapper
 

@@ -160,6 +160,7 @@ def script_after_hostname(ui, final: bool = True) -> None:
     ui.multi(["db"])                        # tags
     ui.confirm(True)                        # start at boot
     ui.menu("local", "debian")              # image storage, image
+    ui.confirm(True)                        # unprivileged
     ui.text("s3cret!", "s3cret!")           # password, twice
     ui.number(2, 1024, 0)                   # cores, memory, swap
     ui.menu("local-lvm")                    # rootfs storage
@@ -253,6 +254,7 @@ def test_wizard_password_is_asked_until_valid(cli, api, wizard):
     wizard.multi([])
     wizard.confirm(False)
     wizard.menu("local", "alpine")
+    wizard.confirm(True)                    # unprivileged
     wizard.text("", "abc", "s3cret!", "typo!!", "s3cret!", "s3cret!")
     wizard.number(1, 512, 512)
     wizard.menu(None)                       # no rootfs storage chosen
@@ -274,7 +276,7 @@ def test_wizard_with_flags_asks_only_the_rest(cli, api, wizard):
     wizard.multi([])                        # tags
     wizard.confirm(True, False)             # create, print
     r = cli("ct", "add", "pve1", "--ctid", "120", "--onboot", "--template-storage", "local",
-            "--template", "alpine", "--password", "s3cret!", "--cores", "1", "--memory", "256", "--swap", "0",
+            "--template", "alpine", "--unprivileged", "--password", "s3cret!", "--cores", "1", "--memory", "256", "--swap", "0",
             "--rootfs-storage", "local-lvm", "--rootfs-size", "2", "--bridge", "vmbr0", "--ip", "dhcp",
             "--no-keyctl", "--no-fuse", "-p", "p1")
     assert r.exit_code == 0, r.output
@@ -291,6 +293,7 @@ def test_wizard_prints_reproducible_command(cli, api, wizard):
     wizard.multi([])
     wizard.confirm(False)
     wizard.menu("local", "debian")
+    wizard.confirm(True)                    # unprivileged
     wizard.text("s3cret!", "s3cret!")
     wizard.number(1, 512, 512)
     wizard.menu("local-lvm")
@@ -313,6 +316,7 @@ def test_wizard_without_known_tags_asks_free_text(cli, api, wizard):
     wizard.text(None, "web", "blue")
     wizard.confirm(False)
     wizard.menu("local", "alpine")
+    wizard.confirm(True)                    # unprivileged
     wizard.text("s3cret!", "s3cret!")
     wizard.number(1, 512, 512)
     wizard.menu(None, None)
@@ -329,3 +333,21 @@ def test_wizard_invalid_ctid_is_asked_again(cli, api, wizard):
     r = cli("ct", "add", "pve1", "-p", "p1")
     assert r.exit_code == 0, r.output
     assert created(api).data["vmid"] == 130
+
+
+def test_wizard_asks_unprivileged_and_takes_no(cli, api, wizard):
+    setup(api)
+    wizard.text(None, "web")
+    wizard.multi([])
+    wizard.confirm(False)                   # start at boot
+    wizard.menu("local", "alpine")
+    wizard.confirm(False)                   # unprivileged? no
+    wizard.text("s3cret!", "s3cret!")
+    wizard.number(1, 512, 512)
+    wizard.menu(None)
+    wizard.menu(None)
+    wizard.confirm(False, False, True, False)
+    r = cli("ct", "add", "pve1", "-p", "p1")
+    assert r.exit_code == 0, r.output
+    assert ("confirm", "[bold]Unprivileged container?[/bold]") in wizard.asked
+    assert created(api).data["unprivileged"] == 0

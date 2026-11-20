@@ -34,7 +34,15 @@ def test_disarm_on_92_posts_resource_mode(cli, api):
     (w,) = api.writes()
     assert (w.method, w.path) == ("POST", DISARM)
     assert w.data == {"resource-mode": "freeze"}
-    assert "pvecli cluster ha arm" in r.output
+    assert "pvecli cluster ha arm -p p1" in r.output
+
+
+def test_disarm_without_p_names_the_default_profile_in_the_hint(cli, api):
+    # A hint copied as printed must hit the cluster this run used
+    api.route("POST", DISARM, None)
+    r = cli("cluster", "ha", "disarm", "-y")
+    assert r.exit_code == 0, r.output
+    assert "pvecli cluster ha arm -p p1" in r.output
 
 
 def test_disarm_ignore_mode_is_passed(cli, api):

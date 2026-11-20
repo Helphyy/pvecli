@@ -159,7 +159,7 @@ def test_abort_after_ha_disarm_says_to_rearm(cli, api):
     assert r.exit_code == 1
     assert api.called("POST", DISARM)
     assert not api.called("POST", "/nodes/{node}/status")
-    assert "pvecli cluster ha arm" in r.output
+    assert "pvecli cluster ha arm -p p1" in r.output
 
 
 def test_ha_disarm_failure_falls_back_on_disabling_resources(cli, api):
@@ -238,10 +238,10 @@ def test_interrupt_stops_sending_and_lists_what_to_undo(cli, api):
 
     api.route("POST", "/nodes/{node}/status", node_status)
     r = cli("cluster", "shutdown", "-y", "-p", "p1")
-    assert r.exit_code == 1
+    assert r.exit_code == 130
     assert "Interrupted" in r.output
     assert "Ceph flags were set" in r.output
-    assert "Re-arm it with: pvecli cluster ha arm" in r.output
+    assert "Re-arm it with: pvecli cluster ha arm -p p1" in r.output
     # The connected node never received the command
     assert not [c for c in api.called("POST", "/nodes/{node}/status") if c.path == "/nodes/pve2/status"]
 
@@ -253,7 +253,7 @@ def test_interrupt_before_92_lists_disabled_resources(cli, api):
     api.route("PUT", "/cluster/ha/resources/{sid}", None)
     api.route("POST", "/nodes/{node}/stopall", KeyboardInterrupt())
     r = cli("cluster", "shutdown", "-y", "-p", "p1")
-    assert r.exit_code == 1
+    assert r.exit_code == 130
     assert "HA resources were disabled: vm:110" in r.output
     assert not api.called("POST", "/nodes/{node}/status")
 

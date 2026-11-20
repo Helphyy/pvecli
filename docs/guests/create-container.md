@@ -46,7 +46,7 @@ With `--hostname`, `--template-storage` and `--template`, it asks nothing:
 
 --8<-- "screens/guests-ct-add.html"
 
-`ct add` does not start the container (see [Start, stop and reboot guests](power.md)). The container is unprivileged unless you pass `--privileged`. `--password` sets the root password on the command line, where your shell history keeps it: prefer `ct deploy --password-env`.
+`ct add` does not start the container (see [Start, stop and reboot guests](power.md)). The container is unprivileged unless you pass `--privileged`; without either option, the wizard asks. `--password` sets the root password on the command line, where your shell history keeps it: prefer `ct deploy --password-env`.
 
 ## Clone a container
 

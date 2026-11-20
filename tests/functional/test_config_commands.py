@@ -493,3 +493,16 @@ def test_test_connection_refused(cli, api, home):
     r = cli("config", "test", "-p", "p1")
     assert r.exit_code == 1
     assert "Connection failed" in r.stderr
+
+
+def test_ctrl_c_during_config_add_exits_130(cli, monkeypatch):
+    import src.cli.config as config_cli
+
+    def interrupted(*args, **kwargs):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(config_cli, "prompt", interrupted)
+    monkeypatch.setattr(config_cli, "select_menu", interrupted, raising=False)
+    r = cli("config", "add")
+    assert r.exit_code == 130, r.output
+    assert "Cancelled" in r.output

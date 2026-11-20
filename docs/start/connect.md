@@ -39,7 +39,7 @@ Run `pvecli config add` and answer the prompts. Pick **API Token** in the menu (
 - **Proxmox host**: the address or name of any node of the cluster.
 - **Verify SSL certificate**: see [TLS verification](#tls-verification) below.
 - **Default SSH user**: the account the `ssh` commands log in with, on guests and nodes.
-- **Default RDP user**: the account `vm rdp` gives the RDP client. Left at `Administrator`, it gives none and the client asks.
+- **Default RDP user**: the account `vm rdp` gives the RDP client (`Administrator` unless you change it). `vm rdp --user` overrides it.
 
 The same profile in one line, for a script. Give the port too, or pvecli asks for it and the other settings. It still shows the profile and asks before saving it:
 

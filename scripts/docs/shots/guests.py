@@ -236,15 +236,16 @@ CASTS = [
     Cast("guests-tag-color-menu", ["tag", "add", "web", "-p", "{profile}"], [
         (2.5, DOWN), (0.6, DOWN), (0.6, DOWN), (1.5, ENTER),
     ], rows=24, manual=True),
-    # The ct add wizard down to its summary, then refused (n). Needs the tag
-    # web (guests-tag-color-menu) and no resource pool on the cluster
+    # The ct add wizard down to its summary, then refused (n). Needs no
+    # resource pool on the cluster
     Cast("guests-ct-add-wizard", ["ct", "add", "pve1", "-p", "{profile}"], [
         (2.5, "805"), (0.6, ENTER),          # CTID
         (1.0, "proxy-03"), (0.6, ENTER),     # hostname
-        (1.5, SPACE), (0.8, ENTER),          # tags: web
+        (1.5, ENTER),                        # tags: none
         (1.2, ENTER),                        # start at boot: n
         (1.5, ENTER),                        # image storage
         (2.0, ENTER),                        # image
+        (1.2, ENTER),                        # unprivileged: y
         (1.2, "secret1"), (0.4, ENTER),      # root password (not echoed)
         (1.0, "secret1"), (0.4, ENTER),      # confirmation
         (1.2, ENTER), (1.0, ENTER), (1.0, ENTER),   # cores, RAM, swap

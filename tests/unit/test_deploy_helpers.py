@@ -298,3 +298,13 @@ def test_the_shipped_example_is_a_valid_file():
     proxy = specs[6]
     assert (proxy.ssh_keys, proxy.storage, proxy.template) == ([], None, "920")
     assert file_duplicates(specs, lambda p: p) == []
+
+
+def test_errors_name_the_file_key_not_the_option():
+    from src.cli.deploy import _in_file_terms
+
+    assert _in_file_terms("2 nodes are online: pass --node") == "2 nodes are online: set node:"
+    assert _in_file_terms("SSH keys (--ssh-key) are only taken") == "SSH keys (ssh_key:) are only taken"
+    # No such key in a deploy file: the option stays
+    assert _in_file_terms("pass --drive-storage") == "pass --drive-storage"
+    assert _in_file_terms("no profile: pass -p") == "no profile: pass -p"

@@ -20,6 +20,7 @@ from ..utils import (
     clear_lines,
     confirm,
     console,
+    exit_interrupted,
     format_bytes,
     format_percentage,
     format_tags_colored,
@@ -1160,8 +1161,7 @@ async def edit_vm(
             print_success(f"VM {vmid} configuration updated")
 
     except KeyboardInterrupt:
-        console.print()
-        print_cancelled()
+        exit_interrupted()
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)
@@ -1228,7 +1228,7 @@ async def start_vm(
                         await client.stop_task(node, upid)
                     print_cancelled()
                     print_info("Check Proxmox to verify task status")
-                    raise typer.Exit(1)
+                    raise typer.Exit(130)
 
             # Summary for multiple VMs
             if len(vmid_list) > 1:
@@ -1306,7 +1306,7 @@ async def stop_vm(
                         await client.stop_task(node, upid)
                     print_cancelled()
                     print_info("Check Proxmox to verify task status")
-                    raise typer.Exit(1)
+                    raise typer.Exit(130)
 
             # Summary for multiple VMs
             if len(vmid_list) > 1:
@@ -1385,7 +1385,7 @@ async def shutdown_vm(
                         await client.stop_task(node, upid)
                     print_cancelled()
                     print_info("Check Proxmox to verify task status")
-                    raise typer.Exit(1)
+                    raise typer.Exit(130)
 
             # Summary for multiple VMs
             if len(vmid_list) > 1:
@@ -1463,7 +1463,7 @@ async def reboot_vm(
                         await client.stop_task(node, upid)
                     print_cancelled()
                     print_info("Check Proxmox to verify task status")
-                    raise typer.Exit(1)
+                    raise typer.Exit(130)
 
             # Summary for multiple VMs
             if len(vmid_list) > 1:
@@ -1539,7 +1539,7 @@ async def suspend_vm(
                         await client.stop_task(node, upid)
                     print_cancelled()
                     print_info("Check Proxmox to verify task status")
-                    raise typer.Exit(1)
+                    raise typer.Exit(130)
 
             # Summary for multiple VMs
             if len(vmid_list) > 1:
@@ -1620,7 +1620,7 @@ async def resume_vm(
                         await client.stop_task(node, upid)
                     print_cancelled()
                     print_info("Check Proxmox to verify task status")
-                    raise typer.Exit(1)
+                    raise typer.Exit(130)
 
             # Summary for multiple VMs
             if len(vmid_list) > 1:
@@ -2158,9 +2158,7 @@ def clone_vm(
         print_error(str(e))
         raise typer.Exit(1)
     except KeyboardInterrupt:
-        console.print()
-        print_cancelled()
-        raise typer.Exit(0)
+        exit_interrupted()
 
 
 
@@ -3501,9 +3499,7 @@ def create_vm(
         print_error(str(e))
         raise typer.Exit(1)
     except KeyboardInterrupt:
-        console.print()
-        print_cancelled()
-        raise typer.Exit(0)
+        exit_interrupted()
 
 
 @app.command("vnc")
@@ -3665,7 +3661,7 @@ async def vm_ssh(
 @async_to_sync
 async def vm_rdp(
     vmid: int = typer.Argument(None, help="VM ID"),
-    user: str = typer.Option(None, "--user", "-u", help="RDP user"),
+    user: str = typer.Option(None, "--user", "-u", help="RDP user (default: the profile's, else Administrator)"),
     domain: str = typer.Option(None, "--domain", "-d", help="RDP domain"),
     port: int = typer.Option(None, "--port", "-P", help="RDP port"),
     fullscreen: bool = typer.Option(False, "--fullscreen", "-f", help="Fullscreen mode"),
@@ -3735,7 +3731,9 @@ async def vm_rdp(
             print_warning(f"--mount is not supported with {client_type}, shared folders will be ignored")
             mount = []
 
-        rdp_user = user or profile_config.rdp_user
+        # Administrator is the default config add and config info show, and
+        # is stored as unset: apply it here so the user shown is the one sent
+        rdp_user = user or profile_config.rdp_user or "Administrator"
         rdp_port = port or profile_config.rdp_port
 
         # Prompt for credentials
@@ -3815,8 +3813,7 @@ async def vm_rdp(
                 stderr_file.close()
 
     except KeyboardInterrupt:
-        console.print()
-        print_cancelled()
+        exit_interrupted()
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)
@@ -3933,8 +3930,7 @@ async def migrate_vm(
                     return
             await shared_migrate(client, "vm", vmid, target, online, with_local_disks, target_storage, False, None, yes)
     except KeyboardInterrupt:
-        console.print()
-        print_cancelled()
+        exit_interrupted()
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)

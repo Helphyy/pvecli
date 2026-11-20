@@ -20,6 +20,7 @@ from ..utils import (
     confirm,
     console,
     emit_json,
+    exit_interrupted,
     menu_prompt,
     print_cancelled,
     print_error,
@@ -746,8 +747,7 @@ async def sdn_apply(
                 print_success(f"Every vnet is available on the {len(nodes)} node(s)")
 
     except KeyboardInterrupt:
-        console.print()
-        print_cancelled()
+        exit_interrupted()
     except PVECliError as e:
         print_error(_explain_sdn_error(e))
         raise typer.Exit(1)
@@ -1056,8 +1056,7 @@ async def sdn_zone_add(
             print_info("Activate it with: pvecli sdn apply")
 
     except KeyboardInterrupt:
-        console.print()
-        print_cancelled()
+        exit_interrupted()
     except PVECliError as e:
         print_error(_explain_sdn_error(e))
         raise typer.Exit(1)
@@ -1300,8 +1299,7 @@ async def sdn_vnet_add(
             print_info("Activate it with: pvecli sdn apply")
 
     except KeyboardInterrupt:
-        console.print()
-        print_cancelled()
+        exit_interrupted()
     except PVECliError as e:
         print_error(_explain_sdn_error(e))
         raise typer.Exit(1)
@@ -1561,8 +1559,7 @@ async def sdn_subnet_add(
             print_info("Activate it with: pvecli sdn apply")
 
     except KeyboardInterrupt:
-        console.print()
-        print_cancelled()
+        exit_interrupted()
     except PVECliError as e:
         print_error(_explain_sdn_error(e))
         raise typer.Exit(1)

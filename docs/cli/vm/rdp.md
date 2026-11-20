@@ -23,7 +23,7 @@ pvecli vm rdp [VMID] [OPTIONS]
 
 | Option | Default | Description |
 |:--|:--|:--|
-| `-u`, `--user VALUE` |  | RDP user. |
+| `-u`, `--user VALUE` |  | RDP user (default: the profile's, else Administrator). |
 | `-d`, `--domain VALUE` |  | RDP domain. |
 | `-P`, `--port N` |  | RDP port. |
 | `-f`, `--fullscreen` |  | Fullscreen mode. |

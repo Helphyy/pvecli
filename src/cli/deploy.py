@@ -51,6 +51,25 @@ _LISTS = {"tags", "ssh_key"}
 # File key -> GuestSpec field, where they differ
 _FIELD = {"id": "vmid", "ssh_key": "ssh_keys", "power_on": "start"}
 _PASSWORD = "never put a password in the file: use password_env: NAME_OF_AN_ENV_VAR"
+_OPTION = re.compile(r"--([a-z][a-z-]*)")
+
+
+def _in_file_terms(message: str) -> str:
+    """Name the file key, not the option, in a check shared with ct/vm deploy.
+
+    "pass --node" becomes "set node:" in a deploy file: the reader has no
+    --node to pass there. Options with no key in the file stay as they are.
+    """
+
+    def key(m: re.Match[str]) -> str:
+        name = m.group(1).replace("-", "_")
+        if name == "ssh_keys":
+            name = "ssh_key"
+        return f"{name}:" if name in _COMMON | _ONLY["vm"] | _ONLY["ct"] else m.group(0)
+
+    return re.sub(r"\bpass (\w+:)", r"set \1", _OPTION.sub(key, message))
+
+
 # null clears a default for these (back to PVE's own default); the others
 # always have a value
 _NULLABLE = (_COMMON | _ONLY["vm"] | _ONLY["ct"]) - {"type", "name", "count", "start", "template", "full", "power_on"}
@@ -209,7 +228,7 @@ def _expand(label: str, index: int, kind: str, entry: dict[str, Any], profile: s
             errors.append(f"{label}: invalid name pattern '{pattern}' ({e})")
             return []
         except PVECliError as e:
-            errors.append(f"{label}: {e}")
+            errors.append(f"{label}: {_in_file_terms(str(e))}")
             return []
         values: dict[str, Any] = {**fields, **ips}
         spec = GuestSpec(kind=kind, name=name, **values)
@@ -389,7 +408,7 @@ async def _run(doc: Any, cli_profile: str | None, dry_run: bool, yes: bool, para
         problems = (prepare_vm if s.kind == "vm" else prepare_ct)(s)
         if problems:
             unprepared.add(id(s))
-            errors += [f"{s.label}: {p}" for p in problems]
+            errors += [f"{s.label}: {_in_file_terms(p)}" for p in problems]
         if not s.profile:
             unprepared.add(id(s))
             errors.append(f"{s.label}: no profile: pass -p, set profile: in the file, or a default profile")
@@ -424,10 +443,11 @@ async def _run(doc: Any, cli_profile: str | None, dry_run: bool, yes: bool, para
                 row = await _state(facts[s.profile], s)
                 if row.action == "create":
                     validate = validate_vm if s.kind == "vm" else validate_ct
-                    errors += [f"{s.label}: {e}" for e in await validate(facts[s.profile], s)]
+                    problems = await validate(facts[s.profile], s)
+                    errors += [f"{s.label}: {_in_file_terms(e)}" for e in problems]
             except PVECliError as e:
                 # An unreadable source (a 403...) is one more problem, not the end of the list
-                errors.append(f"{s.label}: {e}")
+                errors.append(f"{s.label}: {_in_file_terms(str(e))}")
                 continue
             rows.append(row)
         if errors:

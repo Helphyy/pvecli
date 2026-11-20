@@ -83,7 +83,7 @@ The forms `-p` accepts (one name, a list, a pattern, a group) are described in [
 | `ssh_user` | string | `root` | SSH user of `node ssh`, `vm ssh` and `ct ssh`, and of the node used as jump host by `--jump` (`vm ssh`, `ct ssh`, `vm rdp`). |
 | `ssh_port` | integer | `22` | SSH port of `node ssh`, `vm ssh`, `ct ssh` and of the `vm rdp --jump` tunnel. |
 | `ssh_key` | string | | Private key passed to `ssh -i` by the same commands. Not set by any command: edit the file. |
-| `rdp_user` | string | | User of `vm rdp`. When unset, pvecli passes no user to the RDP client. `config add` and `config edit` show `Administrator` for an unset value, and store an answer of `Administrator` as unset. |
+| `rdp_user` | string | `Administrator` | User `vm rdp` gives the RDP client, unless `--user` is passed. `config add` and `config edit` store `Administrator` as unset, which means the same. |
 | `rdp_port` | integer | `3389` | RDP port of the guests. |
 | `sdn_write` | boolean | `false` | Allows the SDN commands that write on this cluster. See [Manage SDN zones and vnets](../infrastructure/sdn.md). |
 | `fleet` | boolean | `true` | `false` keeps the profile out of patterns and groups. |

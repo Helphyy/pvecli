@@ -5,6 +5,7 @@ based on simple_term_menu, matching the pvecli UX conventions.
 """
 
 import os
+from typing import Any
 
 from simple_term_menu import TerminalMenu  # type: ignore[import-untyped]  # no stubs nor py.typed, no types-simple-term-menu package exists
 
@@ -39,6 +40,16 @@ def require_terminal() -> None:
         )
 
 
+def _show(menu: TerminalMenu) -> Any:
+    """Show a menu. Ctrl+C ends the command like everywhere else (exit 130)."""
+    try:
+        return menu.show()
+    except KeyboardInterrupt:
+        from .output import exit_interrupted
+
+        exit_interrupted()
+
+
 def menu_row(modified: bool, label: str, value: str, width: int) -> str:
     """Build an edit-menu row with a star marker on modified fields.
 
@@ -64,8 +75,9 @@ def select_menu(items: list[str], title: str) -> int | None:
         menu_cursor="> ",
         menu_cursor_style=("fg_cyan", "bold"),
         menu_highlight_style=("bg_cyan", "fg_black"),
+        raise_error_on_interrupt=True,
     )
-    return menu.show()
+    return _show(menu)
 
 
 def reorder_menu(items: list[str], title: str) -> tuple[int | None, str | None]:
@@ -82,8 +94,9 @@ def reorder_menu(items: list[str], title: str) -> tuple[int | None, str | None]:
         menu_cursor="> ",
         menu_cursor_style=("fg_cyan", "bold"),
         menu_highlight_style=("bg_cyan", "fg_black"),
+        raise_error_on_interrupt=True,
     )
-    idx = menu.show()
+    idx = _show(menu)
     return idx, menu.chosen_accept_key
 
 
@@ -116,9 +129,10 @@ def multi_select_menu(
         menu_cursor="> ",
         menu_cursor_style=("fg_cyan", "bold"),
         menu_highlight_style=("bg_cyan", "fg_black"),
+        raise_error_on_interrupt=True,
         **kwargs,
     )
-    sel = menu.show()
+    sel = _show(menu)
     if sel is None:
         return None
     return list(sel) if isinstance(sel, tuple) else [sel]

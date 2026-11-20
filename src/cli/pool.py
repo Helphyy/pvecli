@@ -17,6 +17,7 @@ from ..utils import (
     confirm,
     console,
     emit_json,
+    exit_interrupted,
     print_cancelled,
     print_error,
     print_info,
@@ -242,8 +243,7 @@ async def pool_usage(
             )
 
     except KeyboardInterrupt:
-        console.print()
-        print_cancelled()
+        exit_interrupted()
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)
@@ -373,8 +373,7 @@ async def import_pools(
         print_error(f"Invalid JSON file: {file}")
         raise typer.Exit(1)
     except KeyboardInterrupt:
-        console.print()
-        print_cancelled()
+        exit_interrupted()
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)
@@ -433,8 +432,7 @@ async def add_pool(
                 print_success(f"Pool '{pid}' created successfully")
 
     except KeyboardInterrupt:
-        console.print()
-        print_cancelled()
+        exit_interrupted()
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)
@@ -551,8 +549,7 @@ async def remove_pool(
                 print_success(f"{deleted} pools deleted: {', '.join(empty)}")
 
     except KeyboardInterrupt:
-        console.print()
-        print_cancelled()
+        exit_interrupted()
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)
@@ -716,8 +713,7 @@ async def content_add(
                     console.print(display)
 
     except KeyboardInterrupt:
-        console.print()
-        print_cancelled()
+        exit_interrupted()
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)
@@ -850,8 +846,7 @@ async def content_remove(
                     console.print(display)
 
     except KeyboardInterrupt:
-        console.print()
-        print_cancelled()
+        exit_interrupted()
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)

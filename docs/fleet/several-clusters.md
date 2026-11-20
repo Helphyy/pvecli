@@ -58,7 +58,7 @@ A profile that fails does not stop the others. pvecli prints its error under its
 --8<-- "screens/fleet-failed-profile.html"
 
 - `Error: No guest matches these filters`: guest 861 exists only on `staging`, so the command fails on `prod`.
-- `Failed on 1/2 profile(s): prod`: the summary, on stderr. The command exits 1, even though `staging` succeeded.
+- `Failed on 1/2 profile(s): prod`: the summary, on stderr. The command exits 1, even though `staging` succeeded (2 for an `audit` whose only failures are `FAIL` findings, 130 after ++ctrl+c++).
 
 Before running, pvecli contacts every profile once. A cluster that does not answer is reported under its header and the others run. Two profiles that point at the same cluster (two users, or two nodes of one cluster) run once, with a message on stderr:
 
@@ -80,7 +80,7 @@ flowchart TD
   H --> I
   I --> J{"A profile failed?"}:::check
   J -- no --> K["exit 0"]:::done
-  J -- yes --> L["Failed on N/M profile(s), exit 1"]:::stop
+  J -- yes --> L["Failed on N/M profile(s),<br/>exit 1 (2: audit FAIL only, 130: Ctrl+C)"]:::stop
 
   classDef check fill:#e8f3fc,stroke:#0078cf,color:#0b3d66
   classDef stop fill:#ffe3e3,stroke:#e03131,color:#7a1010

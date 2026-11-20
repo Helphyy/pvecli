@@ -16,6 +16,7 @@ from ..utils import (
     build_ordered_table,
     confirm,
     console,
+    exit_interrupted,
     print_cancelled,
     print_error,
     print_success,
@@ -223,7 +224,11 @@ def _pick_color(tag_name: str) -> str | None:
             sys.stdout.write(f"\x1b[{menu_lines}A\x1b[J")
             sys.stdout.write(_render())
             sys.stdout.flush()
-    except (KeyboardInterrupt, EOFError):
+    except KeyboardInterrupt:
+        sys.stdout.write("\x1b[?25h")
+        sys.stdout.flush()
+        exit_interrupted()
+    except EOFError:
         sys.stdout.write("\x1b[?25h\n")
         sys.stdout.flush()
         print_cancelled()
@@ -361,8 +366,7 @@ async def add_tag(
         print_success(f"Tag '{tag}' color set to #{color}")
 
     except KeyboardInterrupt:
-        console.print()
-        print_cancelled()
+        exit_interrupted()
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)
@@ -465,8 +469,7 @@ async def edit_tag(
             print_success(f"Tag '{new_name}' color updated to #{color.lstrip('#')}")
 
     except KeyboardInterrupt:
-        console.print()
-        print_cancelled()
+        exit_interrupted()
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)
@@ -604,8 +607,7 @@ async def remove_tag(
                 print_success(f"{len(actionable)} tags removed ({names}) from {len(to_remove)} resource(s){suffix}")
 
     except KeyboardInterrupt:
-        console.print()
-        print_cancelled()
+        exit_interrupted()
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)
@@ -723,8 +725,7 @@ async def import_tags(
         print_error(f"Invalid JSON file: {file}")
         raise typer.Exit(1)
     except KeyboardInterrupt:
-        console.print()
-        print_cancelled()
+        exit_interrupted()
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)
@@ -840,8 +841,7 @@ def color_add(
         print_success(f"Color '{name}' saved to {_COLOR_FILE}")
 
     except KeyboardInterrupt:
-        console.print()
-        print_cancelled()
+        exit_interrupted()
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)
@@ -887,8 +887,7 @@ def color_remove(
         print_success(f"Color '{name}' removed from palette")
 
     except KeyboardInterrupt:
-        console.print()
-        print_cancelled()
+        exit_interrupted()
     except PVECliError as e:
         print_error(str(e))
         raise typer.Exit(1)
