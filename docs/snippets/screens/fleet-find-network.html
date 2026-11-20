@@ -1,0 +1,23 @@
+<figure class="terminal terminal--wide" markdown="0"><pre class="terminal-body"><span class="terminal-prompt">$ </span><span class="terminal-command">pvecli find 10.0.0.0/24 -p prod</span>
+┏━━━━━━━━━━━━━━━┳━━━━━┳━━━━━━━━━━┳━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━┓
+┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Type          </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold">  ID </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Name     </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Node </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Status  </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Match                                </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Source  </span>┃
+┡━━━━━━━━━━━━━━━╇━━━━━╇━━━━━━━━━━╇━━━━━━╇━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━┩
+│ VM            │ 810 │ api-01   │ pve1 │ running │ ipconfig0 10.0.0.24/24               │<span style="color: #797f89; text-decoration-color: #797f89"> config  </span>│
+│ VM            │ 810 │ api-01   │ pve1 │ running │ 10.0.0.24 on eth0                    │<span style="color: #797f89; text-decoration-color: #797f89"> agent   </span>│
+│               │     │          │      │         │ (BC:24:11:EE:DF:44)                  │<span style="color: #797f89; text-decoration-color: #797f89">         </span>│
+│ VM            │ 811 │ api-02   │ pve1 │ running │ ipconfig0 10.0.0.25/24               │<span style="color: #797f89; text-decoration-color: #797f89"> config  </span>│
+│ VM            │ 811 │ api-02   │ pve1 │ running │ 10.0.0.25 on eth0                    │<span style="color: #797f89; text-decoration-color: #797f89"> agent   </span>│
+│               │     │          │      │         │ (BC:24:11:4D:F7:41)                  │<span style="color: #797f89; text-decoration-color: #797f89">         </span>│
+│ CT            │ 812 │ dns-02   │ pve1 │ running │ net0 10.0.0.26/24                    │<span style="color: #797f89; text-decoration-color: #797f89"> config  </span>│
+│ CT            │ 812 │ dns-02   │ pve1 │ running │ 10.0.0.26 on eth0                    │<span style="color: #797f89; text-decoration-color: #797f89"> lxc     </span>│
+│               │     │          │      │         │ (BC:24:11:6C:32:F4)                  │<span style="color: #797f89; text-decoration-color: #797f89">         </span>│
+│ CT            │ 860 │ proxy-02 │ pve1 │ running │ net0 10.0.0.86/24                    │<span style="color: #797f89; text-decoration-color: #797f89"> config  </span>│
+│ CT            │ 860 │ proxy-02 │ pve1 │ running │ 10.0.0.86 on eth0                    │<span style="color: #797f89; text-decoration-color: #797f89"> lxc     </span>│
+│               │     │          │      │         │ (BC:24:11:BE:EC:79)                  │<span style="color: #797f89; text-decoration-color: #797f89">         </span>│
+│ node          │   - │ pve1     │ -    │ -       │ 10.0.0.11                            │<span style="color: #797f89; text-decoration-color: #797f89"> cluster </span>│
+│ node          │   - │ pve2     │ -    │ -       │ 10.0.0.12                            │<span style="color: #797f89; text-decoration-color: #797f89"> cluster </span>│
+│ node          │   - │ pve3     │ -    │ -       │ 10.0.0.13                            │<span style="color: #797f89; text-decoration-color: #797f89"> cluster </span>│
+│ node          │   - │ pve4     │ -    │ -       │ 10.0.0.14                            │<span style="color: #797f89; text-decoration-color: #797f89"> cluster </span>│
+│ node          │   - │ pve5     │ -    │ -       │ 10.0.0.15                            │<span style="color: #797f89; text-decoration-color: #797f89"> cluster </span>│
+│ storage (pbs) │   - │ pbs      │ -    │ -       │ 10.0.0.20                            │<span style="color: #797f89; text-decoration-color: #797f89"> storage </span>│
+└───────────────┴─────┴──────────┴──────┴─────────┴──────────────────────────────────────┴─────────┘</pre></figure>

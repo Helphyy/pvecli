@@ -1,0 +1,16 @@
+<figure class="terminal" markdown="0"><pre class="terminal-body"><span class="terminal-prompt">$ </span><span class="terminal-command">pvecli find --on-storage local-lvm --stopped -p &#x27;*&#x27;</span>
+<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold">prod</span> <span style="color: #86efac; text-decoration-color: #86efac">───────────────────────────────────────────────────────────────────────────</span>
+┏━━━━━━┳━━━━━━┳━━━━━━━━━━━━━━━━━┳━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━┓
+┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Type </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold">   ID </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Name            </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Node </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Status  </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Match             </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Source  </span>┃
+┡━━━━━━╇━━━━━━╇━━━━━━━━━━━━━━━━━╇━━━━━━╇━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━┩
+│ VM   │  301 │ db-01           │ pve1 │ stopped │ disks virtio0     │<span style="color: #797f89; text-decoration-color: #797f89"> cluster </span>│
+│ VM   │  819 │ debian-13       │ pve1 │ stopped │ disks scsi0, ide2 │<span style="color: #797f89; text-decoration-color: #797f89"> cluster </span>│
+│ VM   │ 9000 │ debian-13-cloud │ pve1 │ stopped │ disks scsi0       │<span style="color: #797f89; text-decoration-color: #797f89"> cluster </span>│
+└──────┴──────┴─────────────────┴──────┴─────────┴───────────────────┴─────────┘
+
+<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold">staging</span> <span style="color: #86efac; text-decoration-color: #86efac">────────────────────────────────────────────────────────────────────────</span>
+┏━━━━━━┳━━━━━┳━━━━━━━━┳━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━┓
+┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Type </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold">  ID </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Name   </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Node </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Status  </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Match       </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Source  </span>┃
+┡━━━━━━╇━━━━━╇━━━━━━━━╇━━━━━━╇━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━┩
+│ VM   │ 861 │ web-02 │ pve6 │ stopped │ disks scsi0 │<span style="color: #797f89; text-decoration-color: #797f89"> cluster </span>│
+└──────┴─────┴────────┴──────┴─────────┴─────────────┴─────────┘</pre></figure>

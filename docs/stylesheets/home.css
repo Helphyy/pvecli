@@ -1,0 +1,94 @@
+/* The home page (overrides/home.html): dark in both schemes, the header and
+   the tabs float over the drawing, the Markdown is not shown. */
+
+html, body { height: 100%; margin: 0; }
+body { background-color: #0b0c0f; }
+
+/* Short windows scroll instead of piling the teaser on the tabs */
+body { position: relative; min-height: 600px; }
+
+.pv-hero {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+.pv-hero__canvas { display: block; width: 100%; height: 100%; }
+/* The text side stays dark: the fleet fades out before the teaser */
+.pv-hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, #0b0c0f 0%, #0b0c0fe6 28%, #0b0c0f00 52%);
+  pointer-events: none;
+}
+@media screen and (max-width: 760px) {
+  .pv-hero::after { background: linear-gradient(0deg, #0b0c0f 0%, #0b0c0fe6 40%, #0b0c0f00 62%); }
+}
+
+.md-header {
+  color: #fff;
+  background-color: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+.md-header__option { display: none; }
+.md-tabs { box-shadow: inset 0 -0.05rem 0 hsla(0, 0%, 100%, 0.1); }
+.md-tabs__item { color: #fff; }
+.md-tabs__item--active { border-bottom: 0.05rem solid #fff; }
+.md-main__inner { margin-top: 0; }
+.md-content, .md-sidebar, .md-footer { display: none; }
+
+.pv-teaser {
+  position: absolute;
+  bottom: max(96px, 24vh);
+  z-index: 3;
+  width: 100%;
+}
+.pv-teaser .md-grid { padding: 0 16px; }
+.pv-teaser h1 {
+  max-width: 520px;
+  margin-bottom: 0;
+  color: #fff;
+  font-size: 48px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.04em;
+  text-shadow: 0 0 16px #000;
+}
+.pv-teaser p {
+  max-width: 520px;
+  color: #fff;
+  font-size: 18px;
+  line-height: 1.5;
+  text-shadow: 0 0 8px #000;
+}
+.pv-teaser small { color: hsla(0, 0%, 90%, 0.75); }
+.pv-teaser .md-button {
+  color: #fff;
+  background-color: hsla(0, 0%, 90%, 0.12);
+  border: none;
+  transition: all 0.25s;
+}
+.pv-teaser .md-button:hover,
+.pv-teaser .md-button:focus { color: #fff; background-color: hsla(0, 0%, 90%, 0.2); }
+.pv-teaser .md-button--primary {
+  background: linear-gradient(35deg, #e57000, #ffae0b);
+}
+.pv-teaser .md-button--primary:hover,
+.pv-teaser .md-button--primary:focus {
+  background: linear-gradient(35deg, #f07a00, #ffc23d);
+}
+
+@media screen and (max-width: 480px) {
+  .pv-teaser { bottom: 64px; }
+  .pv-teaser h1 { font-size: 34px; }
+  .pv-teaser p { font-size: 15px; }
+}
+
+/* The search button, readable on the dark background */
+.md-search__button {
+  color: hsla(0, 0%, 100%, 0.85);
+  background-color: hsla(0, 0%, 100%, 0.08);
+}
+.md-search__button:hover { background-color: hsla(0, 0%, 100%, 0.14); }
+.md-search__button::before, .md-search__button::after { color: inherit; }

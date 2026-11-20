@@ -1,0 +1,12 @@
+<figure class="terminal terminal--wide" markdown="0"><pre class="terminal-body"><span class="terminal-prompt">$ </span><span class="terminal-command">pvecli deploy guests.yaml --dry-run -p prod</span>
+<span style="font-style: italic">cluster prod (profile prod)                                                                         </span>
+┏━━━━━━━━┳━━━━━━┳━━━━━━━━┳━━━━━┳━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━┓
+┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Action </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Type </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Name   </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> ID  </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Node </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Source                               </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Network      </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Note </span>┃
+┡━━━━━━━━╇━━━━━━╇━━━━━━━━╇━━━━━╇━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━┩
+│ <span style="color: #4ade80; text-decoration-color: #4ade80">create</span> │ VM   │ api-01 │ 810 │ pve1 │ 819                                  │ 10.0.0.24/24 │      │
+│ <span style="color: #4ade80; text-decoration-color: #4ade80">create</span> │ VM   │ api-02 │ 811 │ pve1 │ 819                                  │ 10.0.0.25/24 │      │
+│ <span style="color: #4ade80; text-decoration-color: #4ade80">create</span> │ CT   │ dns-02 │ 812 │ pve1 │ debian-13-standard_13.6-1_amd64.tar. │ 10.0.0.26/24 │      │
+│        │      │        │     │      │ zst                                  │              │      │
+└────────┴──────┴────────┴─────┴──────┴──────────────────────────────────────┴──────────────┴──────┘
+<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold">3</span><span style="font-weight: bold"> </span><span style="color: #c084fc; text-decoration-color: #c084fc; font-weight: bold">guest</span><span style="font-weight: bold">(s) to create</span>
+<span class="mark mark-first" data-n="1" style="color: #2dd4bf; text-decoration-color: #2dd4bf">Dry run</span><span style="color: #2dd4bf; text-decoration-color: #2dd4bf">: nothing was created</span></pre></figure>

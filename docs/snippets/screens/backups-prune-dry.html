@@ -1,0 +1,10 @@
+<figure class="terminal terminal--wide" markdown="0"><pre class="terminal-body"><span class="terminal-prompt">$ </span><span class="terminal-command">pvecli backup prune local --keep-last 1 --vmid 820 --dry-run -p prod</span>
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━┳━━━━━┳━━━━━━┳━━━━━┳━━━━━━━━━━┓
+┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Volid                                                   </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Node </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> ID  </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Type </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Age </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Decision </span>┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━╇━━━━━╇━━━━━━╇━━━━━╇━━━━━━━━━━┩
+│ local:backup/vzdump-lxc-820-2026_11_19-09_58_43.tar.zst │ pve1 │ 820 │ lxc  │ 0h  │ <span style="color: #4ade80; text-decoration-color: #4ade80">keep</span>     │
+│ local:backup/vzdump-lxc-820-2026_11_19-09_53_19.tar.zst │ pve1 │ 820 │ lxc  │ 0h  │ <span class="mark mark-first" data-n="1" style="color: #f87171; text-decoration-color: #f87171">remove</span>   │
+│ local:backup/vzdump-lxc-820-2026_11_19-09_52_00.tar.zst │ pve1 │ 820 │ lxc  │ 0h  │ <span style="color: #f87171; text-decoration-color: #f87171">remove</span>   │
+└─────────────────────────────────────────────────────────┴──────┴─────┴──────┴─────┴──────────┘
+<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold">2</span> <span style="color: #c084fc; text-decoration-color: #c084fc; font-weight: bold">backup</span><span style="font-weight: bold">(</span>s<span style="font-weight: bold">)</span> to remove
+<span style="color: #2dd4bf; text-decoration-color: #2dd4bf">Dry run: nothing removed</span></pre></figure>

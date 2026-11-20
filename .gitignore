@@ -37,3 +37,14 @@ htmlcov/
 .env
 .env.*
 tasks/
+
+# Lab names of the documentation captures
+scripts/docs/screens.local.toml
+
+# Built documentation site
+site/
+
+# Per-agent builds of the documentation
+.site-*/
+.zensical-*.toml
+scripts/docs/LAB.local.md

@@ -1,0 +1,13 @@
+<figure class="terminal terminal--wide" markdown="0"><pre class="terminal-body"><span class="terminal-prompt">$ </span><span class="terminal-command">pvecli find --no-backup -p prod,staging</span>
+<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold">prod</span> <span style="color: #86efac; text-decoration-color: #86efac">───────────────────────────────────────────────────────────────────────────────────────────────</span>
+┏━━━━━━┳━━━━━━┳━━━━━━━━━━━━━━━━━┳━━━━━━┳━━━━━━━━━┳━━━━━━━┳━━━━━━━━━┓
+┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Type </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold">   ID </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Name            </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Node </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Status  </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Match </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Source  </span>┃
+┡━━━━━━╇━━━━━━╇━━━━━━━━━━━━━━━━━╇━━━━━━╇━━━━━━━━━╇━━━━━━━╇━━━━━━━━━┩
+│ CT   │  100 │ proxy-01        │ pve1 │ running │ -     │<span style="color: #797f89; text-decoration-color: #797f89"> cluster </span>│
+│ VM   │  300 │ web-01          │ pve2 │ stopped │ -     │<span style="color: #797f89; text-decoration-color: #797f89"> cluster </span>│
+│ VM   │  301 │ db-01           │ pve1 │ stopped │ -     │<span style="color: #797f89; text-decoration-color: #797f89"> cluster </span>│
+│ VM   │ 9000 │ debian-13-cloud │ pve1 │ stopped │ -     │<span style="color: #797f89; text-decoration-color: #797f89"> cluster </span>│
+└──────┴──────┴─────────────────┴──────┴─────────┴───────┴─────────┘
+
+<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold">staging</span> <span style="color: #86efac; text-decoration-color: #86efac">────────────────────────────────────────────────────────────────────────────────────────────</span>
+<span style="color: #2dd4bf; text-decoration-color: #2dd4bf">Nothing found</span></pre></figure>

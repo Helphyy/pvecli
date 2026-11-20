@@ -44,13 +44,16 @@ dev = [
     "mypy>=1.8.0",
     "types-pyyaml>=6.0.12",
 ]
+docs = [
+    "zensical>=0.1.2",
+]
 
 [project.scripts]
 pvecli = "src.cli.main:run"
 
 [project.urls]
 Homepage = "https://github.com/Helphyy/pvecli"
-Documentation = "https://github.com/Helphyy/pvecli#readme"
+Documentation = "https://helphyy.github.io/pvecli/"
 Repository = "https://github.com/Helphyy/pvecli"
 Issues = "https://github.com/Helphyy/pvecli/issues"
 

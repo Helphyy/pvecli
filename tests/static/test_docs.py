@@ -15,12 +15,14 @@ from typer.main import get_command
 from src.cli.main import app
 
 ROOT = Path(__file__).resolve().parents[2]
-DOCS = [ROOT / "README.md", *sorted((ROOT / "docs").glob("*.md"))]
+DOCS = [ROOT / "README.md", *sorted((ROOT / "docs").rglob("*.md"))]
 TOP = "vm|ct|node|tag|pool|sdn|ceph|cluster|storage|config|find|audit|snapshot|backup|deploy"
 LINE = re.compile(rf"(?:^|`|\s)(pvecli\s(?:{TOP})\b[^`\n]*)")
 
 
 def _check(line: str) -> str | None:
+    if "<Tab>" in line:  # a completion example: the line is unfinished
+        return None
     line = re.split(r"\s+#|\s*\||\s*>|\s*;|\s*&&|\s*<", line)[0]
     try:
         tokens = shlex.split(line)
@@ -33,7 +35,7 @@ def _check(line: str) -> str | None:
         cmd = cmd.commands[tokens.pop(0)]
     if getattr(cmd, "commands", None) and tokens and not tokens[0].startswith("-"):
         return f"unknown subcommand '{tokens[0]}' under '{' '.join(path)}'"
-    opts = {o for p in cmd.params for o in (p.opts + p.secondary_opts)} | {"--help"}
+    opts = {o for p in cmd.params for o in (p.opts + p.secondary_opts)} | {"--help", "-h"}
     for t in tokens:
         if t == "--":
             break

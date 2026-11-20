@@ -1,0 +1,24 @@
+<figure class="terminal terminal--wide" markdown="0"><pre class="terminal-body"><span class="terminal-prompt">$ </span><span class="terminal-command">pvecli backup list --vmid 300 --storage pbs -p prod,staging --json</span>
+{
+  &quot;prod&quot;: [
+    {
+      &quot;ctime&quot;: 1785792761,
+      &quot;format&quot;: &quot;pbs-vm&quot;,
+      &quot;name&quot;: &quot;web-01&quot;,
+      &quot;node&quot;: null,
+      &quot;notes&quot;: &quot;&quot;,
+      &quot;protected&quot;: false,
+      &quot;size&quot;: 510,
+      &quot;storage&quot;: &quot;pbs&quot;,
+      &quot;type&quot;: &quot;qemu&quot;,
+      &quot;verified&quot;: null,
+      &quot;vmid&quot;: 300,
+      &quot;volid&quot;: &quot;pbs:backup/vm/300/2026-08-03T21:32:41Z&quot;
+    }
+  ],
+  &quot;staging&quot;: {
+    &quot;error&quot;: &quot;Error: &#x27;pbs&#x27; is not an enabled backup storage. Backup storages: cephfsext, local&quot;,
+    <span class="mark mark-first" data-n="1">&quot;exit_code&quot;: 1</span>
+  }
+}
+<span style="color: #fbbf24; text-decoration-color: #fbbf24">Failed on </span><span style="color: #fbbf24; text-decoration-color: #fbbf24; font-weight: bold">1</span><span style="color: #fbbf24; text-decoration-color: #fbbf24">/</span><span style="color: #fbbf24; text-decoration-color: #fbbf24; font-weight: bold">2</span><span style="color: #fbbf24; text-decoration-color: #fbbf24"> </span><span style="color: #fbbf24; text-decoration-color: #fbbf24; font-weight: bold">profile(</span><span style="color: #fbbf24; text-decoration-color: #fbbf24">s</span><span style="color: #fbbf24; text-decoration-color: #fbbf24; font-weight: bold">)</span><span style="color: #fbbf24; text-decoration-color: #fbbf24">: staging</span></pre></figure>

@@ -1,0 +1,19 @@
+<figure class="terminal terminal--wide" markdown="0"><pre class="terminal-body"><span class="terminal-prompt">$ </span><span class="terminal-command">pvecli ceph flags -p prod</span>
+<span style="font-style: italic">                                             Ceph flags                                             </span>
+┏━━━━━━━━━━━━━━┳━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Flag         </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Set </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Meaning                                                                     </span>┃
+┡━━━━━━━━━━━━━━╇━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│<span style="color: #2dd4bf; text-decoration-color: #2dd4bf"> nobackfill   </span>│ <span style="color: #797f89; text-decoration-color: #797f89">no</span>  │ Backfilling of PGs is suspended.                                            │
+│<span style="color: #2dd4bf; text-decoration-color: #2dd4bf"> nodeep-scrub </span>│ <span style="color: #797f89; text-decoration-color: #797f89">no</span>  │ Deep Scrubbing is disabled.                                                 │
+│<span style="color: #2dd4bf; text-decoration-color: #2dd4bf"> nodown       </span>│ <span style="color: #797f89; text-decoration-color: #797f89">no</span>  │ OSD failure reports are being ignored, such that the monitors will not mark │
+│<span style="color: #2dd4bf; text-decoration-color: #2dd4bf">              </span>│     │ OSDs down.                                                                  │
+│<span style="color: #2dd4bf; text-decoration-color: #2dd4bf"> noin         </span>│ <span style="color: #797f89; text-decoration-color: #797f89">no</span>  │ OSDs that were previously marked out will not be marked back in when they   │
+│<span style="color: #2dd4bf; text-decoration-color: #2dd4bf">              </span>│     │ start.                                                                      │
+│<span style="color: #2dd4bf; text-decoration-color: #2dd4bf"> noout        </span>│ <span style="color: #797f89; text-decoration-color: #797f89">no</span>  │ OSDs will not automatically be marked out after the configured interval.    │
+│<span style="color: #2dd4bf; text-decoration-color: #2dd4bf"> norebalance  </span>│ <span style="color: #797f89; text-decoration-color: #797f89">no</span>  │ Rebalancing of PGs is suspended.                                            │
+│<span style="color: #2dd4bf; text-decoration-color: #2dd4bf"> norecover    </span>│ <span style="color: #797f89; text-decoration-color: #797f89">no</span>  │ Recovery of PGs is suspended.                                               │
+│<span style="color: #2dd4bf; text-decoration-color: #2dd4bf"> noscrub      </span>│ <span style="color: #797f89; text-decoration-color: #797f89">no</span>  │ Scrubbing is disabled.                                                      │
+│<span style="color: #2dd4bf; text-decoration-color: #2dd4bf"> notieragent  </span>│ <span style="color: #797f89; text-decoration-color: #797f89">no</span>  │ Cache tiering activity is suspended.                                        │
+│<span style="color: #2dd4bf; text-decoration-color: #2dd4bf"> noup         </span>│ <span style="color: #797f89; text-decoration-color: #797f89">no</span>  │ OSDs are not allowed to start.                                              │
+│<span style="color: #2dd4bf; text-decoration-color: #2dd4bf"> pause        </span>│ <span style="color: #797f89; text-decoration-color: #797f89">no</span>  │ Pauses read and writes.                                                     │
+└──────────────┴─────┴─────────────────────────────────────────────────────────────────────────────┘</pre></figure>

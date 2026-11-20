@@ -1,0 +1,14 @@
+<figure class="terminal terminal--wide" markdown="0"><pre class="terminal-body"><span class="terminal-prompt">$ </span><span class="terminal-command">pvecli cluster preflight -p staging</span>
+<span style="font-style: italic">                           Preflight: standalone node (pve6)                           </span>
+┏━━━━━━━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Check           </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Result </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Detail                                                   </span>┃
+┡━━━━━━━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│<span style="color: #2dd4bf; text-decoration-color: #2dd4bf"> Nodes online    </span>│ <span style="color: #4ade80; text-decoration-color: #4ade80">OK</span>     │ 1/1                                                      │
+│<span style="color: #2dd4bf; text-decoration-color: #2dd4bf"> PVE versions    </span>│ <span style="color: #4ade80; text-decoration-color: #4ade80">OK</span>     │ all on 9.1.1                                             │
+│<span style="color: #2dd4bf; text-decoration-color: #2dd4bf"> Clock drift     </span>│ <span style="color: #797f89; text-decoration-color: #797f89">n/a</span>    │ single node                                              │
+│<span style="color: #2dd4bf; text-decoration-color: #2dd4bf"> Name resolution </span>│ <span style="color: #797f89; text-decoration-color: #797f89">n/a</span>    │ single node                                              │
+│<span style="color: #2dd4bf; text-decoration-color: #2dd4bf"> Core services   </span>│ <span style="color: #4ade80; text-decoration-color: #4ade80">OK</span>     │ pve-cluster, pvedaemon, pveproxy, pvestatd running       │
+│<span style="color: #2dd4bf; text-decoration-color: #2dd4bf"> Cluster         </span>│ <span style="color: #797f89; text-decoration-color: #797f89">n/a</span>    │ <span class="mark mark-first" data-n="1">standalone node, ready to create or join</span>                 │
+│<span style="color: #2dd4bf; text-decoration-color: #2dd4bf"> Guests present  </span>│ <span style="color: #fbbf24; text-decoration-color: #fbbf24">WARN</span>   │ 1 guest(s): joining a cluster wipes this node&#x27;s /etc/pve │
+└─────────────────┴────────┴──────────────────────────────────────────────────────────┘
+<span style="color: #fbbf24; text-decoration-color: #fbbf24; font-weight: bold">Warning:</span> No blocker, but the points above deserve a look</pre></figure>

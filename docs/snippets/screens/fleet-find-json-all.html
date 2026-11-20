@@ -1,0 +1,24 @@
+<figure class="terminal" markdown="0"><pre class="terminal-body"><span class="terminal-prompt">$ </span><span class="terminal-command">pvecli find 10.0.0.86 -p &#x27;*&#x27; --json</span>
+{
+  &quot;prod&quot;: [
+    {
+      &quot;match&quot;: &quot;net0 10.0.0.86/24&quot;,
+      &quot;name&quot;: &quot;proxy-02&quot;,
+      &quot;node&quot;: &quot;pve1&quot;,
+      &quot;source&quot;: &quot;config&quot;,
+      &quot;status&quot;: &quot;running&quot;,
+      &quot;type&quot;: &quot;CT&quot;,
+      &quot;vmid&quot;: 860
+    },
+    {
+      &quot;match&quot;: &quot;10.0.0.86 on eth0 (BC:24:11:BE:EC:79)&quot;,
+      &quot;name&quot;: &quot;proxy-02&quot;,
+      &quot;node&quot;: &quot;pve1&quot;,
+      &quot;source&quot;: &quot;lxc&quot;,
+      &quot;status&quot;: &quot;running&quot;,
+      &quot;type&quot;: &quot;CT&quot;,
+      &quot;vmid&quot;: 860
+    }
+  ],
+  &quot;staging&quot;: []
+}</pre></figure>

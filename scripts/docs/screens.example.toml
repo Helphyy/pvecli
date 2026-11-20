@@ -1,0 +1,21 @@
+# Copy to screens.local.toml (git-ignored) and fill in with your lab.
+
+# pvecli profile the shots run against
+profile = "lab"
+# ...and the name the captures show (same length keeps the layout)
+profile_as = "prod"
+
+# A shot whose output still matches one of these patterns is refused
+# (a top-level key: it must stay above the first [table])
+forbid = ['lab-node\d', '192\.168\.50\.']
+
+# Other profiles a shot names in its args, and the name the captures show
+[profiles]
+"lab-b" = "staging"
+
+# Every real name or address the API returns, and what the docs show instead
+# (swapped inside each API answer, so tables stay aligned)
+[replace]
+"my-lab-cluster" = "prod"
+"lab-node1" = "pve1"
+"192.168.50.11" = "10.0.0.11"

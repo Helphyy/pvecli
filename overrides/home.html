@@ -1,0 +1,35 @@
+{#- The home page: a full-screen hero over a drawing of a fleet of clusters
+    (docs/javascripts/hero.js), the teaser, then the tabs. The Markdown of
+    docs/index.md is kept for search and for readers without CSS. -#}
+{% extends "main.html" %}
+
+{% block extrahead %}
+  {{ super() }}
+  <link rel="stylesheet" href="{{ 'stylesheets/home.css' | url }}">
+{% endblock %}
+
+{% block hero %}
+  <div class="pv-hero" aria-hidden="true">
+    <canvas class="pv-hero__canvas"></canvas>
+  </div>
+  <div class="pv-teaser">
+    <div class="md-typeset md-grid">
+      <h1>Proxmox VE from the command line</h1>
+      <p>
+        Guests, nodes, storage, SDN, Ceph and backups, on one cluster or on
+        all of them at once. From your workstation, with an API token.
+      </p>
+      <p>
+        <small><em>Free software under the GPL-3.0. Not affiliated with
+        Proxmox Server Solutions GmbH.</em></small>
+      </p>
+      <a class="md-button md-button--primary" href="{{ 'start/' | url }}">Get started</a>
+      <a class="md-button" href="{{ 'cli/' | url }}">Commands</a>
+    </div>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+  {{ super() }}
+  <script src="{{ 'javascripts/hero.js' | url }}"></script>
+{% endblock %}

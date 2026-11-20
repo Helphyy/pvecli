@@ -1,0 +1,145 @@
+/* The colors of Proxmox VE on the Zensical theme: orange for links and the
+   active page, blue for what is hovered. */
+
+:root {
+  --md-primary-fg-color: #e57000;
+  --md-primary-fg-color--light: #ff8c1a;
+  --md-primary-fg-color--dark: #b35800;
+  --md-accent-fg-color: #0078cf;
+}
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: #ff8c1a;
+  --md-primary-fg-color--light: #ffae0b;
+  --md-primary-fg-color--dark: #e57000;
+  --md-accent-fg-color: #4db5ff;
+}
+
+/* The box drawing characters of JetBrains Mono (assets/fonts, SIL OFL 1.1):
+   the copy served by Google Fonts lacks them, and a fallback font of another
+   width breaks the tables of the captures. */
+@font-face {
+  font-family: "pvecli Box";
+  src: url("../assets/fonts/box-drawing.woff2") format("woff2");
+  font-weight: 100 900;
+  unicode-range: U+2500-25FF;
+}
+
+/* Terminal output (scripts/docs/screens.py): a code block with the colors
+   of the real output, dark in both schemes */
+.md-typeset figure.terminal {
+  text-align: left;
+  display: block;
+  max-width: 100%;
+  margin: 1em 0;
+}
+.md-typeset pre.terminal-body {
+  margin: 0;
+  padding: 0.8em 1.2em;
+  overflow-x: auto;
+  border-radius: 0.1rem;
+  color: #e6e6e6;
+  background: #1e1e1e;
+  font-family: "pvecli Box", var(--md-code-font-family);
+  font-size: 0.75em;
+  line-height: 1.25;
+  font-variant-ligatures: none;
+}
+.terminal--wide pre.terminal-body { font-size: 0.65em; }
+.terminal-prompt { color: #9e9e9e; user-select: none; }
+
+/* Recordings of the interactive menus (asciinema-player) */
+.cast {
+  overflow: hidden;
+  background: #1e1e1e;
+  border-radius: 0.2rem;
+  box-shadow: inset 0 0 0 0.05rem hsla(0, 0%, 100%, 0.08);
+}
+.cast .ap-wrapper { padding: 0.4em 0.7em 0; }
+.cast .ap-control-bar { background: #2a2a2a; }
+.cast .ap-progressbar .ap-bar { background: #3a3a3a; }
+.cast .ap-progressbar .ap-gutter-full, .cast .ap-progressbar .ap-knob { background-color: #e57000; }
+.asciinema-player-theme-pvecli {
+  --term-color-foreground: #e6e6e6;
+  --term-color-background: #1e1e1e;
+  --term-color-0: #262626;
+  --term-color-1: #ff5c5c;
+  --term-color-2: #6fcf5f;
+  --term-color-3: #ffae0b;
+  --term-color-4: #4db5ff;
+  --term-color-5: #d08cff;
+  --term-color-6: #3fd0d0;
+  --term-color-7: #bfbfbf;
+  --term-color-8: #595959;
+  --term-color-9: #ff8a8a;
+  --term-color-10: #9be08f;
+  --term-color-11: #ffd060;
+  --term-color-12: #99d5ff;
+  --term-color-13: #e3b8ff;
+  --term-color-14: #8ae6e6;
+  --term-color-15: #ffffff;
+}
+
+/* Diagrams (Mermaid): the Proxmox VE colors instead of the theme's grey.
+   Nodes can take their own color with classDef (see docs/sample.md). */
+[data-md-color-scheme="default"] {
+  --md-mermaid-node-bg-color: #fff1e3;
+  --md-mermaid-node-fg-color: #e57000;
+  --md-mermaid-edge-color: #0078cf;
+  --md-mermaid-label-fg-color: #1f2328;
+  --md-mermaid-label-bg-color: #ffffff;
+  --md-mermaid-sequence-actor-bg-color: #fff1e3;
+  --md-mermaid-sequence-actor-border-color: #e57000;
+  --md-mermaid-sequence-actor-fg-color: #1f2328;
+  --md-mermaid-sequence-actor-line-color: #e5700080;
+  --md-mermaid-sequence-message-line-color: #0078cf;
+  --md-mermaid-sequence-message-fg-color: #1f2328;
+  --md-mermaid-sequence-box-bg-color: #fff6ec;
+  --md-mermaid-sequence-loop-bg-color: #e8f3fc;
+  --md-mermaid-sequence-loop-border-color: #0078cf;
+  --md-mermaid-sequence-loop-fg-color: #0078cf;
+  --md-mermaid-sequence-number-bg-color: #e57000;
+  --md-mermaid-sequence-number-fg-color: #ffffff;
+}
+[data-md-color-scheme="slate"] {
+  --md-mermaid-node-bg-color: #3a2410;
+  --md-mermaid-node-fg-color: #ff8c1a;
+  --md-mermaid-edge-color: #4db5ff;
+  --md-mermaid-label-fg-color: #e6e6e6;
+  --md-mermaid-label-bg-color: #1e2129;
+  --md-mermaid-sequence-actor-bg-color: #3a2410;
+  --md-mermaid-sequence-actor-border-color: #ff8c1a;
+  --md-mermaid-sequence-actor-fg-color: #e6e6e6;
+  --md-mermaid-sequence-actor-line-color: #ff8c1a80;
+  --md-mermaid-sequence-message-line-color: #4db5ff;
+  --md-mermaid-sequence-message-fg-color: #e6e6e6;
+  --md-mermaid-sequence-box-bg-color: #2a1d10;
+  --md-mermaid-sequence-loop-bg-color: #12283a;
+  --md-mermaid-sequence-loop-border-color: #4db5ff;
+  --md-mermaid-sequence-loop-fg-color: #4db5ff;
+}
+
+/* Sketches: a Mermaid diagram drawn by hand, like Excalidraw, in its font
+   (Excalifont, assets/fonts, SIL OFL 1.1). Wrap the block in
+   <div class="sketch" markdown> and start it with `config: look: handDrawn`. */
+@font-face {
+  font-family: "Excalifont";
+  src: url("../assets/fonts/excalifont.woff2") format("woff2");
+  font-display: swap;
+}
+.sketch {
+  --md-mermaid-font-family: "Excalifont", "Comic Sans MS", cursive;
+  padding: 0.8rem;
+  background: #fffdf8;
+  border-radius: 0.4rem;
+  box-shadow: inset 0 0 0 0.05rem #0000001a;
+}
+/* A sheet of paper in both schemes: the sketch keeps its light colors */
+[data-md-color-scheme="slate"] .sketch {
+  --md-mermaid-node-bg-color: #fff1e3;
+  --md-mermaid-node-fg-color: #e57000;
+  --md-mermaid-edge-color: #0078cf;
+  --md-mermaid-label-fg-color: #1f2328;
+  --md-mermaid-label-bg-color: #fffdf8;
+  background: #f4f1ea;
+}
+.sketch .mermaid { margin: 0; }

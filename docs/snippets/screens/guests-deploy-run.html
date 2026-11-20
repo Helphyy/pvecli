@@ -1,0 +1,35 @@
+<figure class="terminal terminal--wide" markdown="0"><pre class="terminal-body"><span class="terminal-prompt">$ </span><span class="terminal-command">pvecli deploy guests.yaml --wait-ip 120 -p prod</span>
+<span style="font-style: italic">cluster prod (profile prod)                                                                         </span>
+┏━━━━━━━━┳━━━━━━┳━━━━━━━━┳━━━━━┳━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━┓
+┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Action </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Type </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Name   </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> ID  </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Node </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Source                               </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Network      </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Note </span>┃
+┡━━━━━━━━╇━━━━━━╇━━━━━━━━╇━━━━━╇━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━┩
+│ <span style="color: #4ade80; text-decoration-color: #4ade80">create</span> │ VM   │ api-01 │ 810 │ pve1 │ 819                                  │ 10.0.0.24/24 │      │
+│ <span style="color: #4ade80; text-decoration-color: #4ade80">create</span> │ VM   │ api-02 │ 811 │ pve1 │ 819                                  │ 10.0.0.25/24 │      │
+│ <span style="color: #4ade80; text-decoration-color: #4ade80">create</span> │ CT   │ dns-02 │ 812 │ pve1 │ debian-13-standard_13.6-1_amd64.tar. │ 10.0.0.26/24 │      │
+│        │      │        │     │      │ zst                                  │              │      │
+└────────┴──────┴────────┴─────┴──────┴──────────────────────────────────────┴──────────────┴──────┘
+<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold">3</span><span style="font-weight: bold"> </span><span style="color: #c084fc; text-decoration-color: #c084fc; font-weight: bold">guest</span><span style="font-weight: bold">(s) to create</span>
+Create these 3 guest(s)? <span style="color: #c084fc; text-decoration-color: #c084fc; font-weight: bold">[y/n]</span> <span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold">(n)</span>: <span style="font-weight: bold">y</span>
+<span style="font-weight: bold">api-01</span>: <span style="color: #2dd4bf; text-decoration-color: #2dd4bf">Cloning template 819 to VM 810 (linked)...</span>
+<span style="font-weight: bold">api-02</span>: <span style="color: #2dd4bf; text-decoration-color: #2dd4bf">Cloning template 819 to VM 811 (linked)...</span>
+<span style="font-weight: bold">dns-02</span>: <span style="color: #2dd4bf; text-decoration-color: #2dd4bf">Creating CT 812 from local:vztmpl/debian-13-standard_13.6-1_amd64.tar.zst...</span>
+<span style="font-weight: bold">api-02</span>: <span style="color: #4ade80; text-decoration-color: #4ade80">VM 811 (api-02) created on pve1</span>
+<span style="font-weight: bold">api-01</span>: <span style="color: #4ade80; text-decoration-color: #4ade80">VM 810 (api-01) created on pve1</span>
+<span style="font-weight: bold">api-02</span>: <span style="color: #4ade80; text-decoration-color: #4ade80">VM 811 started</span>
+<span style="font-weight: bold">api-02</span>: <span style="color: #2dd4bf; text-decoration-color: #2dd4bf">Waiting up to 120s for its address from the guest agent...</span>
+<span style="font-weight: bold">dns-02</span>: <span style="color: #4ade80; text-decoration-color: #4ade80">CT 812 (dns-02) created on pve1</span>
+<span style="font-weight: bold">api-01</span>: <span style="color: #4ade80; text-decoration-color: #4ade80">VM 810 started</span>
+<span style="font-weight: bold">api-01</span>: <span style="color: #2dd4bf; text-decoration-color: #2dd4bf">Waiting up to 120s for its address from the guest agent...</span>
+<span style="font-weight: bold">dns-02</span>: <span style="color: #4ade80; text-decoration-color: #4ade80">CT 812 started</span>
+<span style="font-weight: bold">dns-02</span>: <span style="color: #2dd4bf; text-decoration-color: #2dd4bf">Waiting up to 120s for its IPv4 address...</span>
+<span style="font-weight: bold">dns-02</span>: <span style="color: #4ade80; text-decoration-color: #4ade80">CT 812 is up at 10.0.0.26</span>
+<span style="font-weight: bold">api-01</span>: <span style="color: #4ade80; text-decoration-color: #4ade80">VM 810 is up at 10.0.0.24</span>
+<span style="font-weight: bold">api-02</span>: <span style="color: #4ade80; text-decoration-color: #4ade80">VM 811 is up at 10.0.0.25</span>
+<span style="font-style: italic">Result                                                                     </span>
+┏━━━━━━━━┳━━━━━━┳━━━━━━━━━━━━━━┳━━━━━┳━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━┓
+┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Name   </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Type </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Cluster      </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> ID  </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Node </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Result  </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> IP        </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Error </span>┃
+┡━━━━━━━━╇━━━━━━╇━━━━━━━━━━━━━━╇━━━━━╇━━━━━━╇━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━┩
+│ api-01 │ VM   │ cluster prod │ 810 │ pve1 │ <span style="color: #4ade80; text-decoration-color: #4ade80">created</span> │ 10.0.0.24 │       │
+│ api-02 │ VM   │ cluster prod │ 811 │ pve1 │ <span style="color: #4ade80; text-decoration-color: #4ade80">created</span> │ 10.0.0.25 │       │
+│ dns-02 │ CT   │ cluster prod │ 812 │ pve1 │ <span style="color: #4ade80; text-decoration-color: #4ade80">created</span> │ 10.0.0.26 │       │
+└────────┴──────┴──────────────┴─────┴──────┴─────────┴───────────┴───────┘</pre></figure>

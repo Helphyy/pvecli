@@ -1,0 +1,28 @@
+defaults:
+  gw: 10.0.0.1
+  ssh_key: ~/.ssh/id_ed25519.pub
+  vm:
+    template: 819
+    user: debian
+  ct:
+    template: local:vztmpl/debian-13-standard_13.6-1_amd64.tar.zst
+    node: pve1
+    storage: local-lvm
+
+guests:
+  - type: vm
+    name: api-{n:02}
+    count: 2
+    id: 810
+    ip: 10.0.0.24/24
+    cores: 2
+    memory: 2G
+    tags: [api]
+
+  - type: ct
+    name: dns-02
+    id: 812
+    ip: 10.0.0.26/24
+    memory: 512M
+    password_env: DNS_ROOT_PASSWORD
+    tags: [dns]

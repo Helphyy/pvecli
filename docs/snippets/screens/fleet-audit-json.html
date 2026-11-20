@@ -1,0 +1,15 @@
+<figure class="terminal terminal--wide" markdown="0"><pre class="terminal-body"><span class="terminal-prompt">$ </span><span class="terminal-command">pvecli audit -p staging --problems --json</span>
+{
+  &quot;counts&quot;: {
+    &quot;INFO&quot;: 3,
+    &quot;OK&quot;: 7,
+    &quot;WARN&quot;: 1
+  },
+  &quot;findings&quot;: [
+    {
+      &quot;check&quot;: &quot;Firewall&quot;,
+      &quot;detail&quot;: &quot;datacenter firewall is disabled: guest and node rules are not enforced&quot;,
+      &quot;level&quot;: &quot;WARN&quot;
+    }
+  ]
+}</pre></figure>

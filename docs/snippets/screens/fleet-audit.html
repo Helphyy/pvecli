@@ -1,0 +1,28 @@
+<figure class="terminal" markdown="0"><pre class="terminal-body"><span class="terminal-prompt">$ </span><span class="terminal-command">pvecli audit -p prod</span>
+┏━━━━━━━━━━━━━━━━━━┳━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Check            </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Level </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Detail                                            </span>┃
+┡━━━━━━━━━━━━━━━━━━╇━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│<span style="color: #2dd4bf; text-decoration-color: #2dd4bf"> Backups          </span>│ <span style="color: #fbbf24; text-decoration-color: #fbbf24">WARN</span>  │ 12 guest(s) in no backup job: 812 (dns-02), 100   │
+│<span style="color: #2dd4bf; text-decoration-color: #2dd4bf">                  </span>│       │ (proxy-01), 880 (web-02), 860 (proxy-02), 881     │
+│<span style="color: #2dd4bf; text-decoration-color: #2dd4bf">                  </span>│       │ (dns-01), 882 (proxy-01), 819 (debian-13), 9000   │
+│<span style="color: #2dd4bf; text-decoration-color: #2dd4bf">                  </span>│       │ (debian-13-cloud), 300 (web-01), 810 (api-01) ... │
+│<span style="color: #2dd4bf; text-decoration-color: #2dd4bf"> Ceph             </span>│ <span style="color: #fbbf24; text-decoration-color: #fbbf24">WARN</span>  │ HEALTH_WARN: BLUESTORE_SLOW_OP_ALERT              │
+│<span style="color: #2dd4bf; text-decoration-color: #2dd4bf"> Firewall         </span>│ <span style="color: #fbbf24; text-decoration-color: #fbbf24">WARN</span>  │ datacenter firewall is disabled: guest and node   │
+│<span style="color: #2dd4bf; text-decoration-color: #2dd4bf">                  </span>│       │ rules are not enforced                            │
+│<span style="color: #2dd4bf; text-decoration-color: #2dd4bf"> Backup freshness </span>│ <span style="color: #2dd4bf; text-decoration-color: #2dd4bf">INFO</span>  │ no guest is in an enabled backup job              │
+│<span style="color: #2dd4bf; text-decoration-color: #2dd4bf"> Mounted ISOs     </span>│ <span style="color: #2dd4bf; text-decoration-color: #2dd4bf">INFO</span>  │ 301: local:iso/debian-13.6.0-amd64-netinst.iso,   │
+│<span style="color: #2dd4bf; text-decoration-color: #2dd4bf">                  </span>│       │ 810: local-lvm:vm-810-cloudinit, 811:             │
+│<span style="color: #2dd4bf; text-decoration-color: #2dd4bf">                  </span>│       │ local-lvm:vm-811-cloudinit, 819:                  │
+│<span style="color: #2dd4bf; text-decoration-color: #2dd4bf">                  </span>│       │ local-lvm:vm-819-cloudinit, 880:                  │
+│<span style="color: #2dd4bf; text-decoration-color: #2dd4bf">                  </span>│       │ ceph-vm:vm-880-cloudinit                          │
+│<span style="color: #2dd4bf; text-decoration-color: #2dd4bf"> Subscription     </span>│ <span style="color: #2dd4bf; text-decoration-color: #2dd4bf">INFO</span>  │ notfound: 5 node(s)                               │
+│<span style="color: #2dd4bf; text-decoration-color: #2dd4bf"> Updates          </span>│ <span style="color: #2dd4bf; text-decoration-color: #2dd4bf">INFO</span>  │ pending (last apt refresh): pve1=205, pve2=205,   │
+│<span style="color: #2dd4bf; text-decoration-color: #2dd4bf">                  </span>│       │ pve3=205, pve4=205, pve5=250                      │
+│<span style="color: #2dd4bf; text-decoration-color: #2dd4bf"> ACL              </span>│ <span style="color: #4ade80; text-decoration-color: #4ade80">OK</span>    │ 0 ACL entries, no broad Administrator grant       │
+│<span style="color: #2dd4bf; text-decoration-color: #2dd4bf"> Certificates     </span>│ <span style="color: #4ade80; text-decoration-color: #4ade80">OK</span>    │ no certificate expires within 30 days             │
+│<span style="color: #2dd4bf; text-decoration-color: #2dd4bf"> Orphan disks     </span>│ <span style="color: #4ade80; text-decoration-color: #4ade80">OK</span>    │ every guest volume belongs to an existing guest   │
+│<span style="color: #2dd4bf; text-decoration-color: #2dd4bf"> PVE versions     </span>│ <span style="color: #4ade80; text-decoration-color: #4ade80">OK</span>    │ all on 9.1.1                                      │
+│<span style="color: #2dd4bf; text-decoration-color: #2dd4bf"> Snapshots        </span>│ <span style="color: #4ade80; text-decoration-color: #4ade80">OK</span>    │ none older than 30d                               │
+│<span style="color: #2dd4bf; text-decoration-color: #2dd4bf"> Users and tokens </span>│ <span style="color: #4ade80; text-decoration-color: #4ade80">OK</span>    │ 1 user(s), nothing expired or over-privileged     │
+└──────────────────┴───────┴───────────────────────────────────────────────────┘
+  <span style="color: #f87171; text-decoration-color: #f87171">FAIL </span><span style="color: #f87171; text-decoration-color: #f87171; font-weight: bold">0</span>  <span style="color: #fbbf24; text-decoration-color: #fbbf24">WARN </span><span style="color: #fbbf24; text-decoration-color: #fbbf24; font-weight: bold">3</span>  <span style="color: #2dd4bf; text-decoration-color: #2dd4bf">INFO </span><span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold">4</span>  <span style="color: #4ade80; text-decoration-color: #4ade80">OK </span><span style="color: #4ade80; text-decoration-color: #4ade80; font-weight: bold">6</span></pre></figure>

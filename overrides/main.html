@@ -1,0 +1,8 @@
+{#- Every page: load the font of the sketches early, so that Mermaid
+    measures their labels with it and does not cut them. -#}
+{% extends "base.html" %}
+
+{% block extrahead %}
+  {{ super() }}
+  <link rel="preload" href="{{ 'assets/fonts/excalifont.woff2' | url }}" as="font" type="font/woff2" crossorigin>
+{% endblock %}

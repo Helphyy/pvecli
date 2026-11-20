@@ -1,0 +1,10 @@
+<figure class="terminal" markdown="0"><pre class="terminal-body"><span class="terminal-prompt">$ </span><span class="terminal-command">pvecli ceph pool -p prod</span>
+<span style="font-style: italic">                               Ceph pools                               </span>
+┏━━━━━━━━━━━━━━━━━┳━━━━━━┳━━━━━━━━━━┳━━━━━┳━━━━━━━━━━┳━━━━━━━━━━━━━━━━━┓
+┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Pool            </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Size </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Min size </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> PGs </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold">     Used </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Rule            </span>┃
+┡━━━━━━━━━━━━━━━━━╇━━━━━━╇━━━━━━━━━━╇━━━━━╇━━━━━━━━━━╇━━━━━━━━━━━━━━━━━┩
+│<span style="color: #2dd4bf; text-decoration-color: #2dd4bf"> .mgr            </span>│    3 │        2 │   1 │   1.8 MB │ replicated_rule │
+│<span style="color: #2dd4bf; text-decoration-color: #2dd4bf"> ceph-vm         </span>│    3 │        2 │  32 │  18.3 GB │ replicated_rule │
+│<span style="color: #2dd4bf; text-decoration-color: #2dd4bf"> cephfs_data     </span>│    3 │        2 │  32 │    0.0 B │ replicated_rule │
+│<span style="color: #2dd4bf; text-decoration-color: #2dd4bf"> cephfs_metadata </span>│    3 │        2 │  32 │ 323.2 KB │ replicated_rule │
+└─────────────────┴──────┴──────────┴─────┴──────────┴─────────────────┘</pre></figure>

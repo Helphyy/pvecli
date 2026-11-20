@@ -1,0 +1,20 @@
+<figure class="terminal" markdown="0"><pre class="terminal-body"><span class="terminal-prompt">$ </span><span class="terminal-command">pvecli ct deploy local:vztmpl/debian-13-standard_13.6-1_amd64.tar.zst --hostname dns-01 --ctid 805 --node pve1 --storage local-lvm --disk-size 4G --memory 512M --ip 10.0.0.22/24 --gw 10.0.0.1 --ssh-key ~/.ssh/id_ed25519.pub --tags dns --wait-ip 60 -p prod</span>
+<span style="color: #2dd4bf; text-decoration-color: #2dd4bf">Creating CT </span><span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold">805</span><span style="color: #2dd4bf; text-decoration-color: #2dd4bf"> from local:vztmpl/debian-</span><span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold">13</span><span style="color: #2dd4bf; text-decoration-color: #2dd4bf">-standard_13.</span><span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold">6</span><span style="color: #2dd4bf; text-decoration-color: #2dd4bf">-1_amd64.tar.zst...</span>
+<span style="color: #4ade80; text-decoration-color: #4ade80; font-weight: bold">✓</span> CT <span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold">805</span> <span style="font-weight: bold">(</span>dns-<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold">01</span><span style="font-weight: bold">)</span> created on pve1
+<span style="color: #4ade80; text-decoration-color: #4ade80; font-weight: bold">✓</span> CT <span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold">805</span> started
+<span style="color: #2dd4bf; text-decoration-color: #2dd4bf">Waiting up to 60s for its IPv4 address...</span>
+<span style="color: #4ade80; text-decoration-color: #4ade80; font-weight: bold">✓</span> CT <span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold">805</span> is up at <span style="color: #86efac; text-decoration-color: #86efac; font-weight: bold">10.0.0.22</span>
+
+<span style="color: #797f89; text-decoration-color: #797f89">pvecli ct deploy local:vztmpl/debian-13-standard_13.6-1_amd64.tar.zst \</span>
+<span style="color: #797f89; text-decoration-color: #797f89">    --hostname dns-01 \</span>
+<span style="color: #797f89; text-decoration-color: #797f89">    --ctid 805 \</span>
+<span style="color: #797f89; text-decoration-color: #797f89">    --node pve1 \</span>
+<span style="color: #797f89; text-decoration-color: #797f89">    --storage local-lvm \</span>
+<span style="color: #797f89; text-decoration-color: #797f89">    --disk-size 4G \</span>
+<span style="color: #797f89; text-decoration-color: #797f89">    --memory 512M \</span>
+<span style="color: #797f89; text-decoration-color: #797f89">    --ip 10.0.0.22/24 \</span>
+<span style="color: #797f89; text-decoration-color: #797f89">    --gw 10.0.0.1 \</span>
+<span style="color: #797f89; text-decoration-color: #797f89">    --ssh-key &#x27;~/.ssh/id_ed25519.pub&#x27; \</span>
+<span style="color: #797f89; text-decoration-color: #797f89">    --tags dns \</span>
+<span style="color: #797f89; text-decoration-color: #797f89">    --wait-ip 60 \</span>
+<span style="color: #797f89; text-decoration-color: #797f89">    -p prod</span></pre></figure>
