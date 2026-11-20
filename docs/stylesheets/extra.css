@@ -128,19 +128,22 @@
 }
 .sketch {
   --md-mermaid-font-family: "Excalifont", "Comic Sans MS", cursive;
+  --md-mermaid-label-fg-color: #1e1e1e;
+  --md-mermaid-label-bg-color: #fbfaf7;
+  --md-mermaid-edge-color: #1c7ed6;
   padding: 0.8rem;
-  background: #fffdf8;
+  background: #fbfaf7;
   border-radius: 0.4rem;
   box-shadow: inset 0 0 0 0.05rem #0000001a;
 }
-/* A sheet of paper in both schemes: the sketch keeps its light colors */
+/* Dark like Excalidraw's dark mode: the nodes are translucent (their
+   classDef fills carry an alpha), so they read on both backgrounds */
 [data-md-color-scheme="slate"] .sketch {
-  --md-mermaid-node-bg-color: #fff1e3;
-  --md-mermaid-node-fg-color: #e57000;
-  --md-mermaid-edge-color: #0078cf;
-  --md-mermaid-label-fg-color: #1f2328;
-  --md-mermaid-label-bg-color: #fffdf8;
-  background: #f4f1ea;
+  --md-mermaid-label-fg-color: #e3e3e8;
+  --md-mermaid-label-bg-color: #121418;
+  --md-mermaid-edge-color: #74c0fc;
+  background: #121418;
+  box-shadow: inset 0 0 0 0.05rem #ffffff14;
 }
 .sketch .mermaid { margin: 0; }
 

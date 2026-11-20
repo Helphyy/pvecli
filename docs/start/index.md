@@ -31,10 +31,12 @@ flowchart TB
     p3 -.- ct1["dns-01"]:::ct
   end
 
-  classDef pv fill:#ffae0b,stroke:#b35800,color:#1f2328,stroke-width:2px
-  classDef host fill:#a5d8ff,stroke:#1971c2,color:#1f2328
-  classDef vm fill:#b2f2bb,stroke:#2f9e44,color:#1f2328
-  classDef ct fill:#d0bfff,stroke:#6741d9,color:#1f2328
+  classDef pv fill:#ffae0b80,stroke:#e57000,stroke-width:2px
+  classDef host fill:#4dabf74d,stroke:#1c7ed6
+  classDef vm fill:#51cf664d,stroke:#2f9e44
+  classDef ct fill:#9775fa4d,stroke:#7048e8
+  classDef zone fill:#e570000d,stroke:#e57000,stroke-dasharray:6 4
+  class prod zone
 ```
 
 </div>

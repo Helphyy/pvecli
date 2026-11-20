@@ -40,8 +40,10 @@ flowchart TB
   c2 --> out
   out["Your terminal:<br/>one block per profile,<br/>in the order of -p"]:::pv
 
-  classDef pv fill:#ffae0b,stroke:#b35800,color:#1f2328,stroke-width:2px
-  classDef host fill:#a5d8ff,stroke:#1971c2,color:#1f2328
+  classDef pv fill:#ffae0b80,stroke:#e57000,stroke-width:2px
+  classDef host fill:#4dabf74d,stroke:#1c7ed6
+  classDef zone fill:#e570000d,stroke:#e57000,stroke-dasharray:6 4
+  class prod,staging,clienta zone
 ```
 
 </div>

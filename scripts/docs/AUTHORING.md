@@ -55,11 +55,13 @@ What `docs/sample.md` shows, nothing hand-styled beyond it:
     - A sequence: `autonumber`, phases in `rect` bands with a `note`.
     - The big picture of a section or a page (what talks to what): a sketch,
       a hand-drawn diagram like Excalidraw: the block starts with
-      `config: look: handDrawn`, inside `<div class="sketch" markdown>`, nodes
-      colored by kind (workstation `#ffae0b`, node `#a5d8ff`, VM `#b2f2bb`,
-      container `#d0bfff`, storage `#ffc9c9`). Name a classDef `host`, never
-      `node` (the theme overrides it). If a subgraph title is cut, end it
-      with `#nbsp;`.
+      `config: look: handDrawn`, inside `<div class="sketch" markdown>`.
+      Copy the classDefs of `docs/sample.md`: translucent fills (`#RRGGBBAA`)
+      and no `color:`, so the sketch reads on the light and the dark scheme
+      (workstation `pv`, node `host`, VM `vm`, container `ct`, storage
+      `store`, network `net`, and `zone` for every subgraph). Never name a
+      classDef `node` (the theme overrides it). If a subgraph title is cut,
+      end it with `#nbsp;`.
 - Buttons only on index pages, for the next step.
 - Keyboard keys: `++ctrl+c++`.
 - Video (`<video>`) only for what is not a terminal. A terminal is a
