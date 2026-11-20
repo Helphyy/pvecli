@@ -4,8 +4,8 @@
 // calls travel from the centre to the clusters along strands.
 //
 // Kept light: the fleet does not turn, so it is drawn once on a layer of its
-// own; each frame only copies that layer and draws the calls in flight, at
-// 30 frames per second, and nothing is drawn while the tab is hidden.
+// own; each frame only copies that layer and draws the calls in flight,
+// and nothing is drawn while the tab is hidden.
 
 (function () {
   "use strict";
@@ -36,7 +36,7 @@
 
   // The fleet
   const CLUSTERS = 16;
-  const STEPS = 24;
+  const STEPS = 64;
   const clusters = [];
   for (let i = 0; i < CLUSTERS; i++) {
     // Spread the clusters on a sphere (golden angle), with some jitter
@@ -128,6 +128,15 @@
   // Nearer is brighter
   const depth = (z) => 0.3 + 0.7 * Math.max(0, Math.min(1, (z + 1.3) / 2.6));
 
+  // A point along a projected strand, between its samples
+  const TRAIL = 10;
+  function at(pts, pos) {
+    const i = Math.min(Math.floor(pos), pts.length - 2);
+    const f = pos - i;
+    const a = pts[i], b = pts[i + 1];
+    return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f];
+  }
+
   function polyline(c, pts) {
     c.moveTo(pts[0][0], pts[0][1]);
     for (let i = 1; i < pts.length; i++) c.lineTo(pts[i][0], pts[i][1]);
@@ -143,6 +152,8 @@
     l.fillStyle = "#0b0c0f";
     l.fillRect(0, 0, width, height);
     l.globalCompositeOperation = "lighter";
+    l.lineJoin = "round";
+    l.lineCap = "round";
     for (const c of clusters) {
       const center = project(c.center);
       const a = depth(center[2]);
@@ -218,15 +229,13 @@
     drawFleet();
   }
 
-  let lastFrame = 0, running = false;
+  let running = false;
   function start() {
     if (!running) { running = true; requestAnimationFrame(loop); }
   }
   function loop(now) {
     if (document.hidden) { running = false; return; }
     requestAnimationFrame(loop);
-    if (now - lastFrame < 33) return;
-    lastFrame = now;
     frame(now);
   }
 
@@ -251,16 +260,27 @@
       const c = clusters[p.n];
       const travel = (t - p.born) / 1.8;
       if (travel < 1) {
-        // Along the strand, with a short trail
+        // Along the strand, at sub-segment precision, with a trail that fades
         const pts = c.projected[p.s];
-        const head = Math.floor(travel * STEPS);
-        ctx.strokeStyle = c.guest;
-        ctx.globalAlpha = 0.9;
-        ctx.lineWidth = 1.3;
+        const e = travel * travel * (3 - 2 * travel);
+        const head = at(pts, e * STEPS);
+        const tailPos = Math.max(0, e * STEPS - TRAIL);
+        const trail = [at(pts, tailPos)];
+        for (let k = Math.ceil(tailPos); k < e * STEPS; k++) trail.push(pts[k]);
+        trail.push(head);
+        const tail = trail[0];
+        const g = ctx.createLinearGradient(tail[0], tail[1], head[0], head[1]);
+        g.addColorStop(0, "hsla(35, 100%, 70%, 0)");
+        g.addColorStop(1, c.guest);
+        ctx.strokeStyle = g;
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        ctx.globalAlpha = 0.95;
+        ctx.lineWidth = 1.4;
         ctx.beginPath();
-        polyline(ctx, pts.slice(Math.max(0, head - 4), head + 1));
+        polyline(ctx, trail);
         ctx.stroke();
-        glow(pts[head][0], pts[head][1], 6, 0.9);
+        glow(head[0], head[1], 6, 0.9);
       } else if (travel < 1.35) {
         // Fanned out to the nodes
         const k = (travel - 1) / 0.35;
