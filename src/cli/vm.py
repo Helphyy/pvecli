@@ -307,9 +307,9 @@ async def show_vm(
             cpus = status.get("cpus", config.get("cores", 1))
             if vm_status == "running":
                 cpu_usage = status.get("cpu", 0) * 100
-                lines.append(f"[bold]CPU:[/bold]         {cpus} cores ({format_percentage(cpu_usage)} used)")
+                lines.append(f"[bold]CPU:[/bold]         {cpus} core{'' if cpus == 1 else 's'} ({format_percentage(cpu_usage)} used)")
             else:
-                lines.append(f"[bold]CPU:[/bold]         {cpus} cores")
+                lines.append(f"[bold]CPU:[/bold]         {cpus} core{'' if cpus == 1 else 's'}")
 
             # Memory
             maxmem = status.get("maxmem", config.get("memory", 0) * 1024 * 1024)
@@ -333,7 +333,8 @@ async def show_vm(
                     f"({format_percentage(disk_percent)})"
                 )
 
-            # Configuration details
+            # Configuration details: the heading only when something follows
+            config_start = len(lines)
             lines.append("")
             lines.append("[bold]── Configuration ──[/bold]")
 
@@ -356,6 +357,9 @@ async def show_vm(
                     lines.append(f"[bold]Pretty Name:[/bold] {osinfo.get('pretty-name')}")
                 if osinfo.get("version-id"):
                     lines.append(f"[bold]Version ID:[/bold]  {osinfo.get('version-id')}")
+
+            if len(lines) == config_start + 2:
+                del lines[config_start:]
 
             # Network - show runtime interfaces + config
             has_runtime_interfaces = bool(interfaces)
@@ -418,7 +422,7 @@ async def show_vm(
 
             # Pool
             pool = config.get("pool", "")
-            lines.append(f"[bold]Pool:[/bold]        {pool if pool else 'None'}")
+            lines.append(f"[bold]Pool:[/bold]        {pool or '-'}")
 
             # Tags
             if config.get("tags"):
@@ -1905,7 +1909,7 @@ def clone_vm(
     pool: str = typer.Option(None, "--pool", "-pl", help="Pool name"),
     onboot: bool = typer.Option(None, "--onboot/--no-onboot", "-ob", help="Start at boot"),
     full: bool = typer.Option(False, "--full", "-fu", help="Create full clone (templates only; default is linked)"),
-    target: str = typer.Option(None, "--target", "-ta", help="Target node (full clone only)"),
+    target: str = typer.Option(None, "--target", "-ta", help="Target node (the source's disks must be on shared storage)"),
 ) -> None:
     """Clone a VM.
 

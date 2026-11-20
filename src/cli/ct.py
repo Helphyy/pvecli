@@ -255,10 +255,10 @@ async def show_container(
             if ct_status == "running":
                 cpu_usage = status.get("cpu", 0) * 100
                 lines.append(
-                    f"[bold]CPU:[/bold]         {cpus} cores ({format_percentage(cpu_usage)} used)"
+                    f"[bold]CPU:[/bold]         {cpus} core{'' if cpus == 1 else 's'} ({format_percentage(cpu_usage)} used)"
                 )
             else:
-                lines.append(f"[bold]CPU:[/bold]         {cpus} cores")
+                lines.append(f"[bold]CPU:[/bold]         {cpus} core{'' if cpus == 1 else 's'}")
 
             # Memory
             maxmem = status.get("maxmem", config.get("memory", 0) * 1024 * 1024)
@@ -292,7 +292,8 @@ async def show_container(
                     f"({format_percentage(disk_percent)})"
                 )
 
-            # Configuration details
+            # Configuration details: the heading only when something follows
+            config_start = len(lines)
             lines.append("")
             lines.append("[bold]── Configuration ──[/bold]")
 
@@ -301,6 +302,9 @@ async def show_container(
 
             if config.get("arch"):
                 lines.append(f"[bold]Arch:[/bold]        {config.get('arch')}")
+
+            if len(lines) == config_start + 2:
+                del lines[config_start:]
 
             # Network section - get IPs from API and show network devices
             net_devices = [k for k in config.keys() if k.startswith("net")]
@@ -348,7 +352,7 @@ async def show_container(
 
             # Pool
             pool = config.get("pool", "")
-            lines.append(f"[bold]Pool:[/bold]        {pool if pool else 'None'}")
+            lines.append(f"[bold]Pool:[/bold]        {pool or '-'}")
 
             # Tags
             if config.get("tags"):
@@ -1328,7 +1332,7 @@ def clone_container(
     pool: str = typer.Option(None, "--pool", "-pl", help="Pool name"),
     onboot: bool = typer.Option(None, "--onboot/--no-onboot", "-ob", help="Start at boot"),
     full: bool = typer.Option(False, "--full", "-fu", help="Create full clone (templates only; default is linked)"),
-    target: str = typer.Option(None, "--target", "-ta", help="Target node (full clone only)"),
+    target: str = typer.Option(None, "--target", "-ta", help="Target node (the source's disks must be on shared storage)"),
 ) -> None:
     """Clone a container.
 

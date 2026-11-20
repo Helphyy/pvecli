@@ -97,6 +97,22 @@ def test_info_of_a_stopped_vm_without_agent(cli, api):
     assert "OS Name" not in r.stdout
 
 
+def test_info_one_core_and_no_empty_configuration_heading(cli, api):
+    # Seen in the docs captures: "1 cores", and a Configuration heading
+    # with nothing under it for a VM without ostype, boot disk or sockets
+    g = QEMU[0]
+    base = f"/nodes/{g['node']}/qemu/{g['vmid']}"
+    setup(api)
+    api.route("GET", f"{base}/status/current", {"status": "stopped", "cpus": 1, "maxmem": 2**30})
+    api.route("GET", f"{base}/config", {"name": "bare", "memory": 1024})
+    api.route("GET", f"{base}/agent/network-get-interfaces", api.error(500, "QEMU guest agent is not running"))
+    api.route("GET", f"{base}/agent/get-osinfo", api.error(500, "QEMU guest agent is not running"))
+    r = cli("vm", "info", str(g["vmid"]), "-p", "p1")
+    assert r.exit_code == 0, r.output
+    assert "1 core" in r.stdout and "1 cores" not in r.stdout
+    assert "Configuration" not in r.stdout
+
+
 def test_info_unknown_vm(cli, api):
     setup(api)
     r = cli("vm", "info", "999", "-p", "p1")

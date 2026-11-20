@@ -87,6 +87,18 @@ def test_failure_summary_goes_to_stderr_and_keeps_json_valid(cli, clusters):
     assert "Failed on" not in r.stdout
 
 
+def test_json_error_holds_no_color_codes(cli, clusters, monkeypatch):
+    # On a terminal the error is printed in color: the JSON value is plain text
+    from src.utils.output import err_console
+    monkeypatch.setattr(err_console, "_force_terminal", True)
+    monkeypatch.setattr(err_console, "_color_system", err_console._detect_color_system())
+    clusters.route("GET", "/nodes", clusters.error(500, "pveproxy exploded"), host="h2")
+    r = cli("node", "list", "-p", "p1,p2", "--json")
+    error = json.loads(r.stdout)["p2"]["error"]
+    assert "pveproxy exploded" in error
+    assert "\x1b" not in error
+
+
 # ── unreachable profile ────────────────────────────────────────────────
 
 

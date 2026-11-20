@@ -19,6 +19,7 @@ gathered into a single one keyed by profile name.
 import fnmatch
 import io
 import json
+import re
 import sys
 import threading
 from collections.abc import Callable
@@ -27,6 +28,9 @@ from functools import wraps
 from typing import Any
 
 import typer
+
+# Color codes of an error printed to a terminal: not part of a JSON value
+_ANSI = re.compile(r"\x1b\[[0-9;]*m")
 
 _PATTERN_CHARS = "*?["
 # Profiles queried at the same time by read-only fleet commands
@@ -286,7 +290,7 @@ def fleet(func: Callable[..., Any] | None = None, *, parallel: bool = False) -> 
                 if code:
                     # Keep the reason with the profile it belongs to
                     documents[name] = {
-                        "error": err_text.strip() or text or f"exit code {code}",
+                        "error": _ANSI.sub("", err_text).strip() or text or f"exit code {code}",
                         "exit_code": code,
                     }
             else:
