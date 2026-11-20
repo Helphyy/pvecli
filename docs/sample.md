@@ -169,6 +169,8 @@ config:
   look: handDrawn
   flowchart:
     curve: basis
+    nodeSpacing: 22
+    rankSpacing: 40
 ---
 flowchart TB
   you(["Your workstation<br/>pvecli + config.yaml"]):::pv

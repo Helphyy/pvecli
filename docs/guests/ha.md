@@ -9,7 +9,7 @@ description: Put a VM or a container under HA so the cluster restarts it on anot
 A guest under HA is watched by the Proxmox VE HA manager: if its node fails, the guest is started again on another node. Its disks should be on shared storage (Ceph, NFS...), where every node can reach them.
 
 ```mermaid
-flowchart LR
+flowchart TD
   A[pve1 fails]:::stop --> B[pve1 fenced]:::step
   B --> C{"Rule or group?"}:::check
   C -- no --> E[Any online node]:::step

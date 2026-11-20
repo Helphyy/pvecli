@@ -46,6 +46,7 @@ dev = [
 ]
 docs = [
     "zensical>=0.1.2",
+    "playwright>=1.50",
 ]
 
 [project.scripts]

@@ -80,3 +80,28 @@ def test_no_long_dashes():
     files = [ROOT / "README.md", ROOT / "scripts" / "docs" / "AUTHORING.md", *_written_pages()]
     found = [f.name for f in files if re.search("[\u2013\u2014]", f.read_text())]
     assert not found
+
+
+def test_prerendered_diagrams_replace_their_source_in_order():
+    from scripts.docs.prerender_diagrams import inline
+
+    html = (
+        '<link rel="preload" href="https://cdn.jsdelivr.net/npm/mermaid@12.3.0/dist/mermaid.min.js" as="script">\n'
+        '<pre class="mermaid"><code>flowchart TD\n  A --> B</code></pre>\n'
+        '<p>text</p>\n'
+        '<pre class="mermaid"><code>stateDiagram-v2</code></pre>\n'
+        '<script src="https://cdn.jsdelivr.net/npm/mermaid@12.3.0/dist/mermaid.min.js"></script>\n'
+    )
+    out = inline(html, ["<svg>1</svg>", "<svg>2</svg>"])
+    assert out.index("<svg>1</svg>") < out.index("<p>text</p>") < out.index("<svg>2</svg>")
+    assert '<template shadowrootmode="open"><svg>1</svg></template>' in out
+    assert "mermaid@" not in out and "<pre" not in out
+
+
+def test_prerender_refuses_a_count_mismatch():
+    import pytest
+
+    from scripts.docs.prerender_diagrams import inline
+
+    with pytest.raises(ValueError):
+        inline('<pre class="mermaid"><code>x</code></pre>', [])

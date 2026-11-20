@@ -2,6 +2,8 @@
 icon: lucide/archive
 title: Backups
 description: Check, run, restore, schedule and prune vzdump backups on Proxmox VE storage and on Proxmox Backup Server.
+hide:
+  - toc
 ---
 
 # Backups

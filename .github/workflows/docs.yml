@@ -25,6 +25,9 @@ jobs:
       # The command reference must match the CLI
       - run: python -m scripts.docs.gen_reference --check
       - run: zensical build --clean
+      # Diagrams drawn once here, so they do not pop in after each click
+      - run: python -m playwright install --with-deps chromium
+      - run: python -m scripts.docs.prerender_diagrams site
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site

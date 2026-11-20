@@ -135,5 +135,16 @@ sed 's|^\[project\]|[project]\nsite_dir = ".site-NAME"|' zensical.toml > .zensic
 .venv/bin/zensical build -f .zensical-NAME.toml 2>&1 | tail -3   # want: No issues found
 ```
 
+Diagrams are drawn in the browser in a preview. The published site has them
+drawn at build time, so they are there when the page loads: CI runs
+`python -m scripts.docs.prerender_diagrams site` after the build (needs
+`pip install -e ".[docs]"` and `python -m playwright install chromium`). Run
+it on your own folder to see the published result:
+`.venv/bin/python -m scripts.docs.prerender_diagrams .site-NAME`.
+
+To preview the site, serve the folder with
+`python3 -m http.server PORT --directory <absolute path>`, never from inside
+it: each build replaces the folder.
+
 After adding or renaming a page, or changing a command or its help, run
 `.venv/bin/python -m scripts.docs.gen_reference` (CI runs it with `--check`).

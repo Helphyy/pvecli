@@ -13,10 +13,10 @@ pvecli acts with the rights of the profile's user or API token: Proxmox VE decid
 A token created with privilege separation on has only the privileges granted to the token itself, and among those only the ones its user also holds. With privilege separation off, it holds every privilege of its user.
 
 ```mermaid
-flowchart LR
-  A[A call needs a privilege on a path]:::check --> B{Privilege separation of the token?}:::check
-  B -- off --> C{Does the user hold it?}:::check
-  B -- on --> D{Do the token and its user both hold it?}:::check
+flowchart TD
+  A[A call needs a privilege on a path]:::check --> B{Privilege separation<br/>of the token?}:::check
+  B -- off --> C{Does the user<br/>hold it?}:::check
+  B -- on --> D{Do the token and<br/>its user both hold it?}:::check
   C -- yes --> F[Allowed]:::done
   D -- yes --> F
   C -- no --> G[403 Permission check failed]:::stop

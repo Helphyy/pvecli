@@ -9,7 +9,7 @@ description: Empty a node, protect Ceph, work on it, then bring it and its guest
 To upgrade, repair or reboot one node while the cluster keeps running, move its guests away first, keep Ceph from rebalancing while it is down, then bring everything back. Check the cluster before you start: [Check cluster health](health.md).
 
 ```mermaid
-flowchart LR
+flowchart TB
   subgraph enter ["node maintenance enter"]
     direction TB
     A{Quorate, node online,<br/>privileges held?}:::check -- no --> X[Stop, nothing changed]:::stop

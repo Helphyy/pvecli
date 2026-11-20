@@ -2,6 +2,8 @@
 icon: lucide/monitor
 title: Guests
 description: Create, run, reach, move, snapshot and organize the VMs and containers of a Proxmox VE cluster.
+hide:
+  - toc
 ---
 
 # Guests

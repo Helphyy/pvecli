@@ -23,7 +23,7 @@ The guests are handled one after the other. Containers take the same commands un
 
 ```mermaid
 stateDiagram-v2
-  direction LR
+  direction TB
   stopped --> running: vm start
   running --> running: vm reboot
   running --> stopped: vm shutdown, vm stop

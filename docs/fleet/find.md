@@ -32,11 +32,11 @@ The shape of the query decides which sources pvecli reads:
 ```mermaid
 flowchart TD
   Q["pvecli find QUERY"]:::check --> S{"Shape of the query"}:::check
-  S -- "IP or network" --> IP["Guest configurations, guest agent,<br/>container interfaces, SDN IPAM,<br/>nodes, storage servers, firewall"]:::step
+  S -- "IP or network" --> IP["Guest configs, agent,<br/>CT interfaces, SDN IPAM,<br/>nodes, storages, firewall"]:::step
   S -- "MAC" --> MAC["Guest NICs, SDN IPAM"]:::step
   S -- "VMID" --> ID["Guest list of the cluster"]:::step
   S -- "disk volume" --> VOL["Guest disks"]:::step
-  S -- "text" --> TXT["Guest names and notes<br/>(a DNS name that resolves:<br/>its addresses too)"]:::step
+  S -- "text" --> TXT["Guest names, notes<br/>(a DNS name: its<br/>addresses too)"]:::step
   IP --> F{"Filters given?"}:::check
   MAC --> F
   ID --> F

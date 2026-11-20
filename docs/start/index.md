@@ -2,6 +2,8 @@
 icon: lucide/rocket
 title: Getting started
 description: Install pvecli, connect it to a Proxmox VE cluster and run your first commands.
+hide:
+  - toc
 ---
 
 # Getting started
@@ -16,10 +18,12 @@ config:
   look: handDrawn
   flowchart:
     curve: basis
+    nodeSpacing: 22
+    rankSpacing: 40
 ---
 flowchart TB
   you(["Your workstation<br/>pvecli + config.yaml"]):::pv
-  you -- "HTTPS to pve1:8006<br/>API token or password" --> prod
+  you -- "HTTPS pve1:8006<br/>token or password" --> prod
   subgraph prod ["cluster prod (profile prod)#nbsp;"]
     direction LR
     p1["pve1"]:::host --- p2["pve2"]:::host --- p3["pve3"]:::host

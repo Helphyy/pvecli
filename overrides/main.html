@@ -1,8 +1,25 @@
 {#- Every page: load the font of the sketches early, so that Mermaid
-    measures their labels with it and does not cut them. -#}
+    measures their labels with it and does not cut them.
+
+    Pages with diagrams also load Mermaid itself, pinned, before the theme's
+    bundle: the theme fetches it only once it finds a diagram, from an
+    unpinned unpkg URL that is revalidated every minute, so the diagrams
+    popped in late. With mermaid already defined, the theme uses it. -#}
 {% extends "base.html" %}
+
+{% set has_diagrams = page and page.content and 'class="mermaid"' in page.content %}
 
 {% block extrahead %}
   {{ super() }}
   <link rel="preload" href="{{ 'assets/fonts/excalifont.woff2' | url }}" as="font" type="font/woff2" crossorigin>
+  {% if has_diagrams %}
+    <link rel="preload" href="https://cdn.jsdelivr.net/npm/mermaid@12.3.0/dist/mermaid.min.js" as="script">
+  {% endif %}
+{% endblock %}
+
+{% block scripts %}
+  {% if has_diagrams %}
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@12.3.0/dist/mermaid.min.js"></script>
+  {% endif %}
+  {{ super() }}
 {% endblock %}

@@ -143,3 +143,12 @@
   background: #f4f1ea;
 }
 .sketch .mermaid { margin: 0; }
+
+/* The published site has its diagrams drawn at build time
+   (scripts/docs/prerender_diagrams.py). In a local preview they are drawn
+   in the browser: the Mermaid source is not shown meanwhile */
+.md-typeset pre.mermaid {
+  min-height: 12rem;
+  background: none;
+}
+.md-typeset pre.mermaid > code { visibility: hidden; }

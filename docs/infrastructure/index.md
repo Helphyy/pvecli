@@ -2,6 +2,8 @@
 icon: lucide/server
 title: Infrastructure
 description: Run the cluster itself with pvecli, from its health and capacity to its nodes, storage, SDN and Ceph.
+hide:
+  - toc
 ---
 
 # Infrastructure
@@ -16,17 +18,20 @@ config:
   look: handDrawn
   flowchart:
     curve: basis
+    nodeSpacing: 22
+    rankSpacing: 40
 ---
 flowchart TB
   you(["Your workstation<br/>pvecli"]):::pv
   you -- "HTTPS :8006, API token<br/>to one node" --> prod
-  subgraph prod ["cluster prod: 5 nodes on corosync link 0#nbsp;"]
-    direction LR
-    p1["pve1"]:::host --- p2["pve2"]:::host --- p3["pve3"]:::host --- p4["pve4"]:::host --- p5["pve5"]:::host
+  subgraph prod ["cluster prod, corosync link 0#nbsp;"]
+    direction TB
+    p1["pve1"]:::host --- p2["pve2"]:::host --- p3["pve3"]:::host
+    p4["pve4"]:::host --- p5["pve5"]:::host
   end
-  prod -.- local[("local, local-lvm<br/>on each node")]:::store
-  prod -.- ceph[("Ceph<br/>monitors, OSDs<br/>pool ceph-vm")]:::store
-  prod -.- sdn["SDN zone zvlan<br/>vnet vvlan, tag 42"]:::net
+  prod -.- local[("local,<br/>local-lvm")]:::store
+  prod -.- ceph[("Ceph<br/>pool ceph-vm")]:::store
+  prod -.- sdn["SDN zvlan<br/>vnet vvlan"]:::net
   sdn -.- vm1["web-01"]:::vm
   prod -.- pbs[("PBS<br/>backups")]:::store
 

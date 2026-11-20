@@ -2,6 +2,8 @@
 icon: lucide/layers
 title: Fleet
 description: Run pvecli on several clusters at once, find what owns an address or a disk, audit clusters, and run pvecli from scripts.
+hide:
+  - toc
 ---
 
 # Fleet
@@ -16,6 +18,8 @@ config:
   look: handDrawn
   flowchart:
     curve: basis
+    nodeSpacing: 22
+    rankSpacing: 40
 ---
 flowchart TB
   you(["Your workstation<br/>pvecli + config.yaml"]):::pv
@@ -34,7 +38,7 @@ flowchart TB
   p2 --> out
   s1 --> out
   c2 --> out
-  out["Your terminal: one block per profile,<br/>in the order of -p"]:::pv
+  out["Your terminal:<br/>one block per profile,<br/>in the order of -p"]:::pv
 
   classDef pv fill:#ffae0b,stroke:#b35800,color:#1f2328,stroke-width:2px
   classDef host fill:#a5d8ff,stroke:#1971c2,color:#1f2328

@@ -2,6 +2,8 @@
 icon: lucide/book-open
 title: Reference
 description: The files pvecli reads, the Proxmox VE privileges its commands need, and its exit codes.
+hide:
+  - toc
 ---
 
 # Reference

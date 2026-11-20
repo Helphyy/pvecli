@@ -29,13 +29,13 @@ sequenceDiagram
     note right of P: Find the guest
     P->>A: GET /cluster/resources
     A-->>P: VM 800 is on pve1
-    P->>A: GET /nodes/pve1/qemu/800/status/current
+    P->>A: GET /nodes/pve1/qemu/800/<br/>status/current
     A-->>P: running: live migration
   end
   rect rgb(255, 246, 236)
     note right of P: Check the target
-    P->>A: GET /nodes/pve1/qemu/800/migrate?target=pve3
-    A-->>P: allowed nodes, blocked ones with a reason, local disks
+    P->>A: GET /nodes/pve1/qemu/800/<br/>migrate?target=pve3
+    A-->>P: allowed nodes, blocked ones<br/>with a reason, local disks
     note right of P: Refused here: target blocked, local CD-ROM,<br/>local disks without --with-local-disks
   end
   rect rgb(255, 246, 236)
@@ -43,7 +43,7 @@ sequenceDiagram
     P->>A: POST /nodes/pve1/qemu/800/migrate
     A-->>P: UPID of the task
     loop Until the task ends
-      P->>A: GET /nodes/pve1/tasks/UPID/status
+      P->>A: GET /nodes/pve1/tasks/<br/>UPID/status
     end
     opt Guest under HA
       loop Until it runs on pve3
