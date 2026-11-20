@@ -272,9 +272,19 @@ def render_nav(pages: dict[str, str]) -> str:
     for section, written, names in SECTIONS:
         # The index page of a section folder comes first and untitled, so
         # navigation.indexes attaches it to the tab (title from its front matter)
-        entries = [f'    {_toml(path)},' if path.endswith("/index.md") and not path.startswith("cli/")
-                   else f'    {{ {_toml(title)} = {_toml(path)} }},'
-                   for title, path in written if (DOCS / path).exists() or path.startswith("cli/")]
+        present = [(title, path) for title, path in written
+                   if (DOCS / path).exists() or path.startswith("cli/")]
+        index = [p for _, p in present if p.endswith("/index.md") and not p.startswith("cli/")]
+        guides = [f'{{ {_toml(t)} = {_toml(p)} }},' for t, p in present if p not in index]
+        entries = [f'    {_toml(p)},' for p in index]
+        if names and guides:
+            # Beside "Commands", the written pages get a heading of their own:
+            # without it the sidebar starts with an untitled list
+            entries.append('    { "Guides" = [')
+            entries += [f"      {g}" for g in guides]
+            entries.append("    ] },")
+        else:
+            entries += [f"    {g}" for g in guides]
         if names:
             entries.append('    { "Commands" = [')
             for name in names:
