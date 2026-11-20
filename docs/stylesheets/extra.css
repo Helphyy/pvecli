@@ -159,6 +159,13 @@
 }
 .md-typeset pre.mermaid > code { visibility: hidden; }
 
+/* Images sit in the middle of the page, like the diagrams; one given
+   align=left or align=right stays beside the text */
+.md-typeset img:not([align]) {
+  display: block;
+  margin-inline: auto;
+}
+
 /* Screenshots of the Proxmox VE web interface (scripts/docs/webui.py):
    a dialog lifted off the page */
 .md-typeset img[src*="webui-"] {
