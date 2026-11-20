@@ -112,7 +112,17 @@ Renaming a profile with `config edit` also renames it in `default_profile` and i
 
 `auth.password` and `auth.token_value` are encrypted with [age](https://age-encryption.org). The key is generated on first use in `~/.config/pvecli/.age-identity`. An encrypted value starts with `AGE:`.
 
-A secret written in clear in the file is encrypted the next time pvecli reads it. This is how you change a token by hand: replace the `AGE:` value with the new secret and run any command.
+!!! warning "What the encryption protects, and what it does not"
+    The key sits in the same folder as the secrets it protects, readable by your account. The encryption keeps the secrets out of a copy of `config.yaml` alone: a backup, a dotfiles repository, a file sent to someone, a screenshot. It does not protect them from anyone or anything that runs as you, or that can read your home folder: they read the key too.
+
+    - Never copy `~/.config/pvecli` whole to a shared place: the two files together give the tokens in clear.
+    - Give the token only the privileges it needs ([Permissions](permissions.md)), and revoke it on the cluster (*Datacenter > Permissions > API Tokens*) if the machine or the folder is lost.
+    - Prefer a token to a password: a token can be revoked alone, and a password often opens more than Proxmox VE.
+    - `--token-value` and `--password` on the command line stay in your shell history in clear. Let `config add` ask for them instead.
+
+A secret written in clear in the file is encrypted the next time pvecli reads it. This is how you change a token by hand: replace the `AGE:` value with the new secret and run any command. Until then it stays in clear in the file.
+
+Moving the configuration:
 
 !!! warning
     The encrypted values can only be read with the `.age-identity` file that encrypted them. Copy both files together to move your profiles to another machine. If the key is lost, pvecli stops with:

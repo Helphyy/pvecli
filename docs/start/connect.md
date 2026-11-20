@@ -30,6 +30,9 @@ A profile can also log in with a user and its password, for example `root@pam`. 
 
 The token value and the password are stored encrypted in the configuration file, with a key kept in `~/.config/pvecli/.age-identity`.
 
+!!! warning
+    The key sits next to the secrets, readable by your account: the encryption protects a copy of `config.yaml` alone (a backup, a dotfiles repository), not someone who can read your home folder. Never share `~/.config/pvecli` whole, and give the token only the privileges it needs. See [Secrets](../reference/config-file.md#secrets).
+
 ## Create the profile
 
 Run `pvecli config add` and answer the prompts. Pick **API Token** in the menu (move with the arrow keys, ++enter++ to pick), or **Password** to be asked for one:
@@ -94,12 +97,12 @@ sequenceDiagram
   autonumber
   participant You as Workstation
   participant P as pvecli
-  participant A as Proxmox VE API (pve1:8006)
+  participant A as API of pve1:8006
   You->>P: pvecli config test -p prod
   rect rgb(255, 246, 236)
-    note right of P: Read the profile in config.yaml, decrypt the secret
+    note right of P: Read the profile in config.yaml,<br/>decrypt the secret
     alt API token
-      note right of P: Header Authorization: PVEAPIToken=pvecli@pve!cli=VALUE
+      note right of P: Header Authorization:<br/>PVEAPIToken=pvecli@pve!cli=VALUE
     else Password
       P->>A: POST /access/ticket
       A-->>P: ticket and CSRF token, or 401
