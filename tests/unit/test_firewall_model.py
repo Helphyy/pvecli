@@ -100,3 +100,10 @@ def test_enforced_needs_the_three_switches():
     assert not _status(False, True, {"net0": True}, []).enforced
     assert not _status(True, False, {"net0": True}, []).enforced
     assert not _status(True, True, {"net0": False}, []).enforced
+
+
+def test_a_broken_rule_is_named_on_every_level():
+    broken = {**ACCEPT_SSH, "pos": 3, "source": "gw", "errors": {"source": "no such alias 'gw'"}}
+    expected = "rule 3 is broken (source: no such alias 'gw'): Proxmox ignores it"
+    assert pitfalls("cluster", True, True, [broken]) == [expected]
+    assert expected in pitfalls("vm", True, True, [broken], {"net0": True})

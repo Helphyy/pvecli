@@ -299,3 +299,18 @@ def test_info_line_when_unreadable_is_left_out():
             raise PVEPermissionError("Permission check failed (/, Sys.Audit)")
 
     assert asyncio.run(info_line(Client(), "vm", "pve1", 101)) is None
+
+
+def test_broken_references_show_and_are_not_exported(cli, fw):
+    broken = {"pos": 0, "type": "in", "action": "ACCEPT", "source": "gw", "enable": 1, "ipversion": 4,
+              "errors": {"source": "no such alias 'gw'"}}
+    fw.route("GET", "/nodes/{n}/firewall/rules", [broken])
+    fw.route("GET", "/cluster/firewall/ipset/{name}",
+             [{"cidr": "gw", "errors": {"cidr": "no such alias 'gw'"}, "digest": "e"}])
+    r = cli("node", "firewall", "rule", "list", "pve1", "-p", "p1")
+    assert "Broken" in r.output and "no such alias 'gw'" in r.output
+    st = js(cli("node", "firewall", "status", "pve1", "-p", "p1", "--json"))
+    assert st["issues"] == ["rule 0 is broken (source: no such alias 'gw'): Proxmox ignores it"]
+    assert "broken: no such alias 'gw'" in cli("cluster", "firewall", "ipset", "list", "-p", "p1").output
+    doc = cli("cluster", "firewall", "export", "-p", "p1").stdout
+    assert "errors" not in doc and "ipversion" not in doc

@@ -56,8 +56,10 @@ DEFAULTS: dict[str, dict[str, Any]] = {
 
 DATACENTER_OFF = "the datacenter firewall is off: nothing on this level is enforced"
 
-# Fields of a listed rule that describe the listing, not the rule
-_RULE_META = ("pos", "digest", "ipversion")
+# Fields Proxmox adds to what it lists: they describe the listing (pos,
+# digest), derive from the rest (ipversion) or report a broken reference
+# (errors). None of them is configuration.
+_RULE_META = ("pos", "digest", "ipversion", "errors")
 
 
 @dataclass(frozen=True)
@@ -173,6 +175,10 @@ def pitfalls(
     no traffic ever meets looks exactly like one that works.
     """
     found: list[str] = []
+    for r in rules:
+        if r.get("errors"):
+            why = "; ".join(f"{k}: {v}" for k, v in sorted(r["errors"].items()))
+            found.append(f"rule {r.get('pos')} is broken ({why}): Proxmox ignores it")
     if kind == "cluster":
         # The datacenter switch is said above the levels it governs
         return found
@@ -338,6 +344,9 @@ def rules_table(rules: list[dict[str, Any]], title: str) -> Table:
     table.add_column("Iface")
     table.add_column("Log")
     table.add_column("Comment")
+    broken = any(r.get("errors") for r in rules)
+    if broken:
+        table.add_column("Broken", style="red")
     for r in rules:
         action = str(r.get("action", ""))
         style = {"ACCEPT": "green", "DROP": "red", "REJECT": "yellow"}.get(action, "magenta")
@@ -354,6 +363,7 @@ def rules_table(rules: list[dict[str, Any]], title: str) -> Table:
             r.get("iface", "") or "",
             r.get("log", "") if r.get("log") not in (None, "nolog") else "",
             r.get("comment", "") or "",
+            *(["; ".join(f"{k}: {v}" for k, v in sorted((r.get("errors") or {}).items()))] if broken else []),
         )
     return table
 
@@ -485,23 +495,27 @@ def _clean_rule(rule: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in rule.items() if k not in _RULE_META}
 
 
-def _clean(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return [{k: v for k, v in i.items() if k != "digest"} for i in items]
+def _clean(items: list[dict[str, Any]], keep: tuple[str, ...] = ()) -> list[dict[str, Any]]:
+    return [{k: v for k, v in i.items() if k not in _RULE_META or k in keep} for i in items]
 
 
-async def _objects(client: ProxmoxClient, scope: Scope) -> dict[str, Any]:
-    """The aliases and IP sets of a level, the IP sets with their entries."""
+async def _objects(client: ProxmoxClient, scope: Scope, keep: tuple[str, ...] = ()) -> dict[str, Any]:
+    """The aliases and IP sets of a level, the IP sets with their entries.
+
+    `keep` keeps some of the fields that are not configuration, such as
+    the errors of a broken entry to show it.
+    """
     aliases, ipsets = await asyncio.gather(
         client.get(f"{scope.base}/aliases"), client.get(f"{scope.base}/ipset"),
     )
     sets = []
     for s in sorted(ipsets or [], key=lambda x: x.get("name", "")):
         entries = await client.get(f"{scope.base}/ipset/{s['name']}") or []
-        sets.append({**{k: v for k, v in s.items() if k != "digest"},
-                     "entries": sorted(_clean(entries), key=lambda e: e.get("cidr", ""))})
+        sets.append({**{k: v for k, v in s.items() if k not in _RULE_META},
+                     "entries": sorted(_clean(entries, keep), key=lambda e: e.get("cidr", ""))})
     out: dict[str, Any] = {}
     if aliases:
-        out["aliases"] = sorted(_clean(aliases), key=lambda a: a.get("name", ""))
+        out["aliases"] = sorted(_clean(aliases, keep), key=lambda a: a.get("name", ""))
     if sets:
         out["ipsets"] = sets
     return out
@@ -802,7 +816,7 @@ def build_app(kind: str) -> typer.Typer:
             """List the IP sets and their entries."""
 
             async def body(client: ProxmoxClient, scope: Scope) -> None:
-                sets = (await _objects(client, scope)).get("ipsets", [])
+                sets = (await _objects(client, scope, keep=("errors",))).get("ipsets", [])
                 if json_output:
                     emit_json(sets)
                     return
@@ -817,6 +831,7 @@ def build_app(kind: str) -> typer.Typer:
                     entries = "\n".join(
                         ("!" if e.get("nomatch") else "") + e.get("cidr", "")
                         + (f"  [dim]{e['comment']}[/dim]" if e.get("comment") else "")
+                        + (f"  [red]broken: {'; '.join(e['errors'].values())}[/red]" if e.get("errors") else "")
                         for e in s["entries"]
                     ) or "[dim]empty[/dim]"
                     table.add_row(s["name"], entries, s.get("comment", "") or "")
