@@ -33,7 +33,7 @@ TEST_CONFIG: dict[str, Any] = {
             **extra,
         }
         for name, host, extra in (
-            ("p1", "h1", {"sdn_write": True}),
+            ("p1", "h1", {"sdn_write": True, "firewall_write": True}),
             ("p2", "h2", {}),
             ("p3", "h1", {}),
             ("prod", "hp", {"fleet": False}),

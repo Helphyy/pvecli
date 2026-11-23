@@ -330,41 +330,53 @@ def describe_rule(rule: dict[str, Any]) -> str:
     return text
 
 
+def service(rule: dict[str, Any]) -> str:
+    """What a rule matches besides addresses: a macro, or a protocol and ports."""
+    if rule.get("macro"):
+        return str(rule["macro"])
+    parts = [str(rule["proto"])] if rule.get("proto") else []
+    if rule.get("dport"):
+        parts.append(str(rule["dport"]))
+    if rule.get("sport"):
+        parts.append(f"from port {rule['sport']}")
+    if rule.get("icmp-type"):
+        parts.append(str(rule["icmp-type"]))
+    return " ".join(parts)
+
+
 def rules_table(rules: list[dict[str, Any]], title: str) -> Table:
+    """The rules in evaluation order; only the columns some rule uses.
+
+    A disabled rule is dimmed and says so in its action.
+    """
+    optional = [("Service", service), ("Source", lambda r: r.get("source")), ("Dest", lambda r: r.get("dest")),
+                ("Iface", lambda r: r.get("iface")),
+                ("Log", lambda r: r.get("log") if r.get("log") != "nolog" else None),
+                ("Comment", lambda r: r.get("comment"))]
+    used = [(h, f) for h, f in optional if any(f(r) for r in rules)]
+    broken = any(r.get("errors") for r in rules)
     table = Table(title=title, show_header=True, header_style="bold cyan")
     table.add_column("Pos", justify="right")
-    table.add_column("On")
-    table.add_column("Type")
-    table.add_column("Action", style="bold")
-    table.add_column("Macro")
-    table.add_column("Proto")
-    table.add_column("Source")
-    table.add_column("Dest")
-    table.add_column("Dport")
-    table.add_column("Iface")
-    table.add_column("Log")
-    table.add_column("Comment")
-    broken = any(r.get("errors") for r in rules)
+    table.add_column("Dir")
+    table.add_column("Action", no_wrap=True)
+    for header, _ in used:
+        # Wrapped rather than cut: an address cut short reads as another one
+        table.add_column(header, overflow="fold")
     if broken:
-        table.add_column("Broken", style="red")
+        table.add_column("Broken", style="red", overflow="fold")
     for r in rules:
+        on = is_on(r.get("enable", 1))
         action = str(r.get("action", ""))
         style = {"ACCEPT": "green", "DROP": "red", "REJECT": "yellow"}.get(action, "magenta")
-        table.add_row(
+        cells = [
             str(r.get("pos", "")),
-            "[green]yes[/green]" if is_on(r.get("enable", 1)) else "[dim]no[/dim]",
             str(r.get("type", "")),
-            f"[{style}]{action}[/{style}]",
-            r.get("macro", "") or "",
-            r.get("proto", "") or "",
-            r.get("source", "") or "",
-            r.get("dest", "") or "",
-            r.get("dport", "") or "",
-            r.get("iface", "") or "",
-            r.get("log", "") if r.get("log") not in (None, "nolog") else "",
-            r.get("comment", "") or "",
-            *(["; ".join(f"{k}: {v}" for k, v in sorted((r.get("errors") or {}).items()))] if broken else []),
-        )
+            f"[{style}]{action}[/{style}]" if on else f"{action} (off)",
+        ]
+        cells += [str(f(r) or "") for _, f in used]
+        if broken:
+            cells.append("; ".join(f"{k}: {v}" for k, v in sorted((r.get("errors") or {}).items())))
+        table.add_row(*cells, style=None if on else "dim")
     return table
 
 
@@ -909,6 +921,12 @@ def build_app(kind: str) -> typer.Typer:
             except PVECliError as e:
                 fail(e)
 
+    # The commands that change something
+    from .firewall_edit import add_object_commands, add_rule_commands
+
+    add_rule_commands(rule_app, kind, _target_arg(kind) if has_target else None, not has_target)
+    if scope_has_objects:
+        add_object_commands(alias_app, ipset_app, kind, _target_arg(kind) if has_target else None, with_target)
     if kind == "cluster":
         _add_cluster_only(app, fail)
     return app
@@ -918,6 +936,9 @@ def _add_cluster_only(app: typer.Typer, fail: Any) -> None:
     """Security groups, macros, references and export: datacenter only."""
     group_app = typer.Typer(help="Security groups: named lists of rules", no_args_is_help=True)
     app.add_typer(group_app, name="group")
+    from .firewall_edit import add_group_commands
+
+    add_group_commands(group_app)
 
     @group_app.command("list")
     @fleet(parallel=True)

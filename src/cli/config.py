@@ -215,6 +215,9 @@ def _render_profile_panel(name: str, profile: ProfileConfig, is_default: bool = 
     lines.append(
         f"[bold]SDN write:[/bold]   {'[yellow]Yes[/yellow]' if profile.sdn_write else 'No'}"
     )
+    lines.append(
+        f"[bold]Firewall write:[/bold] {'[yellow]Yes[/yellow]' if profile.firewall_write else 'No'}"
+    )
 
     if is_default:
         lines.append("")
