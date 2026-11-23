@@ -355,6 +355,13 @@ async def show_container(
             pool = config.get("pool", "")
             lines.append(f"[bold]Pool:[/bold]        {pool or '-'}")
 
+            # Firewall: whether its rules really apply
+            from .firewall import info_line
+
+            fw = await info_line(client, "ct", node, ctid)
+            if fw:
+                lines.append(f"[bold]Firewall:[/bold]    {fw}")
+
             # Tags
             if config.get("tags"):
                 cluster_opts = await client.get_cluster_options()

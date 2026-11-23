@@ -8,7 +8,21 @@ import typer
 from rich.console import Console
 
 from .. import __version__
-from . import backup, ceph, cluster, config, ct, node, pool, sdn, snapshot, storage, tag, vm
+from . import (
+    backup,
+    ceph,
+    cluster,
+    config,
+    ct,
+    firewall,
+    node,
+    pool,
+    sdn,
+    snapshot,
+    storage,
+    tag,
+    vm,
+)
 from .audit import audit as audit_command
 from .deploy import deploy as deploy_command
 from .find import find as find_command
@@ -37,6 +51,14 @@ app.add_typer(backup.app, name="backup")
 app.command("find")(find_command)
 app.command("audit")(audit_command)
 app.command("deploy")(deploy_command)
+
+# The firewall is a part of each resource that has one: one implementation,
+# a `firewall` group under each of them
+vm.app.add_typer(firewall.build_app("vm"), name="firewall")
+ct.app.add_typer(firewall.build_app("ct"), name="firewall")
+node.app.add_typer(firewall.build_app("node"), name="firewall")
+sdn.vnet_app.add_typer(firewall.build_app("vnet"), name="firewall")
+cluster.app.add_typer(firewall.build_app("cluster"), name="firewall")
 
 
 def version_callback(value: bool) -> None:

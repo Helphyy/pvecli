@@ -30,3 +30,4 @@ Manage containers (LXC).
 | [`ssh`](ssh.md) | SSH into a container (IP resolved via interfaces API). |
 | [`list`](list.md) | List all containers. |
 | [`info`](info.md) | Show detailed information about a container. |
+| [`firewall`](firewall.md) | Manage the firewall of a container. |

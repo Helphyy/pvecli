@@ -20,3 +20,4 @@ Manage cluster nodes.
 | [`ssh`](ssh.md) | SSH into a Proxmox node. |
 | [`list`](list.md) | List all cluster nodes. |
 | [`info`](info.md) | Show detailed information about a node. |
+| [`firewall`](firewall.md) | Manage the firewall of a node. |

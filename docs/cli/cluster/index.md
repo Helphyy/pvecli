@@ -23,3 +23,4 @@ Manage cluster.
 | [`reboot`](reboot.md) | Reboot the entire cluster (all nodes). |
 | [`ha`](ha.md) | Arm or disarm the whole HA stack (PVE 9.2+). |
 | [`guests`](guests.md) | Start, shut down, suspend or migrate many guests in one go. |
+| [`firewall`](firewall.md) | Manage the firewall of the datacenter. |

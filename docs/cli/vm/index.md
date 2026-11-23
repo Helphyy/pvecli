@@ -36,3 +36,4 @@ Manage virtual machines (QEMU).
 | [`exec`](exec.md) | Execute a command in one or more VMs via QEMU Guest Agent. |
 | [`list`](list.md) | List all VMs. |
 | [`info`](info.md) | Show detailed information about a VM. |
+| [`firewall`](firewall.md) | Manage the firewall of a VM. |

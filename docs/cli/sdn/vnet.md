@@ -54,3 +54,11 @@ pvecli sdn vnet remove [VNET] [OPTIONS]
 |:--|:--|
 | `-y`, `--yes` | Skip confirmation. |
 | `-p`, `--profile VALUE` | Profile to use. |
+
+## firewall
+
+Manage the firewall of a vnet
+
+```text
+pvecli sdn vnet firewall
+```
