@@ -177,14 +177,15 @@ flowchart TB
   you -- "HTTPS :8006<br/>API token" --> p1
   you -- "-p '*'" --> s1
   subgraph prod ["cluster prod"]
-    p1["pve1"]:::host --- p2["pve2"]:::host --- p3["pve3"]:::host
-    p1 --- p3
+    p1["pve1"]:::host --- lan(("cluster<br/>network")):::net
+    lan --- p2["pve2"]:::host
+    lan --- p3["pve3"]:::host
     vm1["web-01"]:::vm -.- p1
     vm2["db-01"]:::vm -.- p2
     ceph[("Ceph")]:::store -.- p3
   end
   subgraph staging ["cluster staging#nbsp;"]
-    s1["pve4"]:::host --- s2["pve5"]:::host
+    s1["pve4"]:::host --- slan(("cluster<br/>network")):::net --- s2["pve5"]:::host
     ct1["dns-01"]:::ct -.- s2
   end
   p2 -- "backup run" --> pbs[("PBS")]:::store
@@ -194,6 +195,7 @@ flowchart TB
   classDef vm fill:#51cf664d,stroke:#2f9e44
   classDef ct fill:#9775fa4d,stroke:#7048e8
   classDef store fill:#ff6b6b40,stroke:#e03131
+  classDef net fill:#fcc41940,stroke:#f08c00
   classDef zone fill:#e570000d,stroke:#e57000,stroke-dasharray:6 4
   class prod,staging zone
 ```

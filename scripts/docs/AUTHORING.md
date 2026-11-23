@@ -62,6 +62,11 @@ What `docs/sample.md` shows, nothing hand-styled beyond it:
       `store`, network `net`, and `zone` for every subgraph). Never name a
       classDef `node` (the theme overrides it). If a subgraph title is cut,
       end it with `#nbsp;`.
+      A cluster is a star: every node is linked to the cluster network (a
+      `net` circle), never node to node in a chain, which reads as if one
+      node reached the others through its neighbour. The layout lays out
+      the nodes above the circle in reverse: declare their links last to
+      first.
 - Buttons only on index pages, for the next step.
 - Keyboard keys: `++ctrl+c++`.
 - Video (`<video>`) only for what is not a terminal. A terminal is a

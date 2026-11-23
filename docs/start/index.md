@@ -23,10 +23,12 @@ config:
 ---
 flowchart TB
   you(["Your workstation<br/>pvecli + config.yaml"]):::pv
-  you -- "HTTPS pve1:8006<br/>token or password" --> prod
+  you -- "HTTPS pve1:8006<br/>token or password" --> p1
   subgraph prod ["cluster prod (profile prod)#nbsp;"]
-    direction LR
-    p1["pve1"]:::host --- p2["pve2"]:::host --- p3["pve3"]:::host
+    direction TB
+    p1["pve1"]:::host --- lan(("cluster<br/>network")):::net
+    lan --- p2["pve2"]:::host
+    lan --- p3["pve3"]:::host
     p2 -.- vm1["web-01"]:::vm
     p3 -.- ct1["dns-01"]:::ct
   end
@@ -35,6 +37,7 @@ flowchart TB
   classDef host fill:#4dabf74d,stroke:#1c7ed6
   classDef vm fill:#51cf664d,stroke:#2f9e44
   classDef ct fill:#9775fa4d,stroke:#7048e8
+  classDef net fill:#fcc41940,stroke:#f08c00
   classDef zone fill:#e570000d,stroke:#e57000,stroke-dasharray:6 4
   class prod zone
 ```

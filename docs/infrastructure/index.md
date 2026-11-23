@@ -24,10 +24,14 @@ config:
 flowchart TB
   you(["Your workstation<br/>pvecli"]):::pv
   you -- "HTTPS :8006, API token<br/>to one node" --> prod
-  subgraph prod ["cluster prod, corosync link 0#nbsp;"]
+  subgraph prod ["cluster prod#nbsp;"]
     direction TB
-    p1["pve1"]:::host --- p2["pve2"]:::host --- p3["pve3"]:::host
-    p4["pve4"]:::host --- p5["pve5"]:::host
+    %% Declared last to first: the layout lays the nodes above the hub out in reverse
+    p3["pve3"]:::host --- lan(("corosync<br/>link 0")):::net
+    p2["pve2"]:::host --- lan
+    p1["pve1"]:::host --- lan
+    lan --- p4["pve4"]:::host
+    lan --- p5["pve5"]:::host
   end
   prod -.- local[("local,<br/>local-lvm")]:::store
   prod -.- ceph[("Ceph<br/>pool ceph-vm")]:::store
