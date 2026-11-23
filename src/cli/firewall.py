@@ -698,7 +698,8 @@ def _drop(*names: str) -> Any:
 def build_app(kind: str) -> typer.Typer:
     """The `firewall` group of one kind of resource."""
     noun = _NOUN[kind]
-    order = ["status", "rule", "options", "group", "ipset", "alias", "log", "macros", "refs", "export"]
+    order = ["status", "enable", "disable", "set", "options", "rule", "group", "ipset", "alias", "log",
+             "macros", "refs", "export"]
     app = typer.Typer(
         help=f"Manage the firewall of {noun}",
         no_args_is_help=True,
@@ -922,9 +923,10 @@ def build_app(kind: str) -> typer.Typer:
                 fail(e)
 
     # The commands that change something
-    from .firewall_edit import add_object_commands, add_rule_commands
+    from .firewall_edit import add_object_commands, add_rule_commands, add_switch_commands
 
     add_rule_commands(rule_app, kind, _target_arg(kind) if has_target else None, not has_target)
+    add_switch_commands(app, kind, _target_arg(kind) if has_target else None, with_target)
     if scope_has_objects:
         add_object_commands(alias_app, ipset_app, kind, _target_arg(kind) if has_target else None, with_target)
     if kind == "cluster":

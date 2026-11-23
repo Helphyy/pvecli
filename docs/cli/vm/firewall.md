@@ -30,13 +30,71 @@ pvecli vm firewall status [TARGET] [OPTIONS]
 | `-p`, `--profile VALUE` | Profile to use. |
 | `-js`, `--json` | Output raw JSON to stdout (no colors, no tables). |
 
-## rule
+## enable
 
-Firewall rules of a VM
+Turn the firewall of a VM on.
 
 ```text
-pvecli vm firewall rule
+pvecli vm firewall enable [TARGET] [OPTIONS]
 ```
+
+### Arguments
+
+| Argument | Description |
+|:--|:--|
+| `TARGET` | VM ID. |
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `--nics` | Also set firewall=1 on every card of the guest (a running guest loses its network briefly). |
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-y`, `--yes` | Do not ask for confirmation. |
+
+## disable
+
+Turn the firewall of a VM off.
+
+```text
+pvecli vm firewall disable [TARGET] [OPTIONS]
+```
+
+### Arguments
+
+| Argument | Description |
+|:--|:--|
+| `TARGET` | VM ID. |
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-y`, `--yes` | Do not ask for confirmation. |
+
+## set
+
+Change firewall options: policies, log levels, filters.
+
+```text
+pvecli vm firewall set [TARGET] [SETTINGS] [OPTIONS]
+```
+
+### Arguments
+
+| Argument | Description |
+|:--|:--|
+| `TARGET` | VM ID. |
+| `SETTINGS` | KEY=VALUE pairs, as `options` names them. |
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `--clear VALUE` | Options back to their default, comma separated. |
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-y`, `--yes` | Do not ask for confirmation. |
 
 ## options
 
@@ -58,6 +116,14 @@ pvecli vm firewall options [TARGET] [OPTIONS]
 |:--|:--|
 | `-p`, `--profile VALUE` | Profile to use. |
 | `-js`, `--json` | Output raw JSON to stdout (no colors, no tables). |
+
+## rule
+
+Firewall rules of a VM
+
+```text
+pvecli vm firewall rule
+```
 
 ## ipset
 

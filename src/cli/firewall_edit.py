@@ -38,6 +38,7 @@ from ..utils import (
     print_error,
     print_info,
     print_success,
+    print_warning,
 )
 from ..utils.helpers import async_to_sync
 from ..utils.menu import multi_select_menu, select_menu
@@ -555,9 +556,17 @@ def add_object_commands(alias_app: typer.Typer, ipset_app: typer.Typer, kind: st
                 print_info(f"Nothing to add: IP set '{name}' already holds every entry")
                 return
             show_plan(f"Change on {scope.label}:", lines)
+            watch = False
             if scope.kind == "cluster" and name == "management":
                 console.print("  [yellow]The 'management' IP set opens the web interface and SSH of "
-                              "every node when the firewall is on.[/yellow]")
+                              "every node when the firewall is on: once it exists, only its members "
+                              "are management hosts.[/yellow]")
+                added = [{"cidr": c, **({"nomatch": 1} if nomatch else {})} for c in todo]
+
+                def mutate(inputs: dict[str, Any]) -> None:
+                    inputs["ipsets"]["management"] = list(entries) + added
+
+                watch, _ = await guarded_change(client, ConfigManager().get_profile(profile), False, mutate)
             if not approved(yes):
                 return
             w = Writer(client, {f"{scope.base}/ipset": sets, f"{scope.base}/ipset/{name}": entries})
@@ -572,6 +581,10 @@ def add_object_commands(alias_app: typer.Typer, ipset_app: typer.Typer, kind: st
                     data["comment"] = comment
                 await w.post(f"{scope.base}/ipset/{name}", data)
             print_success(f"IP set '{name}' on {scope.label}: {len(todo)} entr{'y' if len(todo) == 1 else 'ies'} added")
+            if watch:
+                from .firewall_guard import check_after
+
+                await check_after(ConfigManager().get_profile(profile), f"the change to the IP set {name}")
 
         try:
             await session(profile, target, body)
@@ -670,22 +683,45 @@ def add_object_commands(alias_app: typer.Typer, ipset_app: typer.Typer, kind: st
                     print_error(f"Not in IP set '{name}': {', '.join(missing)}")
                     raise typer.Exit(1)
                 show_plan(f"Change on {scope.label}:", [f"remove {c} from {name}" for c in cidrs])
+                watch = False
                 if scope.kind == "cluster" and name == "management":
                     console.print("  [yellow]Removing an address from 'management' closes the web "
                                   "interface and SSH of every node to it when the firewall is on.[/yellow]")
+
+                    def mutate(inputs: dict[str, Any]) -> None:
+                        inputs["ipsets"]["management"] = [e for e in entries if e.get("cidr") not in cidrs]
+
+                    watch, _ = await guarded_change(client, ConfigManager().get_profile(profile), force, mutate)
                 if not approved(yes):
                     return
                 for c in cidrs:
                     await w.delete(f"{scope.base}/ipset/{name}/{c}")
                 print_success(f"{len(cidrs)} entr{'y' if len(cidrs) == 1 else 'ies'} removed from '{name}'")
+                if watch:
+                    from .firewall_guard import check_after
+
+                    await check_after(ConfigManager().get_profile(profile), f"the change to the IP set {name}")
                 return
             refuse_if_used(f"IP set '{name}'", await find_refs(client, "ipset", name, scope), force)
             show_plan(f"Remove from {scope.label}:",
                       [f"IP set {name} and its {len(entries)} entr{'y' if len(entries) == 1 else 'ies'}"])
+            watch = False
+            if scope.kind == "cluster" and name == "management":
+                console.print("  [yellow]Without a 'management' IP set, the management hosts are the "
+                              "cluster network.[/yellow]")
+
+                def mutate_set(inputs: dict[str, Any]) -> None:
+                    inputs["ipsets"].pop("management", None)
+
+                watch, _ = await guarded_change(client, ConfigManager().get_profile(profile), force, mutate_set)
             if not approved(yes):
                 return
             await w.delete(f"{scope.base}/ipset/{name}", {"force": 1})
             print_success(f"IP set '{name}' removed from {scope.label}")
+            if watch:
+                from .firewall_guard import check_after
+
+                await check_after(ConfigManager().get_profile(profile), f"the removal of the IP set {name}")
 
         try:
             await session(profile, target, body)
@@ -980,6 +1016,36 @@ def add_rule_commands(rule_app: typer.Typer, kind: str, target_arg: Any, drop_ta
     def scoped(scope: Scope, group: str | None) -> Scope:
         return group_scope(group) if group else scope
 
+    async def guard_rules(client: ProxmoxClient, profile: str | None, scope: Scope, force: bool,
+                          new: list[dict[str, Any]]) -> bool:
+        """Refuse a rule change that closes the API to this machine.
+
+        The rules of the datacenter, of a security group and of the node
+        pvecli talks to come before the management hosts. Returns whether
+        to check the access once the change is applied.
+        """
+        if scope.kind not in ("cluster", "group", "node"):
+            return False
+        from .firewall_guard import api_node
+
+        profile_config = ConfigManager().get_profile(profile)
+        if scope.kind == "node" and scope.name != await api_node(client, profile_config.host):
+            return False
+
+        def mutate(inputs: dict[str, Any]) -> None:
+            if scope.kind == "group":
+                inputs["groups"][scope.name] = new
+            else:
+                inputs["dc_rules" if scope.kind == "cluster" else "node_rules"] = new
+
+        watch, _ = await guarded_change(client, profile_config, force, mutate)
+        return watch
+
+    async def checked(profile: str | None, scope: Scope) -> None:
+        from .firewall_guard import check_after
+
+        await check_after(ConfigManager().get_profile(profile), f"the change to the rules of {scope.label}")
+
     async def groups_check(client: ProxmoxClient, group: str | None) -> list[str]:
         groups = await _group_names(client)
         if group and group not in groups:
@@ -1008,6 +1074,8 @@ def add_rule_commands(rule_app: typer.Typer, kind: str, target_arg: Any, drop_ta
                                                           "like the web interface)"),
         disabled: bool = typer.Option(False, "--disabled", help="Add it disabled"),
         group: str = group_opt,
+        force: bool = typer.Option(False, "--force", "-f", help="Go on even if the API would be closed "
+                                                                "to this machine"),
         profile: str = PROFILE,
         yes: bool = YES,
     ) -> None:
@@ -1034,10 +1102,14 @@ def add_rule_commands(rule_app: typer.Typer, kind: str, target_arg: Any, drop_ta
             show_plan(f"Add to {scope.label} at position {pos}:", [describe_rule(data)])
             if pos < len(rules):
                 console.print(f"  [dim]before: {describe_rule(rules[pos])}[/dim]", highlight=False)
+            new = _renumber(rules[:pos] + [data] + rules[pos:])
+            watch = await guard_rules(client, profile, scope, force, new)
             if not approved(yes):
                 return
             await insert_rule(Writer(client, {scope.rules_path: rules}), scope, data, pos)
             print_success(f"Rule added to {scope.label} at position {pos}")
+            if watch:
+                await checked(profile, scope)
 
         try:
             await level_session(profile, kind, target, body)
@@ -1065,6 +1137,8 @@ def add_rule_commands(rule_app: typer.Typer, kind: str, target_arg: Any, drop_ta
         clear: str = typer.Option(None, "--clear", help="Fields to empty, comma separated: "
                                                         + ", ".join(CLEARABLE)),
         group: str = group_opt,
+        force: bool = typer.Option(False, "--force", "-f", help="Go on even if the API would be closed "
+                                                                "to this machine"),
         profile: str = PROFILE,
         yes: bool = YES,
     ) -> None:
@@ -1092,12 +1166,16 @@ def add_rule_commands(rule_app: typer.Typer, kind: str, target_arg: Any, drop_ta
             after = {k: v for k, v in {**rule, **data}.items() if k not in cleared}
             show_plan(f"Change rule {rule['pos']} of {scope.label}:",
                       [f"from: {describe_rule(rule)}", f"to:   {describe_rule(after)}"])
+            watch = await guard_rules(client, profile, scope, force,
+                                      [after if r is rule else r for r in rules])
             if not approved(yes):
                 return
             if cleared:
                 data["delete"] = ",".join(cleared)
             await Writer(client, {scope.rules_path: rules}).put(f"{scope.rules_path}/{rule['pos']}", data)
             print_success(f"Rule {rule['pos']} of {scope.label} changed")
+            if watch:
+                await checked(profile, scope)
 
         try:
             await level_session(profile, kind, target, body)
@@ -1111,6 +1189,8 @@ def add_rule_commands(rule_app: typer.Typer, kind: str, target_arg: Any, drop_ta
         target: str = target_arg,
         positions: list[int] = typer.Argument(None, help="Positions of the rules", metavar="pos..."),
         group: str = group_opt,
+        force: bool = typer.Option(False, "--force", "-f", help="Go on even if the API would be closed "
+                                                                "to this machine"),
         profile: str = PROFILE,
         yes: bool = YES,
     ) -> None:
@@ -1126,6 +1206,8 @@ def add_rule_commands(rule_app: typer.Typer, kind: str, target_arg: Any, drop_ta
                 return
             chosen = _check_positions(rules, sorted(set(picked)))
             show_plan(f"Remove from {scope.label}:", [f"rule {r['pos']}: {describe_rule(r)}" for r in chosen])
+            watch = await guard_rules(client, profile, scope, force,
+                                      _renumber([r for r in rules if r not in chosen]))
             if not approved(yes):
                 return
             w = Writer(client, {scope.rules_path: rules})
@@ -1133,6 +1215,8 @@ def add_rule_commands(rule_app: typer.Typer, kind: str, target_arg: Any, drop_ta
             for r in sorted(chosen, key=lambda x: x["pos"], reverse=True):
                 await w.delete(f"{scope.rules_path}/{r['pos']}")
             print_success(f"{len(chosen)} rule{'' if len(chosen) == 1 else 's'} removed from {scope.label}")
+            if watch:
+                await checked(profile, scope)
 
         try:
             await level_session(profile, kind, target, body)
@@ -1147,6 +1231,8 @@ def add_rule_commands(rule_app: typer.Typer, kind: str, target_arg: Any, drop_ta
         position: int = typer.Argument(..., help="Position of the rule", metavar="pos"),
         to: int = typer.Argument(..., help="Its new position", metavar="new-pos"),
         group: str = group_opt,
+        force: bool = typer.Option(False, "--force", "-f", help="Go on even if the API would be closed "
+                                                                "to this machine"),
         profile: str = PROFILE,
         yes: bool = YES,
     ) -> None:
@@ -1165,10 +1251,15 @@ def add_rule_commands(rule_app: typer.Typer, kind: str, target_arg: Any, drop_ta
                 print_info(f"Rule {position} is already at position {to}")
                 return
             show_plan(f"Move in {scope.label}:", [f"rule {position} -> {to}: {describe_rule(rule)}"])
+            moved = [r for r in rules if r is not rule]
+            moved.insert(to, rule)
+            watch = await guard_rules(client, profile, scope, force, _renumber(moved))
             if not approved(yes):
                 return
             await Writer(client, {scope.rules_path: rules}).put(f"{scope.rules_path}/{position}", {"moveto": _moveto(position, to)})
             print_success(f"Rule moved to position {to} in {scope.label}")
+            if watch:
+                await checked(profile, scope)
 
         try:
             await level_session(profile, kind, target, body)
@@ -1185,6 +1276,8 @@ def add_rule_commands(rule_app: typer.Typer, kind: str, target_arg: Any, drop_ta
             target: str = target_arg,
             positions: list[int] = typer.Argument(None, help="Positions of the rules", metavar="pos..."),
             group: str = group_opt,
+            force: bool = typer.Option(False, "--force", "-f", help="Go on even if the API would be closed "
+                                                                    "to this machine"),
             profile: str = PROFILE,
             yes: bool = YES,
         ) -> None:
@@ -1203,12 +1296,16 @@ def add_rule_commands(rule_app: typer.Typer, kind: str, target_arg: Any, drop_ta
                     return
                 show_plan(f"{verb.capitalize()} in {scope.label}:",
                           [f"rule {r['pos']}: {describe_rule(r)}" for r in chosen])
+                watch = await guard_rules(client, profile, scope, force,
+                                          [{**r, "enable": 1 if enable else 0} if r in chosen else r for r in rules])
                 if not approved(yes):
                     return
                 w = Writer(client, {scope.rules_path: rules})
                 for r in chosen:
                     await w.put(f"{scope.rules_path}/{r['pos']}", {"enable": 1 if enable else 0})
                 print_success(f"{len(chosen)} rule{'' if len(chosen) == 1 else 's'} {verb}d in {scope.label}")
+                if watch:
+                    await checked(profile, scope)
 
             try:
                 await level_session(profile, kind, target, body)
@@ -1218,8 +1315,17 @@ def add_rule_commands(rule_app: typer.Typer, kind: str, target_arg: Any, drop_ta
         rule_switch.__doc__ = f"{verb.capitalize()} firewall rules without removing them."
         return rule_switch
 
-    switch(True)
-    switch(False)
+    switches = [switch(True), switch(False)]
+    # Only the datacenter (and its groups) and the nodes come before the
+    # management hosts: elsewhere a rule cannot close the API
+    if kind not in ("cluster", "node"):
+        for fn in (rule_add, rule_edit, rule_remove, rule_move, *switches):
+            _strip(fn, "force")
+
+
+def _renumber(rules: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The positions a list of rules takes once written."""
+    return [{**r, "pos": i} for i, r in enumerate(rules)]
 
 
 def _moveto(position: int, to: int) -> int:
@@ -1245,3 +1351,277 @@ async def insert_rule(w: Writer, scope: Scope, data: dict[str, Any], pos: int) -
     await w.put(f"{scope.rules_path}/0", {"moveto": _moveto(0, pos)})
     if data.get("enable", 1):
         await w.put(f"{scope.rules_path}/{pos}", {"enable": 1})
+
+
+# ── switches and options ─────────────────────────────────────────────────
+
+_LEVELS = tuple(LOG_LEVELS)
+_POLICY = ("ACCEPT", "REJECT", "DROP")
+# What `set` accepts on each level, from the PVE 9.1 schema
+OPTION_TYPES: dict[str, dict[str, Any]] = {
+    "cluster": {"enable": bool, "policy_in": _POLICY, "policy_out": _POLICY,
+                "policy_forward": ("ACCEPT", "DROP"), "ebtables": bool, "log_ratelimit": str},
+    "node": {"enable": bool, "log_level_in": _LEVELS, "log_level_out": _LEVELS, "log_level_forward": _LEVELS,
+             "log_nf_conntrack": bool, "ndp": bool, "nf_conntrack_allow_invalid": bool,
+             "nf_conntrack_helpers": str, "nf_conntrack_max": int, "nf_conntrack_tcp_timeout_established": int,
+             "nf_conntrack_tcp_timeout_syn_recv": int, "nftables": bool, "nosmurfs": bool,
+             "protection_synflood": bool, "protection_synflood_burst": int, "protection_synflood_rate": int,
+             "smurf_log_level": _LEVELS, "tcp_flags_log_level": _LEVELS, "tcpflags": bool},
+    "vm": {"enable": bool, "policy_in": _POLICY, "policy_out": _POLICY, "dhcp": bool, "ipfilter": bool,
+           "macfilter": bool, "ndp": bool, "radv": bool, "log_level_in": _LEVELS, "log_level_out": _LEVELS},
+    "vnet": {"enable": bool, "policy_forward": ("ACCEPT", "DROP"), "log_level_forward": _LEVELS},
+}
+OPTION_TYPES["ct"] = OPTION_TYPES["vm"]
+
+
+def parse_settings(kind: str, pairs: list[str]) -> dict[str, Any]:
+    """KEY=VALUE pairs, checked against what the level accepts."""
+    allowed = OPTION_TYPES[kind]
+    out: dict[str, Any] = {}
+    for pair in pairs:
+        key, sep, value = pair.partition("=")
+        key = key.strip().replace("-", "_")
+        if not sep or key not in allowed:
+            print_error(f"Not an option of this level: '{pair}'. One of: {', '.join(sorted(allowed))}")
+            raise typer.Exit(1)
+        kind_of = allowed[key]
+        value = value.strip()
+        if kind_of is bool:
+            if value.lower() not in ("1", "0", "yes", "no", "on", "off", "true", "false"):
+                print_error(f"{key} takes yes or no, not '{value}'")
+                raise typer.Exit(1)
+            out[key] = 1 if value.lower() in ("1", "yes", "on", "true") else 0
+        elif kind_of is int:
+            if not value.isdigit():
+                print_error(f"{key} takes a number, not '{value}'")
+                raise typer.Exit(1)
+            out[key] = int(value)
+        elif isinstance(kind_of, tuple):
+            match = next((v for v in kind_of if v.lower() == value.lower()), None)
+            if match is None:
+                print_error(f"{key} takes one of {', '.join(kind_of)}, not '{value}'")
+                raise typer.Exit(1)
+            out[key] = match
+        else:
+            out[key] = value
+    return out
+
+
+async def guarded_change(client: ProxmoxClient, profile_config: Any, force: bool,
+                         mutate: Any) -> tuple[bool, Any]:
+    """Judge the access to the API before and after a change.
+
+    mutate(inputs) changes, in place, the configuration read by
+    read_access_inputs the way the change will. Refuses (exit 1) a change
+    that closes the API, unless force. Returns (watch, after): watch is
+    True when the firewall will filter the API after the change, so the
+    access must be checked once it is applied.
+    """
+    import copy
+
+    from .firewall_guard import api_node, check_access, judge, read_access_inputs, source_address
+
+    try:
+        node = await api_node(client, profile_config.host)
+        inputs = await read_access_inputs(client, node) if node else None
+    except PVECliError as e:
+        node, inputs = None, None
+        print_warning(f"pvecli cannot read what decides its access to the API ({e})")
+    if node is None or inputs is None:
+        # Not checked before: checked after, which needs no reading
+        print_warning("The access to the API is not checked before the change: it is checked after, "
+                      "and the change is undone if it is lost")
+        return True, None
+    ip = source_address(profile_config.host, profile_config.port)
+    after_inputs = copy.deepcopy(inputs)
+    mutate(after_inputs)
+    before, after = judge(ip, **inputs), judge(ip, **after_inputs)
+    if before.kept is False and after.kept is False:
+        print_warning(f"This machine is already outside the management hosts: {after.reason}")
+    else:
+        check_access(after, force)
+    filtered = not after.reason.startswith(("the datacenter firewall is off", "the firewall of the node",
+                                             "the input policy is ACCEPT"))
+    return filtered, after
+
+
+def add_switch_commands(app: typer.Typer, kind: str, target_arg: Any, drop: Any) -> None:
+    """enable, disable and set for one kind of level."""
+    from .firewall import effective, is_on, read_options
+
+    def run(profile: str | None, target: str | None, body: Any) -> Any:
+        return level_session(profile, kind, target, body)
+
+    async def apply(client: ProxmoxClient, scope: Scope, profile: str | None, data: dict[str, Any],
+                    lines: list[str], force: bool, yes: bool) -> None:
+        profile_config = ConfigManager().get_profile(profile)
+        before = await client.get(scope.options_path) or {}
+
+        show_plan(f"Change the firewall of {scope.label}:", lines)
+        watch = False
+        if scope.kind in ("cluster", "node"):
+            from .firewall_guard import api_node
+
+            api = await api_node(client, profile_config.host)
+            # The options of the datacenter, or of the node pvecli talks to,
+            # decide whether it keeps the API
+            key = "dc_opts" if scope.kind == "cluster" else "node_opts"
+            if scope.kind == "cluster" or scope.name == api:
+
+                def mutate(inputs: dict[str, Any]) -> None:
+                    opts = inputs[key]
+                    for k in str(data.get("delete", "")).split(","):
+                        opts.pop(k.strip(), None)
+                    opts.update({k: v for k, v in data.items() if k != "delete"})
+
+                watch, _ = await guarded_change(client, profile_config, force, mutate)
+        if not approved(yes):
+            return
+        w = Writer(client, {scope.options_path: before})
+        await w.put(scope.options_path, data)
+        print_success(f"Firewall of {scope.label} changed")
+        if watch:
+            from .firewall_guard import check_after
+
+            await check_after(profile_config, f"the change to the firewall of {scope.label}")
+
+    def describe(scope: Scope, opts: dict[str, Any], data: dict[str, Any]) -> list[str]:
+        lines = []
+        def shown(value: Any) -> str:
+            return "-" if value is None else str(value)
+
+        for k, v in data.items():
+            if k == "delete":
+                for key in v.split(","):
+                    default = effective(scope.kind, {}, key)
+                    lines.append(f"{key}: {shown(opts.get(key))} -> default"
+                                 + (f" ({default})" if default is not None else ""))
+                continue
+            lines.append(f"{k}: {shown(effective(scope.kind, opts, k))} -> {v}")
+        return lines
+
+    def switch(enable: bool) -> None:
+        verb = "enable" if enable else "disable"
+
+        @app.command(verb)
+        @drop
+        @async_to_sync
+        async def toggle(
+            target: str = target_arg,
+            nics: bool = typer.Option(False, "--nics", help="Also set firewall=1 on every card of the guest "
+                                                            "(a running guest loses its network briefly)")
+            if kind in ("vm", "ct") and enable else None,  # type: ignore[assignment]
+            force: bool = typer.Option(False, "--force", "-f", help="Go on even if the API would be closed "
+                                                                    "to this machine (undone if it is)")
+            if kind in ("cluster", "node") and enable else None,  # type: ignore[assignment]
+            profile: str = PROFILE,
+            yes: bool = YES,
+        ) -> None:
+            async def body(client: ProxmoxClient, scope: Scope) -> None:
+                opts = await read_options(client, scope)
+                if is_on(effective(scope.kind, opts, "enable")) == enable:
+                    print_info(f"The firewall of {scope.label} is already {'on' if enable else 'off'}")
+                    if not (enable and nics):
+                        return
+                else:
+                    await apply(client, scope, profile, {"enable": 1 if enable else 0},
+                                [f"firewall: {'off -> on' if enable else 'on -> off'}"], bool(force), yes)
+                if scope.is_guest and enable:
+                    await _guest_cards(client, scope, bool(nics), yes)
+
+            try:
+                await run(profile, target, body)
+            except PVECliError as e:
+                _fail(e)
+
+        toggle.__doc__ = (f"Turn the firewall of {_noun(kind)} {'on' if enable else 'off'}."
+                          + (" Checks the API stays reachable." if kind in ("cluster", "node") and enable else ""))
+        if not (kind in ("vm", "ct") and enable):
+            _strip(toggle, "nics")
+        if not (kind in ("cluster", "node") and enable):
+            _strip(toggle, "force")
+
+    switch(True)
+    switch(False)
+
+    @app.command("set")
+    @drop
+    @async_to_sync
+    async def set_options(
+        target: str = target_arg,
+        settings: list[str] = typer.Argument(None, help="KEY=VALUE pairs, as `options` names them",
+                                             metavar="key=value..."),
+        clear: str = typer.Option(None, "--clear", help="Options back to their default, comma separated"),
+        force: bool = typer.Option(False, "--force", "-f", help="Go on even if the API would be closed "
+                                                                "to this machine (undone if it is)")
+        if kind in ("cluster", "node") else None,  # type: ignore[assignment]
+        profile: str = PROFILE,
+        yes: bool = YES,
+    ) -> None:
+        """Change firewall options: policies, log levels, filters."""
+        data = parse_settings(kind, list(settings or []))
+        cleared = [c.strip().replace("-", "_") for c in (clear or "").split(",") if c.strip()]
+        bad = [c for c in cleared if c not in OPTION_TYPES[kind]]
+        if bad:
+            print_error(f"Not an option of this level: {', '.join(bad)}")
+            raise typer.Exit(1)
+        if not data and not cleared:
+            print_error("Nothing to change: pass KEY=VALUE pairs or --clear")
+            raise typer.Exit(1)
+        if cleared:
+            data["delete"] = ",".join(cleared)
+
+        async def body(client: ProxmoxClient, scope: Scope) -> None:
+            opts = await read_options(client, scope)
+            await apply(client, scope, profile, data, describe(scope, opts, data), bool(force), yes)
+
+        try:
+            await run(profile, target, body)
+        except PVECliError as e:
+            _fail(e)
+
+    if kind not in ("cluster", "node"):
+        _strip(set_options, "force")
+
+
+def _noun(kind: str) -> str:
+    return {"cluster": "the datacenter", "vm": "a VM", "ct": "a container", "node": "a node", "vnet": "a vnet"}[kind]
+
+
+def _strip(fn: Any, name: str) -> None:
+    import inspect
+
+    sig = inspect.signature(fn)
+    fn.__signature__ = sig.replace(parameters=[p for n, p in sig.parameters.items() if n != name])
+
+
+async def _guest_cards(client: ProxmoxClient, scope: Scope, nics: bool, yes: bool) -> None:
+    """Say which cards of a guest are not filtered, and flag them with --nics."""
+    from .firewall import guest_nics
+
+    assert scope.node is not None and scope.vmid is not None
+    api = "qemu" if scope.kind == "vm" else "lxc"
+    config = await client.get(f"/nodes/{scope.node}/{api}/{scope.vmid}/config") or {}
+    unflagged = [n for n, on in guest_nics(config).items() if not on]
+    if not unflagged:
+        return
+    if not nics:
+        print_warning(f"Not filtered: {', '.join(unflagged)} (no firewall=1). "
+                      f"Pass --nics to flag them, or edit the guest.")
+        return
+    status = await client.get(f"/nodes/{scope.node}/{api}/{scope.vmid}/status/current") or {}
+    running = status.get("status") == "running"
+    show_plan(f"Flag the cards of {scope.label}:", [f"{n}: firewall=1" for n in unflagged])
+    if running:
+        console.print("  [yellow]The guest is running: each card is plugged again, its network "
+                      "drops for a moment.[/yellow]")
+    if not approved(yes):
+        return
+    data = {n: _with_firewall(config[n]) for n in unflagged}
+    await client.put(f"/nodes/{scope.node}/{api}/{scope.vmid}/config", data={**data, "digest": config.get("digest")})
+    print_success(f"firewall=1 on {', '.join(unflagged)} of {scope.label}")
+
+
+def _with_firewall(card: str) -> str:
+    parts = [p for p in str(card).split(",") if not p.startswith("firewall=")]
+    return ",".join(parts + ["firewall=1"])

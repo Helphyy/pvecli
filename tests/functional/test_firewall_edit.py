@@ -19,7 +19,20 @@ VM2 = "/nodes/pve1/qemu/102/firewall"
 
 
 @pytest.fixture
-def fw(api):
+def fw(api, monkeypatch):
+    import src.cli.firewall_guard as guard
+
+    # pvecli talks to pve1 from inside its cluster network (see test_firewall_switch.py)
+    api.route("GET", "/cluster/status", [{"type": "node", "name": "pve1", "ip": "10.0.0.1"}])
+    api.route("GET", "/nodes/pve1/network", [{"iface": "vmbr0", "cidr": "10.0.0.1/24"}])
+    api.route("GET", "/version", {"version": "9.1"})
+    monkeypatch.setattr(guard, "source_address", lambda host, port: "10.0.0.7")
+    monkeypatch.setattr(guard, "APPLY_DELAY", 0)
+
+    async def pve1(client, host):
+        return "pve1"
+
+    monkeypatch.setattr(guard, "api_node", pve1)
     api.route("GET", "/nodes", NODES)
     api.route("GET", "/cluster/resources", GUESTS)
     api.route("GET", "/cluster/sdn/vnets", [])

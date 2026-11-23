@@ -30,13 +30,72 @@ pvecli node firewall status [TARGET] [OPTIONS]
 | `-p`, `--profile VALUE` | Profile to use. |
 | `-js`, `--json` | Output raw JSON to stdout (no colors, no tables). |
 
-## rule
+## enable
 
-Firewall rules of a node
+Turn the firewall of a node on. Checks the API stays reachable.
 
 ```text
-pvecli node firewall rule
+pvecli node firewall enable [TARGET] [OPTIONS]
 ```
+
+### Arguments
+
+| Argument | Description |
+|:--|:--|
+| `TARGET` | Node name. |
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `-f`, `--force` | Go on even if the API would be closed to this machine (undone if it is). |
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-y`, `--yes` | Do not ask for confirmation. |
+
+## disable
+
+Turn the firewall of a node off.
+
+```text
+pvecli node firewall disable [TARGET] [OPTIONS]
+```
+
+### Arguments
+
+| Argument | Description |
+|:--|:--|
+| `TARGET` | Node name. |
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-y`, `--yes` | Do not ask for confirmation. |
+
+## set
+
+Change firewall options: policies, log levels, filters.
+
+```text
+pvecli node firewall set [TARGET] [SETTINGS] [OPTIONS]
+```
+
+### Arguments
+
+| Argument | Description |
+|:--|:--|
+| `TARGET` | Node name. |
+| `SETTINGS` | KEY=VALUE pairs, as `options` names them. |
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `--clear VALUE` | Options back to their default, comma separated. |
+| `-f`, `--force` | Go on even if the API would be closed to this machine (undone if it is). |
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-y`, `--yes` | Do not ask for confirmation. |
 
 ## options
 
@@ -58,6 +117,14 @@ pvecli node firewall options [TARGET] [OPTIONS]
 |:--|:--|
 | `-p`, `--profile VALUE` | Profile to use. |
 | `-js`, `--json` | Output raw JSON to stdout (no colors, no tables). |
+
+## rule
+
+Firewall rules of a node
+
+```text
+pvecli node firewall rule
+```
 
 ## log
 

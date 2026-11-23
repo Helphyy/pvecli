@@ -24,13 +24,59 @@ pvecli cluster firewall status [OPTIONS]
 | `-p`, `--profile VALUE` | Profile to use. |
 | `-js`, `--json` | Output raw JSON to stdout (no colors, no tables). |
 
-## rule
+## enable
 
-Firewall rules of the datacenter
+Turn the firewall of the datacenter on. Checks the API stays reachable.
 
 ```text
-pvecli cluster firewall rule
+pvecli cluster firewall enable [OPTIONS]
 ```
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `-f`, `--force` | Go on even if the API would be closed to this machine (undone if it is). |
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-y`, `--yes` | Do not ask for confirmation. |
+
+## disable
+
+Turn the firewall of the datacenter off.
+
+```text
+pvecli cluster firewall disable [OPTIONS]
+```
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-y`, `--yes` | Do not ask for confirmation. |
+
+## set
+
+Change firewall options: policies, log levels, filters.
+
+```text
+pvecli cluster firewall set [SETTINGS] [OPTIONS]
+```
+
+### Arguments
+
+| Argument | Description |
+|:--|:--|
+| `SETTINGS` | KEY=VALUE pairs, as `options` names them. |
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `--clear VALUE` | Options back to their default, comma separated. |
+| `-f`, `--force` | Go on even if the API would be closed to this machine (undone if it is). |
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-y`, `--yes` | Do not ask for confirmation. |
 
 ## options
 
@@ -46,6 +92,14 @@ pvecli cluster firewall options [OPTIONS]
 |:--|:--|
 | `-p`, `--profile VALUE` | Profile to use. |
 | `-js`, `--json` | Output raw JSON to stdout (no colors, no tables). |
+
+## rule
+
+Firewall rules of the datacenter
+
+```text
+pvecli cluster firewall rule
+```
 
 ## group
 
