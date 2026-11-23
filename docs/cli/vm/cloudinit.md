@@ -50,15 +50,15 @@ pvecli vm cloudinit set VMID [OPTIONS]
 
 | Option | Default | Description |
 |:--|:--|:--|
-| `--user VALUE` |  | User created or reconfigured by cloud-init. |
-| `--password-env VALUE` |  | Env var holding the user password (keys are better). |
-| `--ssh-key VALUE` |  | Public key file or key (repeatable). |
-| `--ip VALUE` |  | IPv4 CIDR (10.0.0.21/24) or dhcp. |
+| `-u`, `--user VALUE` |  | User created or reconfigured by cloud-init. |
+| `-pe`, `--password-env VALUE` |  | Env var holding the user password (keys are better). |
+| `-sk`, `--ssh-key VALUE` |  | Public key file or key (repeatable). |
+| `-ip`, `--ip VALUE` |  | IPv4 CIDR (10.0.0.21/24) or dhcp. |
 | `--gw VALUE` |  | IPv4 gateway. |
-| `--ip6 VALUE` |  | IPv6 CIDR, dhcp or auto. |
+| `-ip6`, `--ip6 VALUE` |  | IPv6 CIDR, dhcp or auto. |
 | `--gw6 VALUE` |  | IPv6 gateway. |
 | `--dns VALUE` |  | DNS server(s), space separated. |
-| `--search-domain VALUE` |  | DNS search domain. |
+| `-sd`, `--search-domain VALUE` |  | DNS search domain. |
 | `--upgrade` / `--no-upgrade` |  | Upgrade packages at first boot. |
 | `--iface N` | `0` | NIC the IP settings apply to (net0 = 0). |
 | `--drive-storage VALUE` |  | Storage of the cloud-init drive if one must be added. |

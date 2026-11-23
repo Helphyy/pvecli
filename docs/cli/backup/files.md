@@ -24,9 +24,9 @@ pvecli backup files VOLID [PATH] [OPTIONS]
 
 | Option | Description |
 |:--|:--|
-| `--node VALUE` | Node to go through (default: the node holding the backup). |
+| `-n`, `--node VALUE` | Node to go through (default: the node holding the backup). |
 | `-p`, `--profile VALUE` | Profile to use. |
-| `--json` | Output raw JSON to stdout (no colors, no tables). |
+| `-js`, `--json` | Output raw JSON to stdout (no colors, no tables). |
 
 ## Examples
 

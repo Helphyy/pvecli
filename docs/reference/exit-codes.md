@@ -13,7 +13,7 @@ description: The exit status of pvecli commands, for scripts and CI jobs.
 | `2` | Wrong usage: unknown command or option, missing argument, or `pvecli` or a command group run without a subcommand (its help is printed). Also [audit](../cli/audit.md) on one profile when it reports at least one `FAIL`. |
 | `130` | Interrupted with ++ctrl+c++, in a menu, at a prompt or while the command waits for Proxmox. pvecli prints `Cancelled`. |
 | `255` | `vm ssh`, `ct ssh` or `node ssh` could not connect. |
-| other | `vm ssh`, `ct ssh` and `node ssh` exit with the status of `ssh`: that of the remote shell, or of the command given with `-c`. |
+| other | `vm ssh`, `ct ssh` and `node ssh` exit with the status of `ssh`: that of the remote shell, or of the command given with `-cm`. |
 
 ## Several profiles
 

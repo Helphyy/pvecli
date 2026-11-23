@@ -51,7 +51,7 @@ def test_list_content(cli, lab):
 
 
 def test_list_content_filtered_by_type(cli, lab):
-    cli("storage", "content", "list", "pve1", "local", "-t", "iso", "-p", "p1")
+    cli("storage", "content", "list", "pve1", "local", "-ty", "iso", "-p", "p1")
     assert lab.called("GET", "/nodes/pve1/storage/local/content")[0].params == {"content": "iso"}
 
 
@@ -172,7 +172,7 @@ def iso(tmp_path):
 
 
 def test_upload_iso(cli, lab, http, iso):
-    r = cli("storage", "content", "add", "pve1", "local", "-s", str(iso), "-t", "iso", "-y", "-p", "p1")
+    r = cli("storage", "content", "add", "pve1", "local", "-sf", str(iso), "-ty", "iso", "-y", "-p", "p1")
     assert r.exit_code == 0, r.output
     [req] = http.requests
     assert req["method"] == "POST"
@@ -187,7 +187,7 @@ def test_upload_iso(cli, lab, http, iso):
 
 def test_upload_proxied_by_another_node_polls_that_node(cli, lab, http, iso):
     http.body = {"data": upid("pve2", "imgcopy", "")}
-    r = cli("storage", "content", "add", "pve1", "nas", "-s", str(iso), "-t", "iso", "-y", "-p", "p1")
+    r = cli("storage", "content", "add", "pve1", "nas", "-sf", str(iso), "-ty", "iso", "-y", "-p", "p1")
     assert r.exit_code == 0, r.output
     assert "executed by 'pve2'" in r.output
     assert lab.called("GET", "/nodes/pve2/tasks/{upid}/status")
@@ -196,28 +196,28 @@ def test_upload_proxied_by_another_node_polls_that_node(cli, lab, http, iso):
 def test_upload_task_failure_is_an_error(cli, lab, http, iso):
     lab.route("GET", "/nodes/{node}/tasks/{upid}/status",
               {"status": "stopped", "exitstatus": "import failed: no space left on device"})
-    r = cli("storage", "content", "add", "pve1", "local", "-s", str(iso), "-t", "iso", "-y", "-p", "p1")
+    r = cli("storage", "content", "add", "pve1", "local", "-sf", str(iso), "-ty", "iso", "-y", "-p", "p1")
     assert r.exit_code == 1
     assert "no space left" in r.output
 
 
 def test_upload_rejected_by_pve(cli, lab, http, iso):
     http.status, http.body = 403, {"data": None}
-    r = cli("storage", "content", "add", "pve1", "local", "-s", str(iso), "-t", "iso", "-y", "-p", "p1")
+    r = cli("storage", "content", "add", "pve1", "local", "-sf", str(iso), "-ty", "iso", "-y", "-p", "p1")
     assert r.exit_code == 1
     assert "Permission denied" in r.output
 
 
 def test_upload_missing_file_sends_nothing(cli, lab, http, tmp_path):
-    r = cli("storage", "content", "add", "pve1", "local", "-s", str(tmp_path / "nope.iso"),
-            "-t", "iso", "-y", "-p", "p1")
+    r = cli("storage", "content", "add", "pve1", "local", "-sf", str(tmp_path / "nope.iso"),
+            "-ty", "iso", "-y", "-p", "p1")
     assert r.exit_code == 1
     assert "File not found" in r.output
     assert http.requests == []
 
 
 def test_upload_bad_type_sends_nothing(cli, lab, http, iso):
-    r = cli("storage", "content", "add", "pve1", "local", "-s", str(iso), "-t", "backup", "-y", "-p", "p1")
+    r = cli("storage", "content", "add", "pve1", "local", "-sf", str(iso), "-ty", "backup", "-y", "-p", "p1")
     assert r.exit_code == 1
     assert "Invalid content type 'backup'" in r.output
     assert http.requests == []
@@ -234,7 +234,7 @@ def test_upload_interactive_type_and_confirm(cli, lab, http, iso, ui):
 
 def test_upload_declined_sends_nothing(cli, lab, http, iso, ui):
     ui.confirm(False)
-    r = cli("storage", "content", "add", "pve1", "local", "-s", str(iso), "-t", "iso", "-p", "p1")
+    r = cli("storage", "content", "add", "pve1", "local", "-sf", str(iso), "-ty", "iso", "-p", "p1")
     assert r.exit_code == 0
     assert http.requests == []
     assert lab.writes() == []
@@ -255,8 +255,8 @@ SHA = "a" * 64
 
 def test_download_iso_with_checksum(cli, lab):
     lab.route("POST", "/nodes/{node}/storage/{storage}/download-url", upid("pve1", "download", ""))
-    r = cli("storage", "content", "download", "pve1", "local", "-u", URL, "-f", "netinst.iso",
-            "-c", SHA, "-ca", "sha256", "-y", "-p", "p1")
+    r = cli("storage", "content", "download", "pve1", "local", "-ur", URL, "-fn", "netinst.iso",
+            "-cs", SHA, "-ca", "sha256", "-y", "-p", "p1")
     assert r.exit_code == 0, r.output
     [call] = lab.writes()
     assert call.path == "/nodes/pve1/storage/local/download-url"
@@ -269,7 +269,7 @@ def test_download_filename_from_url_and_template_type_detected(cli, lab, ui):
     lab.route("POST", "/nodes/{node}/storage/{storage}/download-url", upid("pve1", "download", ""))
     ui.text(None)  # accept the filename taken from the URL
     url = "http://download.proxmox.com/images/system/debian-13-standard_13.1-1_amd64.tar.zst"
-    r = cli("storage", "content", "download", "pve1", "local", "-u", url, "-y", "-p", "p1")
+    r = cli("storage", "content", "download", "pve1", "local", "-ur", url, "-y", "-p", "p1")
     assert r.exit_code == 0, r.output
     assert lab.writes()[0].data == {"url": url, "filename": "debian-13-standard_13.1-1_amd64.tar.zst",
                                     "content": "vztmpl"}
@@ -278,7 +278,7 @@ def test_download_filename_from_url_and_template_type_detected(cli, lab, ui):
 def test_download_url_encoded_filename_is_decoded(cli, lab, ui):
     lab.route("POST", "/nodes/{node}/storage/{storage}/download-url", upid("pve1", "download", ""))
     ui.text(None)
-    r = cli("storage", "content", "download", "pve1", "local", "-u", "https://x.org/my%20disk.iso",
+    r = cli("storage", "content", "download", "pve1", "local", "-ur", "https://x.org/my%20disk.iso",
             "-y", "-p", "p1")
     assert r.exit_code == 0, r.output
     assert lab.writes()[0].data["filename"] == "my disk.iso"
@@ -286,7 +286,7 @@ def test_download_url_encoded_filename_is_decoded(cli, lab, ui):
 
 def test_download_background_does_not_wait(cli, lab):
     lab.route("POST", "/nodes/{node}/storage/{storage}/download-url", upid("pve1", "download", ""))
-    r = cli("storage", "content", "download", "pve1", "local", "-u", URL, "-f", "a.iso", "-b", "-y", "-p", "p1")
+    r = cli("storage", "content", "download", "pve1", "local", "-ur", URL, "-fn", "a.iso", "-bg", "-y", "-p", "p1")
     assert r.exit_code == 0, r.output
     assert "background" in r.output
     assert not lab.called("GET", "/nodes/{node}/tasks/{upid}/status")
@@ -295,21 +295,21 @@ def test_download_background_does_not_wait(cli, lab):
 def test_download_unknown_extension_asks_the_type(cli, lab, ui):
     lab.route("POST", "/nodes/{node}/storage/{storage}/download-url", upid("pve1", "download", ""))
     ui.menu("iso")
-    r = cli("storage", "content", "download", "pve1", "local", "-u", "https://x.org/get?id=3",
-            "-f", "image.bin", "-y", "-p", "p1")
+    r = cli("storage", "content", "download", "pve1", "local", "-ur", "https://x.org/get?id=3",
+            "-fn", "image.bin", "-y", "-p", "p1")
     assert r.exit_code == 0, r.output
     assert lab.writes()[0].data["content"] == "iso"
 
 
 def test_download_declined_writes_nothing(cli, lab, ui):
     ui.confirm(False)
-    r = cli("storage", "content", "download", "pve1", "local", "-u", URL, "-f", "a.iso", "-p", "p1")
+    r = cli("storage", "content", "download", "pve1", "local", "-ur", URL, "-fn", "a.iso", "-p", "p1")
     assert r.exit_code == 0
     assert lab.writes() == []
 
 
 def test_download_bad_type_writes_nothing(cli, lab):
-    r = cli("storage", "content", "download", "pve1", "local", "-u", URL, "-f", "a.iso", "-t", "backup",
+    r = cli("storage", "content", "download", "pve1", "local", "-ur", URL, "-fn", "a.iso", "-ty", "backup",
             "-y", "-p", "p1")
     assert r.exit_code == 1
     assert lab.writes() == []
@@ -319,14 +319,14 @@ def test_download_task_failure_is_an_error(cli, lab):
     lab.route("POST", "/nodes/{node}/storage/{storage}/download-url", upid("pve1", "download", ""))
     lab.route("GET", "/nodes/{node}/tasks/{upid}/status",
               {"status": "stopped", "exitstatus": "checksum mismatch"})
-    r = cli("storage", "content", "download", "pve1", "local", "-u", URL, "-f", "a.iso", "-y", "-p", "p1")
+    r = cli("storage", "content", "download", "pve1", "local", "-ur", URL, "-fn", "a.iso", "-y", "-p", "p1")
     assert r.exit_code == 1
     assert "checksum mismatch" in r.output
 
 
 def test_download_checksum_never_sent_without_its_algorithm(cli, lab):
     lab.route("POST", "/nodes/{node}/storage/{storage}/download-url", upid("pve1", "download", ""))
-    r = cli("storage", "content", "download", "pve1", "local", "-u", URL, "-f", "a.iso", "-c", SHA,
+    r = cli("storage", "content", "download", "pve1", "local", "-ur", URL, "-fn", "a.iso", "-cs", SHA,
             "-y", "-p", "p1")
     posts = lab.writes()
     if posts:
@@ -341,7 +341,7 @@ def test_download_checksum_never_sent_without_its_algorithm(cli, lab):
 
 def test_download_yes_takes_the_url_filename_without_asking(cli, lab):
     lab.route("POST", "/nodes/{node}/storage/{storage}/download-url", upid("pve1", "download", ""))
-    r = cli("storage", "content", "download", "pve1", "local", "-u", URL, "-y", "-p", "p1")
+    r = cli("storage", "content", "download", "pve1", "local", "-ur", URL, "-y", "-p", "p1")
     assert r.exit_code == 0, r.output
     assert lab.writes()[0].data["filename"] == "debian-13.2.0-amd64-netinst.iso"
 
@@ -349,14 +349,14 @@ def test_download_yes_takes_the_url_filename_without_asking(cli, lab):
 @pytest.mark.parametrize("name", ["debian-12-genericcloud-amd64.qcow2", "disk.raw", "disk.vmdk", "appliance.ova"])
 def test_download_disk_image_is_detected_as_import(cli, lab, name):
     lab.route("POST", "/nodes/{node}/storage/{storage}/download-url", upid("pve1", "download", ""))
-    r = cli("storage", "content", "download", "pve1", "local", "-u", f"https://x.org/{name}", "-y", "-p", "p1")
+    r = cli("storage", "content", "download", "pve1", "local", "-ur", f"https://x.org/{name}", "-y", "-p", "p1")
     assert r.exit_code == 0, r.output
     assert lab.writes()[0].data == {"url": f"https://x.org/{name}", "filename": name, "content": "import"}
 
 
 def test_download_import_type_is_accepted(cli, lab):
     lab.route("POST", "/nodes/{node}/storage/{storage}/download-url", upid("pve1", "download", ""))
-    r = cli("storage", "content", "download", "pve1", "local", "-u", "https://x.org/get?id=3",
-            "-f", "img.qcow2", "-t", "import", "-y", "-p", "p1")
+    r = cli("storage", "content", "download", "pve1", "local", "-ur", "https://x.org/get?id=3",
+            "-fn", "img.qcow2", "-ty", "import", "-y", "-p", "p1")
     assert r.exit_code == 0, r.output
     assert lab.writes()[0].data["content"] == "import"

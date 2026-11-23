@@ -29,7 +29,7 @@ pvecli vm add [NODE] [OPTIONS]
 | `-pl`, `--pool VALUE` |  | Pool name. |
 | `-ob`, `--onboot` / `--no-onboot` |  | Start at boot. |
 | `-iss`, `--iso-storage VALUE` |  | Storage for ISO. |
-| `-i`, `--iso VALUE` |  | ISO file name (from iso-storage). |
+| `-iso`, `--iso VALUE` |  | ISO file name (from iso-storage). |
 | `-ot`, `--os-type VALUE` |  | OS type: linux or windows. |
 | `-ov`, `--os-version VALUE` |  | OS version (e.g., '11/2022/2025', '6.x'). |
 | `-ag`, `--agent` / `--no-agent` | `--agent` | Enable QEMU Guest Agent. |
@@ -47,5 +47,5 @@ pvecli vm add [NODE] [OPTIONS]
 | `-ld`, `--link-down` / `--no-link-down` |  | Start disconnected. |
 | `-vis`, `--virtio-iso-storage VALUE` |  | Storage for VirtIO ISO (Windows only). |
 | `-vi`, `--virtio-iso VALUE` |  | VirtIO ISO file name (Windows only). |
-| `-ts`, `--tpm-storage VALUE` |  | Storage for TPM (Windows 11/2022/2025 only). |
+| `-tpm`, `--tpm-storage VALUE` |  | Storage for TPM (Windows 11/2022/2025 only). |
 | `-es`, `--efi-storage VALUE` |  | Storage for EFI (Windows 11/2022/2025 only). |

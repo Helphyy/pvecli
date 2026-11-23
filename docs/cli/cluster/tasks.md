@@ -18,5 +18,5 @@ pvecli cluster tasks [OPTIONS]
 | Option | Default | Description |
 |:--|:--|:--|
 | `-p`, `--profile VALUE` |  | Profile to use. |
-| `-r`, `--running` |  | Only show running tasks. |
+| `-rn`, `--running` |  | Only show running tasks. |
 | `-l`, `--limit N` | `50` | Maximum number of tasks. |

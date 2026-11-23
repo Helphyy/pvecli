@@ -23,5 +23,5 @@ pvecli tag add [TAG] [OPTIONS]
 
 | Option | Description |
 |:--|:--|
-| `-c`, `--color VALUE` | Hex color (e.g. ff4444). |
+| `-cl`, `--color VALUE` | Hex color (e.g. ff4444). |
 | `-p`, `--profile VALUE` | Profile to use. |

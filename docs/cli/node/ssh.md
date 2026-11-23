@@ -26,5 +26,5 @@ pvecli node ssh [NODE] [OPTIONS]
 | `-u`, `--user VALUE` | SSH user. |
 | `-P`, `--port N` | SSH port. |
 | `-i`, `--key VALUE` | Path to SSH key. |
-| `-c`, `--command VALUE` | Execute command instead of shell. |
+| `-cm`, `--command VALUE` | Execute command instead of shell. |
 | `-p`, `--profile VALUE` | Profile to use. |

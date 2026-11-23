@@ -26,13 +26,13 @@ pvecli backup run [IDS] [OPTIONS]
 
 | Option | Default | Description |
 |:--|:--|:--|
-| `--tag VALUE` |  | Guests carrying this tag. |
-| `--pool VALUE` |  | Guests of this resource pool. |
-| `--node VALUE` |  | Guests currently on this node. |
-| `--all` |  | Every guest except templates. |
+| `-tg`, `--tag VALUE` |  | Guests carrying this tag. |
+| `-pl`, `--pool VALUE` |  | Guests of this resource pool. |
+| `-n`, `--node VALUE` |  | Guests currently on this node. |
+| `-a`, `--all` |  | Every guest except templates. |
 | `-s`, `--storage VALUE` |  | Backup storage (default: each node's vzdump default). |
-| `--mode VALUE` | `snapshot` | snapshot, suspend or stop. |
-| `--compress VALUE` | `zstd` | zstd, gzip, lzo or 0 (none; ignored by PBS). |
+| `-m`, `--mode VALUE` | `snapshot` | snapshot, suspend or stop. |
+| `-cp`, `--compress VALUE` | `zstd` | zstd, gzip, lzo or 0 (none; ignored by PBS). |
 | `--notes VALUE` |  | Notes of the backups ({{guestname}}, {{vmid}}, {{node}} expand). |
 | `--protected` |  | Protect the backups from pruning and removal. |
 | `-y`, `--yes` |  | Skip confirmation. |

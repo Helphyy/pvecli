@@ -21,11 +21,11 @@ pvecli cluster guests start [OPTIONS]
 
 | Option | Description |
 |:--|:--|
-| `--vms VALUE` | Guest IDs: 100,101 or 100-110. |
-| `--tag VALUE` | Only guests carrying this tag. |
-| `--pool VALUE` | Only guests of this resource pool. |
-| `--node VALUE` | Only guests currently on this node. |
-| `--max-workers N` | Guests handled at the same time. |
+| `-vm`, `--vms VALUE` | Guest IDs: 100,101 or 100-110. |
+| `-tg`, `--tag VALUE` | Only guests carrying this tag. |
+| `-pl`, `--pool VALUE` | Only guests of this resource pool. |
+| `-n`, `--node VALUE` | Only guests currently on this node. |
+| `-mw`, `--max-workers N` | Guests handled at the same time. |
 | `-y`, `--yes` | Skip confirmation. |
 | `-p`, `--profile VALUE` | Profile to use. |
 
@@ -41,13 +41,13 @@ pvecli cluster guests shutdown [OPTIONS]
 
 | Option | Description |
 |:--|:--|
-| `--vms VALUE` | Guest IDs: 100,101 or 100-110. |
-| `--tag VALUE` | Only guests carrying this tag. |
-| `--pool VALUE` | Only guests of this resource pool. |
-| `--node VALUE` | Only guests currently on this node. |
+| `-vm`, `--vms VALUE` | Guest IDs: 100,101 or 100-110. |
+| `-tg`, `--tag VALUE` | Only guests carrying this tag. |
+| `-pl`, `--pool VALUE` | Only guests of this resource pool. |
+| `-n`, `--node VALUE` | Only guests currently on this node. |
 | `-t`, `--timeout N` | Shutdown timeout per guest, in seconds. |
 | `--force-stop` | Hard stop guests still running after the timeout. |
-| `--max-workers N` | Guests handled at the same time. |
+| `-mw`, `--max-workers N` | Guests handled at the same time. |
 | `-y`, `--yes` | Skip confirmation. |
 | `-p`, `--profile VALUE` | Profile to use. |
 
@@ -63,12 +63,12 @@ pvecli cluster guests suspend [OPTIONS]
 
 | Option | Description |
 |:--|:--|
-| `--vms VALUE` | Guest IDs: 100,101 or 100-110. |
-| `--tag VALUE` | Only guests carrying this tag. |
-| `--pool VALUE` | Only guests of this resource pool. |
-| `--node VALUE` | Only guests currently on this node. |
+| `-vm`, `--vms VALUE` | Guest IDs: 100,101 or 100-110. |
+| `-tg`, `--tag VALUE` | Only guests carrying this tag. |
+| `-pl`, `--pool VALUE` | Only guests of this resource pool. |
+| `-n`, `--node VALUE` | Only guests currently on this node. |
 | `--to-disk` | Hibernate to disk instead of pausing in memory. |
-| `--max-workers N` | Guests handled at the same time. |
+| `-mw`, `--max-workers N` | Guests handled at the same time. |
 | `-y`, `--yes` | Skip confirmation. |
 | `-p`, `--profile VALUE` | Profile to use. |
 
@@ -90,11 +90,11 @@ pvecli cluster guests migrate TARGET [OPTIONS]
 
 | Option | Description |
 |:--|:--|
-| `--vms VALUE` | Guest IDs: 100,101 or 100-110. |
-| `--tag VALUE` | Only guests carrying this tag. |
-| `--pool VALUE` | Only guests of this resource pool. |
-| `--node VALUE` | Only guests currently on this node. |
-| `--with-local-disks` | Copy local disks during live migrations. |
-| `--max-workers N` | Migrations running at the same time. |
+| `-vm`, `--vms VALUE` | Guest IDs: 100,101 or 100-110. |
+| `-tg`, `--tag VALUE` | Only guests carrying this tag. |
+| `-pl`, `--pool VALUE` | Only guests of this resource pool. |
+| `-n`, `--node VALUE` | Only guests currently on this node. |
+| `-wl`, `--with-local-disks` | Copy local disks during live migrations. |
+| `-mw`, `--max-workers N` | Migrations running at the same time. |
 | `-y`, `--yes` | Skip confirmation. |
 | `-p`, `--profile VALUE` | Profile to use. |

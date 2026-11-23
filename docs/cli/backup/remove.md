@@ -23,6 +23,6 @@ pvecli backup remove VOLIDS [OPTIONS]
 
 | Option | Description |
 |:--|:--|
-| `--node VALUE` | Node to go through (default: the node holding the backup). |
+| `-n`, `--node VALUE` | Node to go through (default: the node holding the backup). |
 | `-y`, `--yes` | Skip confirmation. |
 | `-p`, `--profile VALUE` | Profile to use. |

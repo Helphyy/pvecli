@@ -19,5 +19,5 @@ pvecli cluster usage [OPTIONS]
 |:--|:--|
 | `-p`, `--profile VALUE` | Profile to use. |
 | `--no-storage` | Skip the storage scan (faster). |
-| `--storage VALUE` | Only scan this storage for guest disks. |
-| `--json` | Output raw JSON to stdout (no colors, no tables). |
+| `-s`, `--storage VALUE` | Only scan this storage for guest disks. |
+| `-js`, `--json` | Output raw JSON to stdout (no colors, no tables). |

@@ -31,8 +31,8 @@ pvecli node maintenance enter NODE [OPTIONS]
 
 | Option | Description |
 |:--|:--|
-| `-t`, `--target VALUE` | Node receiving its guests (default: most free memory). |
-| `--with-local-disks` | Copy local disks during live migrations. |
+| `-ta`, `--target VALUE` | Node receiving its guests (default: most free memory). |
+| `-wl`, `--with-local-disks` | Copy local disks during live migrations. |
 | `--no-ceph-flag` | Do not set the Ceph noout flag. |
 | `-y`, `--yes` | Skip confirmation. |
 | `-p`, `--profile VALUE` | Profile to use. |
@@ -56,7 +56,7 @@ pvecli node maintenance exit NODE [OPTIONS]
 | Option | Default | Description |
 |:--|:--|:--|
 | `--no-return` |  | Leave the guests where they are. |
-| `--wait N` | `600` | Seconds to wait for the node to be online again. |
+| `-w`, `--wait N` | `600` | Seconds to wait for the node to be online again. |
 | `-y`, `--yes` |  | Skip confirmation. |
 | `-p`, `--profile VALUE` |  | Profile to use. |
 

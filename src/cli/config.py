@@ -230,11 +230,11 @@ def _render_profile_panel(name: str, profile: ProfileConfig, is_default: bool = 
 def add_profile(
     name: str = typer.Argument(None, help="Profile name"),
     host: str = typer.Option(None, "--host", "-ho", help="Proxmox host (IP or hostname)"),
-    user: str = typer.Option(None, "--user", "-us", help="Username (e.g., root@pam)"),
+    user: str = typer.Option(None, "--user", "-u", help="Username (e.g., root@pam)"),
     token_name: str = typer.Option(None, "--token-name", "-tn", help="API token name"),
     token_value: str = typer.Option(None, "--token-value", "-tv", help="API token value (UUID)"),
     password: str = typer.Option(None, "--password", "-pw", help="Password (not recommended)"),
-    port: int = typer.Option(None, "--port", "-po", help="Proxmox port"),
+    port: int = typer.Option(None, "--port", "-P", help="Proxmox port"),
     verify_ssl: bool = typer.Option(False, "--verify-ssl", "-vs", help="Verify SSL certificate"),
 ) -> None:
     """Add a new profile."""
@@ -284,7 +284,7 @@ def add_profile(
 @app.command("remove")
 def remove_profile(
     name: str = typer.Argument(None, help="Profile name"),
-    all_profiles: bool = typer.Option(False, "--all", "-al", help="Remove all profiles"),
+    all_profiles: bool = typer.Option(False, "--all", "-a", help="Remove all profiles"),
 ) -> None:
     """Remove a profile or all profiles."""
     config_manager = ConfigManager()

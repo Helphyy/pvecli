@@ -58,7 +58,7 @@ app.add_typer(jobs_app, name="jobs")
 
 _PROFILE = typer.Option(None, "--profile", "-p", help="Profile(s): name, list, pattern ('client-*') or @group")
 _PROFILE_ONE = typer.Option(None, "--profile", "-p", help="Profile to use")
-_NODE_OPT = typer.Option(None, "--node", help="Node to go through (default: the node holding the backup)")
+_NODE_OPT = typer.Option(None, "--node", "-n", help="Node to go through (default: the node holding the backup)")
 _YES = typer.Option(False, "--yes", "-y", help="Skip confirmation")
 _MODES = ("snapshot", "suspend", "stop")
 _COMPRESS = ("0", "gzip", "lzo", "zstd")
@@ -508,10 +508,10 @@ def _status_rows(guests: list[dict], cov: dict[str, Any]) -> list[dict]:
 @fleet(parallel=True)
 @async_to_sync
 async def backup_list(
-    vmid: str = typer.Option(None, "--vmid", help="Only these guests: 100,101 or 100-110"),
-    tag: str = typer.Option(None, "--tag", help="Only guests carrying this tag"),
-    pool: str = typer.Option(None, "--pool", help="Only guests of this resource pool"),
-    storage: str = typer.Option(None, "--storage", help="Only this backup storage"),
+    vmid: str = typer.Option(None, "--vmid", "-id", help="Only these guests: 100,101 or 100-110"),
+    tag: str = typer.Option(None, "--tag", "-tg", help="Only guests carrying this tag"),
+    pool: str = typer.Option(None, "--pool", "-pl", help="Only guests of this resource pool"),
+    storage: str = typer.Option(None, "--storage", "-s", help="Only this backup storage"),
     profile: str = _PROFILE,
     json_output: bool = JSON_OPTION,
 ) -> None:
@@ -592,7 +592,7 @@ async def backup_list(
 @fleet(parallel=True)
 @async_to_sync
 async def backup_status(
-    older_than: str = typer.Option(None, "--older-than", help="Only guests whose last backup is older (2d, 12h, 1w) or missing"),
+    older_than: str = typer.Option(None, "--older-than", "-ol", help="Only guests whose last backup is older (2d, 12h, 1w) or missing"),
     failed: bool = typer.Option(False, "--failed", help="Only guests whose last backup run failed"),
     profile: str = _PROFILE,
     json_output: bool = JSON_OPTION,
@@ -838,13 +838,13 @@ def _report(rows: list[dict]) -> None:
 @async_to_sync
 async def backup_run(
     ids: str = typer.Argument(None, help="Guest IDs: 100,101 or 100-110"),
-    tag: str = typer.Option(None, "--tag", help="Guests carrying this tag"),
-    pool: str = typer.Option(None, "--pool", help="Guests of this resource pool"),
-    node: str = typer.Option(None, "--node", help="Guests currently on this node"),
-    everything: bool = typer.Option(False, "--all", help="Every guest except templates"),
+    tag: str = typer.Option(None, "--tag", "-tg", help="Guests carrying this tag"),
+    pool: str = typer.Option(None, "--pool", "-pl", help="Guests of this resource pool"),
+    node: str = typer.Option(None, "--node", "-n", help="Guests currently on this node"),
+    everything: bool = typer.Option(False, "--all", "-a", help="Every guest except templates"),
     storage: str = typer.Option(None, "--storage", "-s", help="Backup storage (default: each node's vzdump default)"),
-    mode: str = typer.Option("snapshot", "--mode", help="snapshot, suspend or stop"),
-    compress: str = typer.Option("zstd", "--compress", help="zstd, gzip, lzo or 0 (none; ignored by PBS)"),
+    mode: str = typer.Option("snapshot", "--mode", "-m", help="snapshot, suspend or stop"),
+    compress: str = typer.Option("zstd", "--compress", "-cp", help="zstd, gzip, lzo or 0 (none; ignored by PBS)"),
     notes: str = typer.Option(None, "--notes", help="Notes of the backups ({{guestname}}, {{vmid}}, {{node}} expand)"),
     protected: bool = typer.Option(False, "--protected", help="Protect the backups from pruning and removal"),
     yes: bool = _YES,
@@ -926,13 +926,13 @@ def _rootfs_storage(config: str) -> str | None:
 @async_to_sync
 async def backup_restore(
     volid: str = typer.Argument(..., help="Backup volume, e.g. pbs:backup/vm/100/2026-11-18T02:00:00Z"),
-    vmid: int = typer.Option(None, "--vmid", help="Target ID (default: next free ID)"),
-    node: str = typer.Option(None, "--node", help="Node to restore on (default: where the backup or guest is)"),
+    vmid: int = typer.Option(None, "--vmid", "-id", help="Target ID (default: next free ID)"),
+    node: str = typer.Option(None, "--node", "-n", help="Node to restore on (default: where the backup or guest is)"),
     storage: str = typer.Option(None, "--storage", "-s",
                                 help="Target storage (VM default: from the backup; CT default: storage of its root disk)"),
     start: bool = typer.Option(False, "--start", help="Start the guest once restored"),
     unique: bool = typer.Option(False, "--unique", help="New random MAC addresses (the original may still run)"),
-    force: bool = typer.Option(False, "--force", help="Overwrite an existing, stopped guest with this ID"),
+    force: bool = typer.Option(False, "--force", "-f", help="Overwrite an existing, stopped guest with this ID"),
     yes: bool = _YES,
     profile: str = _PROFILE_ONE,
 ) -> None:
@@ -1185,9 +1185,9 @@ async def backup_prune(
     keep_weekly: int = typer.Option(None, "--keep-weekly", min=0, help="Keep one backup per week, N weeks"),
     keep_monthly: int = typer.Option(None, "--keep-monthly", min=0, help="Keep one backup per month, N months"),
     keep_yearly: int = typer.Option(None, "--keep-yearly", min=0, help="Keep one backup per year, N years"),
-    vmid: int = typer.Option(None, "--vmid", help="Only the backups of this guest"),
-    guest_type: str = typer.Option(None, "--type", help="Only qemu or lxc backups"),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be removed, remove nothing"),
+    vmid: int = typer.Option(None, "--vmid", "-id", help="Only the backups of this guest"),
+    guest_type: str = typer.Option(None, "--type", "-ty", help="Only qemu or lxc backups"),
+    dry_run: bool = typer.Option(False, "--dry-run", "-dr", help="Show what would be removed, remove nothing"),
     yes: bool = _YES,
     profile: str = _PROFILE_ONE,
 ) -> None:
@@ -1426,15 +1426,15 @@ _K_YEARLY = typer.Option(None, "--keep-yearly", min=0, help="Retention: one per 
 async def jobs_add(
     schedule: str = typer.Option(..., "--schedule", help="When: '02:00', 'sat 03:30', 'mon..fri 22:00'"),
     storage: str = typer.Option(..., "--storage", "-s", help="Backup storage"),
-    vmid: str = typer.Option(None, "--vmid", help="Guests: 100,101"),
-    everything: bool = typer.Option(False, "--all", help="Every guest"),
-    pool: str = typer.Option(None, "--pool", help="Guests of this pool"),
-    exclude: str = typer.Option(None, "--exclude", help="With --all: guests to leave out"),
-    mode: str = typer.Option("snapshot", "--mode", help="snapshot, suspend or stop"),
-    compress: str = typer.Option("zstd", "--compress", help="zstd, gzip, lzo or 0 (none; ignored by PBS)"),
+    vmid: str = typer.Option(None, "--vmid", "-id", help="Guests: 100,101"),
+    everything: bool = typer.Option(False, "--all", "-a", help="Every guest"),
+    pool: str = typer.Option(None, "--pool", "-pl", help="Guests of this pool"),
+    exclude: str = typer.Option(None, "--exclude", "-ex", help="With --all: guests to leave out"),
+    mode: str = typer.Option("snapshot", "--mode", "-m", help="snapshot, suspend or stop"),
+    compress: str = typer.Option("zstd", "--compress", "-cp", help="zstd, gzip, lzo or 0 (none; ignored by PBS)"),
     notes_template: str = typer.Option(None, "--notes-template", help="Notes of each backup ({{guestname}}...)"),
-    comment: str = typer.Option(None, "--comment", help="Description of the job"),
-    node: str = typer.Option(None, "--node", help="Only run on this node"),
+    comment: str = typer.Option(None, "--comment", "-c", help="Description of the job"),
+    node: str = typer.Option(None, "--node", "-n", help="Only run on this node"),
     keep_last: int = _K_LAST, keep_daily: int = _K_DAILY, keep_weekly: int = _K_WEEKLY,
     keep_monthly: int = _K_MONTHLY, keep_yearly: int = _K_YEARLY,
     disabled: bool = typer.Option(False, "--disabled", help="Create the job disabled"),
@@ -1480,15 +1480,15 @@ async def jobs_edit(
     job_id: str = typer.Argument(..., help="Job ID"),
     schedule: str = typer.Option(None, "--schedule", help="When: '02:00', 'sat 03:30'"),
     storage: str = typer.Option(None, "--storage", "-s", help="Backup storage"),
-    vmid: str = typer.Option(None, "--vmid", help="Guests: 100,101 (replaces the selection)"),
-    everything: bool = typer.Option(False, "--all", help="Every guest (replaces the selection)"),
-    pool: str = typer.Option(None, "--pool", help="Guests of this pool (replaces the selection)"),
-    exclude: str = typer.Option(None, "--exclude", help="With --all: guests to leave out"),
-    mode: str = typer.Option(None, "--mode", help="snapshot, suspend or stop"),
-    compress: str = typer.Option(None, "--compress", help="zstd, gzip, lzo or 0"),
+    vmid: str = typer.Option(None, "--vmid", "-id", help="Guests: 100,101 (replaces the selection)"),
+    everything: bool = typer.Option(False, "--all", "-a", help="Every guest (replaces the selection)"),
+    pool: str = typer.Option(None, "--pool", "-pl", help="Guests of this pool (replaces the selection)"),
+    exclude: str = typer.Option(None, "--exclude", "-ex", help="With --all: guests to leave out"),
+    mode: str = typer.Option(None, "--mode", "-m", help="snapshot, suspend or stop"),
+    compress: str = typer.Option(None, "--compress", "-cp", help="zstd, gzip, lzo or 0"),
     notes_template: str = typer.Option(None, "--notes-template", help="Notes of each backup"),
-    comment: str = typer.Option(None, "--comment", help="Description of the job"),
-    node: str = typer.Option(None, "--node", help="Only run on this node"),
+    comment: str = typer.Option(None, "--comment", "-c", help="Description of the job"),
+    node: str = typer.Option(None, "--node", "-n", help="Only run on this node"),
     keep_last: int = _K_LAST, keep_daily: int = _K_DAILY, keep_weekly: int = _K_WEEKLY,
     keep_monthly: int = _K_MONTHLY, keep_yearly: int = _K_YEARLY,
     profile: str = _PROFILE_ONE,

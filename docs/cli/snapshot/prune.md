@@ -17,13 +17,13 @@ pvecli snapshot prune [OPTIONS]
 
 | Option | Default | Description |
 |:--|:--|:--|
-| `--older-than VALUE` |  | Delete snapshots older than this (7d, 12h, 2w). |
-| `--name-prefix VALUE` |  | Only snapshots whose name starts with this (e.g. pre-). |
+| `-ol`, `--older-than VALUE` |  | Delete snapshots older than this (7d, 12h, 2w). |
+| `-np`, `--name-prefix VALUE` |  | Only snapshots whose name starts with this (e.g. pre-). |
 | `--keep N` | `0` | Always keep the N most recent matching snapshots of each guest. |
-| `--vms VALUE` |  | Guest IDs: 100,101 or 100-110. |
-| `--tag VALUE` |  | Guests carrying this tag. |
-| `--pool VALUE` |  | Guests of this resource pool. |
-| `--node VALUE` |  | Guests currently on this node. |
-| `--all` |  | Every guest (when no other filter is given). |
+| `-vm`, `--vms VALUE` |  | Guest IDs: 100,101 or 100-110. |
+| `-tg`, `--tag VALUE` |  | Guests carrying this tag. |
+| `-pl`, `--pool VALUE` |  | Guests of this resource pool. |
+| `-n`, `--node VALUE` |  | Guests currently on this node. |
+| `-a`, `--all` |  | Every guest (when no other filter is given). |
 | `-y`, `--yes` |  | Delete without asking. |
 | `-p`, `--profile VALUE` |  | Profile(s): name, list, pattern ('client-*') or @group. |

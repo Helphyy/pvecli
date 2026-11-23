@@ -29,4 +29,4 @@ pvecli node updates [NODE] [OPTIONS]
 | `--refresh` | Run apt update on the nodes first. |
 | `--packages` | List the packages, not only their count. |
 | `-p`, `--profile VALUE` | Profile(s): name, list, pattern ('client-*') or @group. |
-| `--json` | Output raw JSON to stdout (no colors, no tables). |
+| `-js`, `--json` | Output raw JSON to stdout (no colors, no tables). |

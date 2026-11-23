@@ -41,11 +41,11 @@ app = typer.Typer(
     cls=ordered_group(["add", "list", "prune"]),
 )
 
-_VMS = typer.Option(None, "--vms", help="Guest IDs: 100,101 or 100-110")
-_TAG = typer.Option(None, "--tag", help="Guests carrying this tag")
-_POOL = typer.Option(None, "--pool", help="Guests of this resource pool")
-_NODE = typer.Option(None, "--node", help="Guests currently on this node")
-_ALL = typer.Option(False, "--all", help="Every guest (when no other filter is given)")
+_VMS = typer.Option(None, "--vms", "-vm", help="Guest IDs: 100,101 or 100-110")
+_TAG = typer.Option(None, "--tag", "-tg", help="Guests carrying this tag")
+_POOL = typer.Option(None, "--pool", "-pl", help="Guests of this resource pool")
+_NODE = typer.Option(None, "--node", "-n", help="Guests currently on this node")
+_ALL = typer.Option(False, "--all", "-a", help="Every guest (when no other filter is given)")
 _PROFILE = typer.Option(None, "--profile", "-p", help="Profile(s): name, list, pattern ('client-*') or @group")
 # Snapshot tasks running at once: each locks its own guest only
 _PARALLEL = 4
@@ -172,7 +172,7 @@ async def _run_tasks(client: ProxmoxClient, jobs: list[tuple[dict, Any]], what: 
 async def snapshot_add(
     name: str = typer.Argument(..., help="Snapshot name (letters, digits, - and _)"),
     vms: str = _VMS, tag: str = _TAG, pool: str = _POOL, node: str = _NODE, everything: bool = _ALL,
-    description: str = typer.Option(None, "--description", "-d", help="Snapshot description"),
+    description: str = typer.Option(None, "--description", "-de", help="Snapshot description"),
     vmstate: bool = typer.Option(False, "--vmstate", help="Include the RAM of running VMs"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
     profile: str = _PROFILE,
@@ -225,8 +225,8 @@ async def snapshot_add(
 @async_to_sync
 async def snapshot_list(
     vms: str = _VMS, tag: str = _TAG, pool: str = _POOL, node: str = _NODE,
-    older_than: str = typer.Option(None, "--older-than", help="Only snapshots older than this (30d, 12h, 2w)"),
-    name_prefix: str = typer.Option(None, "--name-prefix", help="Only snapshots whose name starts with this"),
+    older_than: str = typer.Option(None, "--older-than", "-ol", help="Only snapshots older than this (30d, 12h, 2w)"),
+    name_prefix: str = typer.Option(None, "--name-prefix", "-np", help="Only snapshots whose name starts with this"),
     profile: str = _PROFILE,
     json_output: bool = JSON_OPTION,
 ) -> None:
@@ -259,8 +259,8 @@ async def snapshot_list(
 @fleet
 @async_to_sync
 async def snapshot_prune(
-    older_than: str = typer.Option(..., "--older-than", help="Delete snapshots older than this (7d, 12h, 2w)"),
-    name_prefix: str = typer.Option(None, "--name-prefix", help="Only snapshots whose name starts with this (e.g. pre-)"),
+    older_than: str = typer.Option(..., "--older-than", "-ol", help="Delete snapshots older than this (7d, 12h, 2w)"),
+    name_prefix: str = typer.Option(None, "--name-prefix", "-np", help="Only snapshots whose name starts with this (e.g. pre-)"),
     keep: int = typer.Option(0, "--keep", help="Always keep the N most recent matching snapshots of each guest"),
     vms: str = _VMS, tag: str = _TAG, pool: str = _POOL, node: str = _NODE, everything: bool = _ALL,
     yes: bool = typer.Option(False, "--yes", "-y", help="Delete without asking"),

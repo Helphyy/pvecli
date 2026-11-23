@@ -23,6 +23,6 @@ pvecli tag edit [TAG] [OPTIONS]
 
 | Option | Description |
 |:--|:--|
-| `-n`, `--name VALUE` | New tag name (rename). |
-| `-c`, `--color VALUE` | New hex color (e.g. ff4444). |
+| `-na`, `--name VALUE` | New tag name (rename). |
+| `-cl`, `--color VALUE` | New hex color (e.g. ff4444). |
 | `-p`, `--profile VALUE` | Profile to use. |

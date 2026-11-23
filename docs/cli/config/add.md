@@ -24,9 +24,9 @@ pvecli config add [NAME] [OPTIONS]
 | Option | Description |
 |:--|:--|
 | `-ho`, `--host VALUE` | Proxmox host (IP or hostname). |
-| `-us`, `--user VALUE` | Username (e.g., root@pam). |
+| `-u`, `--user VALUE` | Username (e.g., root@pam). |
 | `-tn`, `--token-name VALUE` | API token name. |
 | `-tv`, `--token-value VALUE` | API token value (UUID). |
 | `-pw`, `--password VALUE` | Password (not recommended). |
-| `-po`, `--port N` | Proxmox port. |
+| `-P`, `--port N` | Proxmox port. |
 | `-vs`, `--verify-ssl` | Verify SSL certificate. |

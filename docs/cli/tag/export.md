@@ -17,5 +17,5 @@ pvecli tag export [OPTIONS]
 
 | Option | Default | Description |
 |:--|:--|:--|
-| `-o`, `--output VALUE` | `tags.json` | Output file path. |
+| `-ou`, `--output VALUE` | `tags.json` | Output file path. |
 | `-p`, `--profile VALUE` |  | Profile to use. |

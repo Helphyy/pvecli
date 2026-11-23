@@ -103,7 +103,7 @@ def test_list_reads_tag_style_given_as_a_string(cli, api):
 
 def test_add_with_color_on_a_cluster_without_tag_style(cli, api):
     _routes(api)
-    r = cli("tag", "add", "web", "-c", "ff4444", "-p", "p1")
+    r = cli("tag", "add", "web", "-cl", "ff4444", "-p", "p1")
     assert r.exit_code == 0, r.output
     assert _options_writes(api) == [{"tag-style": "color-map=web:ff4444"}]
     assert _guest_writes(api) == {}
@@ -111,7 +111,7 @@ def test_add_with_color_on_a_cluster_without_tag_style(cli, api):
 
 def test_add_replaces_the_color_of_an_existing_tag(cli, api):
     _routes(api, style={"color-map": "web:ff0000;db:00ff00"})
-    r = cli("tag", "add", "web", "-c", "#0000ff", "-p", "p1")
+    r = cli("tag", "add", "web", "-cl", "#0000ff", "-p", "p1")
     assert r.exit_code == 0, r.output
     [data] = _options_writes(api)
     assert _colors(data["tag-style"]) == {"web:0000ff", "db:00ff00"}
@@ -150,7 +150,7 @@ def test_add_with_a_picked_color(cli, api, monkeypatch):
 def test_add_reports_an_api_error(cli, api):
     _routes(api)
     api.route("PUT", "/cluster/options", api.forbidden("/", "Sys.Modify"))
-    r = cli("tag", "add", "web", "-c", "ff4444", "-p", "p1")
+    r = cli("tag", "add", "web", "-cl", "ff4444", "-p", "p1")
     assert r.exit_code == 1
     assert "Permission" in r.output
 
@@ -211,7 +211,7 @@ def test_edit_color_only_touches_no_guest(cli, api):
 
 def test_edit_rename_and_color_at_once(cli, api):
     _routes(api, style={"color-map": "web:ff0000"})
-    r = cli("tag", "edit", "web", "-n", "front", "-c", "123456", "-p", "p1")
+    r = cli("tag", "edit", "web", "-na", "front", "-cl", "123456", "-p", "p1")
     assert r.exit_code == 0, r.output
     assert len(_guest_writes(api)) == 3
     assert _options_writes(api) == [{"tag-style": "color-map=front:123456"}]
@@ -351,7 +351,7 @@ def test_remove_refused_by_proxmox_reports_the_error(cli, api):
 def test_export_writes_every_tag_with_its_color(cli, api, tmp_path):
     _routes(api, style={"color-map": "web:ff0000:000000;spare:00ff00"})
     out = tmp_path / "tags.json"
-    r = cli("tag", "export", "-o", str(out), "-p", "p1")
+    r = cli("tag", "export", "-ou", str(out), "-p", "p1")
     assert r.exit_code == 0, r.output
     assert json.loads(out.read_text()) == {"tags": [
         {"name": "db"},
@@ -365,7 +365,7 @@ def test_export_writes_every_tag_with_its_color(cli, api, tmp_path):
 def test_export_without_tags_creates_no_file(cli, api, tmp_path):
     _routes(api, resources=[])
     out = tmp_path / "tags.json"
-    r = cli("tag", "export", "-o", str(out), "-p", "p1")
+    r = cli("tag", "export", "-ou", str(out), "-p", "p1")
     assert r.exit_code == 0
     assert not out.exists()
 
@@ -376,7 +376,7 @@ def test_export_then_import_on_another_cluster(cli, api, tmp_path):
     api.route("GET", "/cluster/options", {"tag-style": {"color-map": "web:ff0000:000000;db:00ff00"}}, host="h1")
     api.route("GET", "/cluster/options", {"tag-style": {"shape": "dense"}}, host="h2")
     api.route("PUT", "/cluster/options", None, host="h2")
-    assert cli("tag", "export", "-o", str(out), "-p", "p1").exit_code == 0
+    assert cli("tag", "export", "-ou", str(out), "-p", "p1").exit_code == 0
     r = cli("tag", "import", str(out), "-p", "p2")
     assert r.exit_code == 0, r.output
     [put] = api.writes()

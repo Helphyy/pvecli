@@ -57,22 +57,22 @@ Add `sdn_write: true` to the profile in the [configuration file](../reference/co
 
 ## Add a zone, a vnet and a subnet
 
-[sdn zone add](../cli/sdn/zone.md#add) creates a zone. Each type needs its own options: `-b` (bridge) for `vlan` and `qinq`, `--tag` for `qinq`, `--peers` for `vxlan`, `--controller` and `--vrf-vxlan` for `evpn`. Without `-t`, pvecli asks for the type and for each value, with the bridges of a node or the controllers in a menu.
+[sdn zone add](../cli/sdn/zone.md#add) creates a zone. Each type needs its own options: `-br` (bridge) for `vlan` and `qinq`, `--tag` for `qinq`, `--peers` for `vxlan`, `--controller` and `--vrf-vxlan` for `evpn`. Without `-t`, pvecli asks for the type and for each value, with the bridges of a node or the controllers in a menu.
 
 ```bash
-pvecli sdn zone add zdmz -t vlan -b vmbr1 -p prod
+pvecli sdn zone add zdmz -ty vlan -br vmbr1 -p prod
 ```
 
 [sdn vnet add](../cli/sdn/vnet.md#add) creates a vnet in a zone. Every zone type except `simple` needs a tag (VLAN tag, or VNI for VXLAN and EVPN). Names of zones and vnets are 2 to 8 letters and digits, starting with a letter:
 
 ```bash
-pvecli sdn vnet add vnet9 -z zdmz --tag 50 -a "Backup VLAN" -p prod
+pvecli sdn vnet add vnet9 -z zdmz --tag 50 -as "Backup VLAN" -p prod
 ```
 
 [sdn subnet add](../cli/sdn/subnet.md#add) attaches a subnet, with its gateway, SNAT and a DHCP range:
 
 ```bash
-pvecli sdn subnet add 10.0.50.0/24 -v vnet9 -g 10.0.50.1 --snat -p prod
+pvecli sdn subnet add 10.0.50.0/24 -vn vnet9 -gw 10.0.50.1 --snat -p prod
 ```
 
 A DHCP range (`--dhcp-range 10.0.50.100:10.0.50.200`) only serves leases if the zone has DHCP enabled; pvecli warns when it does not, with the [sdn zone set](../cli/sdn/zone.md#set) command that enables it.

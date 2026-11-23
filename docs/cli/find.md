@@ -25,16 +25,16 @@ pvecli find [QUERY] [OPTIONS]
 |:--|:--|
 | `--on-vnet VALUE` | Guests attached to this SDN vnet. |
 | `--on-bridge VALUE` | Guests attached to this bridge. |
-| `--vlan N` | Guests using this VLAN tag on a NIC. |
+| `-vl`, `--vlan N` | Guests using this VLAN tag on a NIC. |
 | `--on-storage VALUE` | Guests with a disk on this storage. |
-| `--iso VALUE` | Guests with this ISO (or part of its name) mounted. |
+| `-iso`, `--iso VALUE` | Guests with this ISO (or part of its name) mounted. |
 | `--rule VALUE` | Guests referenced by this HA rule. |
-| `--pool VALUE` | Guests of this resource pool. |
-| `--tag VALUE` | Guests carrying this tag. |
+| `-pl`, `--pool VALUE` | Guests of this resource pool. |
+| `-tg`, `--tag VALUE` | Guests carrying this tag. |
 | `--snapshot VALUE` | Guests having a snapshot with this name. |
 | `--stopped` | Only stopped guests. |
-| `--running` | Only running guests. |
-| `--template` | Only templates. |
+| `-rn`, `--running` | Only running guests. |
+| `-tp`, `--template` | Only templates. |
 | `--locked` | Only locked guests. |
 | `--no-agent` | VMs without the guest agent enabled. |
 | `--no-backup` | Guests no backup job covers. |
@@ -45,9 +45,9 @@ pvecli find [QUERY] [OPTIONS]
 | `--os VALUE` | windows, or part of the ostype (l26, win11...). |
 | `--tasks` | Show the last actions run on each guest. |
 | `--access N` | Who has access to this guest (ACL entries). |
-| `--user VALUE` | What this user or token (user@realm!token) has access to. |
+| `-u`, `--user VALUE` | What this user or token (user@realm!token) has access to. |
 | `-p`, `--profile VALUE` | Profile(s): name, list, pattern ('client-*') or @group. |
-| `--json` | Output raw JSON to stdout (no colors, no tables). |
+| `-js`, `--json` | Output raw JSON to stdout (no colors, no tables). |
 
 ## Examples
 

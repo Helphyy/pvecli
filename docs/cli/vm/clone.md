@@ -24,7 +24,7 @@ pvecli vm clone [VMID] [OPTIONS]
 | Option | Description |
 |:--|:--|
 | `-p`, `--profile VALUE` | Profile to use. |
-| `-id`, `--newid N` | New VM ID (auto-assigned if not specified). |
+| `-ni`, `--newid N` | New VM ID (auto-assigned if not specified). |
 | `-na`, `--name VALUE` | New VM name. |
 | `-pl`, `--pool VALUE` | Pool name. |
 | `-ob`, `--onboot` / `--no-onboot` | Start at boot. |

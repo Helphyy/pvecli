@@ -19,5 +19,5 @@ pvecli ct list [OPTIONS]
 |:--|:--|
 | `-p`, `--profile VALUE` | Profile to use. |
 | `-n`, `--node VALUE` | Filter by node. |
-| `-s`, `--status VALUE` | Filter by status (running, stopped). |
+| `-ss`, `--status VALUE` | Filter by status (running, stopped). |
 | `-o`, `--order VALUE` | Sort by column (moved to first position), e.g. name, node, pool, cpu, memory. |

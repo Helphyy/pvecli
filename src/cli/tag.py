@@ -331,7 +331,7 @@ async def list_tags(
 @async_to_sync
 async def add_tag(
     tag: str = typer.Argument(None, help="Tag name"),
-    color: str | None = typer.Option(None, "--color", "-c", help="Hex color (e.g. ff4444)"),
+    color: str | None = typer.Option(None, "--color", "-cl", help="Hex color (e.g. ff4444)"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Add or update a tag color in the cluster."""
@@ -376,8 +376,8 @@ async def add_tag(
 @async_to_sync
 async def edit_tag(
     tag: str = typer.Argument(None, help="Tag name to edit"),
-    name: str = typer.Option(None, "--name", "-n", help="New tag name (rename)"),
-    color: str | None = typer.Option(None, "--color", "-c", help="New hex color (e.g. ff4444)"),
+    name: str = typer.Option(None, "--name", "-na", help="New tag name (rename)"),
+    color: str | None = typer.Option(None, "--color", "-cl", help="New hex color (e.g. ff4444)"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Rename a tag and/or change its color."""
@@ -619,7 +619,7 @@ async def remove_tag(
 @app.command("export")
 @async_to_sync
 async def export_tags(
-    output: str = typer.Option("tags.json", "--output", "-o", help="Output file path"),
+    output: str = typer.Option("tags.json", "--output", "-ou", help="Output file path"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Export all tags and their colors to a JSON file."""
@@ -777,7 +777,7 @@ def color_list() -> None:
 def color_add(
     name: str = typer.Argument(None, help="Color name (e.g. 'Cyan')"),
     hex_color: str = typer.Argument(None, help="Hex color code (e.g. 00bcd4)"),
-    font: str = typer.Option(None, "--font", "-f", help="Font color: white or black"),
+    font: str = typer.Option(None, "--font", "-ft", help="Font color: white or black"),
 ) -> None:
     """Add a color to the palette."""
     try:

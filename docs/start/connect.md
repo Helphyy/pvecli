@@ -69,7 +69,7 @@ Run `pvecli config add` and answer the prompts. Pick **API Token** in the menu (
 The same profile in one line, for a script. Give the port too, or pvecli asks for it and the other settings. It still shows the profile and asks before saving it:
 
 ```bash
-pvecli config add prod -ho 10.0.0.11 -po 8006 -us pvecli@pve -tn cli -tv 8c4f2a1e-6b3d-4e7a-9f15-2d8c7b6a3e41
+pvecli config add prod -ho 10.0.0.11 -P 8006 -u pvecli@pve -tn cli -tv 8c4f2a1e-6b3d-4e7a-9f15-2d8c7b6a3e41
 ```
 
 What `config add` asks, and when the profile becomes the default. A name already in use stops it at once, with an error that points to `config edit`.

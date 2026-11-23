@@ -88,7 +88,7 @@ app = typer.Typer(help="Manage containers (LXC)", no_args_is_help=True, cls=orde
 async def list_containers(
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
     node: str = typer.Option(None, "--node", "-n", help="Filter by node"),
-    status: str = typer.Option(None, "--status", "-s", help="Filter by status (running, stopped)"),
+    status: str = typer.Option(None, "--status", "-ss", help="Filter by status (running, stopped)"),
     order: str = typer.Option(None, "--order", "-o", help="Sort by column (moved to first position), e.g. name, node, pool, cpu, memory"),
 ) -> None:
     """List all containers."""
@@ -1141,7 +1141,7 @@ async def shutdown_container(
     pool: str = POOL_FILTER,
     node_filter: str = NODE_FILTER,
     timeout: int = typer.Option(60, "--timeout", "-t", help="Timeout before force stop"),
-    force: bool = typer.Option(False, "--force", help="Force stop after timeout"),
+    force: bool = typer.Option(False, "--force", "-f", help="Force stop after timeout"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ) -> None:
     """Shutdown one or more containers gracefully."""
@@ -1327,7 +1327,7 @@ def _template_clone_full(full: bool, linked_clone_supported: bool) -> int:
 def clone_container(
     ctid: int = typer.Argument(None, help="Source container ID"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
-    newid: int = typer.Option(None, "--newid", "-id", help="New container ID (auto-assigned if not specified)"),
+    newid: int = typer.Option(None, "--newid", "-ni", help="New container ID (auto-assigned if not specified)"),
     hostname: str = typer.Option(None, "--hostname", "-hn", help="New container hostname"),
     pool: str = typer.Option(None, "--pool", "-pl", help="Pool name"),
     onboot: bool = typer.Option(None, "--onboot/--no-onboot", "-ob", help="Start at boot"),
@@ -1812,9 +1812,9 @@ async def ha_add(
     pool: str = POOL_FILTER,
     node_filter: str = NODE_FILTER,
     group: str = typer.Option(None, "--group", "-g", help="HA group (clusters still using groups)"),
-    nodes: str = typer.Option(None, "--nodes", "-n", help="Preferred nodes '<node>[:<priority>],...' (clusters using HA rules, PVE 9). '' drops the pin"),
+    nodes: str = typer.Option(None, "--nodes", "-ns", help="Preferred nodes '<node>[:<priority>],...' (clusters using HA rules, PVE 9). '' drops the pin"),
     strict: bool = typer.Option(None, "--strict/--no-strict", help="With --nodes: restrict to those nodes instead of preferring them"),
-    state: str = typer.Option(None, "--state", "-s", help="Initial state: started|stopped|enabled|disabled|ignored"),
+    state: str = typer.Option(None, "--state", "-st", help="Initial state: started|stopped|enabled|disabled|ignored"),
     max_restart: int = typer.Option(None, "--max-restart", "-mr", help="Max restart attempts"),
     max_relocate: int = typer.Option(None, "--max-relocate", "-mo", help="Max relocate attempts"),
     comment: str = typer.Option(None, "--comment", "-c", help="Comment"),
@@ -1869,9 +1869,9 @@ async def ha_set(
     pool: str = POOL_FILTER,
     node_filter: str = NODE_FILTER,
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
-    state: str = typer.Option(None, "--state", "-s", help="State: started|stopped|enabled|disabled|ignored"),
+    state: str = typer.Option(None, "--state", "-st", help="State: started|stopped|enabled|disabled|ignored"),
     group: str = typer.Option(None, "--group", "-g", help="HA group (clusters still using groups)"),
-    nodes: str = typer.Option(None, "--nodes", "-n", help="Preferred nodes '<node>[:<priority>],...' (clusters using HA rules, PVE 9). '' drops the pin"),
+    nodes: str = typer.Option(None, "--nodes", "-ns", help="Preferred nodes '<node>[:<priority>],...' (clusters using HA rules, PVE 9). '' drops the pin"),
     strict: bool = typer.Option(None, "--strict/--no-strict", help="With --nodes: restrict to those nodes instead of preferring them"),
     max_restart: int = typer.Option(None, "--max-restart", "-mr", help="Max restart attempts"),
     max_relocate: int = typer.Option(None, "--max-relocate", "-mo", help="Max relocate attempts"),
@@ -2211,31 +2211,31 @@ def _print_ct_create_command(node: str, config: dict, ctid: int, profile_name: s
 def create_container(
     node: str | None = typer.Argument(None, help="Node name"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
-    ctid: int = typer.Option(None, "--ctid", "-c", help="Container ID (auto-assigned if not specified)"),
-    hostname: str = typer.Option(None, "--hostname", "-ho", help="Container hostname"),
-    pool: str = typer.Option(None, "--pool", "-po", help="Pool name"),
+    ctid: int = typer.Option(None, "--ctid", "-ci", help="Container ID (auto-assigned if not specified)"),
+    hostname: str = typer.Option(None, "--hostname", "-hn", help="Container hostname"),
+    pool: str = typer.Option(None, "--pool", "-pl", help="Pool name"),
     onboot: bool = typer.Option(None, "--onboot/--no-onboot", "-ob", help="Start at boot"),
-    template_storage: str = typer.Option(None, "--template-storage", "-ts", help="Storage for LXC image"),
-    template: str = typer.Option(None, "--template", "-t", help="LXC image file name (from template-storage)"),
+    template_storage: str = typer.Option(None, "--template-storage", "-tps", help="Storage for LXC image"),
+    template: str = typer.Option(None, "--template", "-tp", help="LXC image file name (from template-storage)"),
     unprivileged: bool | None = typer.Option(
-        None, "--unprivileged/--privileged", "-u/-pr",
+        None, "--unprivileged/--privileged", "-up/-pr",
         help="Unprivileged container (default: unprivileged; the wizard asks)",
     ),
     password: str = typer.Option(None, "--password", "-pw", help="Root password"),
     cores: int = typer.Option(None, "--cores", "-co", help="Number of CPU cores"),
     memory: int = typer.Option(None, "--memory", "-me", help="RAM in MiB"),
-    swap: int = typer.Option(None, "--swap", "-s", help="Swap in MiB"),
+    swap: int = typer.Option(None, "--swap", "-sw", help="Swap in MiB"),
     rootfs_storage: str = typer.Option(None, "--rootfs-storage", "-rs", help="Storage for root filesystem"),
     rootfs_size: int = typer.Option(None, "--rootfs-size", "-rz", help="Root filesystem size in GB"),
-    bridge: str = typer.Option(None, "--bridge", "-b", help="Network bridge"),
-    ip: str = typer.Option(None, "--ip", "-i", help="IPv4 configuration: dhcp, cidr (e.g., 192.168.1.100/24), or none"),
+    bridge: str = typer.Option(None, "--bridge", "-br", help="Network bridge"),
+    ip: str = typer.Option(None, "--ip", "-ip", help="IPv4 configuration: dhcp, cidr (e.g., 192.168.1.100/24), or none"),
     gateway: str = typer.Option(None, "--gateway", "-gw", help="IPv4 gateway address"),
-    ip6: str = typer.Option(None, "--ip6", "-i6", help="IPv6 configuration: dhcp, auto, cidr (e.g., 2001:db8::1/64), or none"),
+    ip6: str = typer.Option(None, "--ip6", "-ip6", help="IPv6 configuration: dhcp, auto, cidr (e.g., 2001:db8::1/64), or none"),
     gateway6: str = typer.Option(None, "--gateway6", "-gw6", help="IPv6 gateway address"),
-    vlan: str = typer.Option(None, "--vlan", "-v", help="VLAN tag"),
+    vlan: str = typer.Option(None, "--vlan", "-vl", help="VLAN tag"),
     firewall: bool = typer.Option(None, "--firewall/--no-firewall", "-fw", help="Enable firewall"),
     keyctl: bool = typer.Option(None, "--keyctl/--no-keyctl", "-k", help="Enable keyctl"),
-    fuse: bool = typer.Option(None, "--fuse/--no-fuse", "-f", help="Enable FUSE"),
+    fuse: bool = typer.Option(None, "--fuse/--no-fuse", "-fus", help="Enable FUSE"),
 ) -> None:
     """Create a new container interactively or with options."""
     config_manager = ConfigManager()
@@ -2906,7 +2906,7 @@ async def list_templates(
 async def add_template(
     node: str = typer.Argument(None, help="Node name"),
     storage: str = typer.Argument(None, help="Storage name"),
-    name: str = typer.Option(None, "--name", help="Template filename to download"),
+    name: str = typer.Option(None, "--name", "-na", help="Template filename to download"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Download an LXC image from the Proxmox repository."""
@@ -3048,7 +3048,7 @@ async def add_template(
 async def remove_template(
     node: str = typer.Argument(None, help="Node name"),
     storage: str = typer.Argument(None, help="Storage name"),
-    name: str = typer.Option(None, "--name", help="Template filename to remove"),
+    name: str = typer.Option(None, "--name", "-na", help="Template filename to remove"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
@@ -3147,7 +3147,7 @@ async def remove_template(
 async def ct_vnc(
     ctids: str = typer.Argument(None, help="Container ID(s) - single, comma-separated, or range (e.g., 200, 200,201, 200-205)"),
     no_background: bool = typer.Option(False, "--no-background", "-b", help="Run VNC server in foreground (blocking, single CT only)"),
-    split: bool = typer.Option(False, "--split", "-s", help="Open each console in a separate browser window instead of tabs"),
+    split: bool = typer.Option(False, "--split", "-sp", help="Open each console in a separate browser window instead of tabs"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
     tag: str = TAG_FILTER,
     pool: str = POOL_FILTER,
@@ -3245,7 +3245,7 @@ async def ct_ssh(
     port: int = typer.Option(None, "--port", "-P", help="SSH port"),
     key: str = typer.Option(None, "--key", "-i", help="Path to SSH key"),
     jump: bool = typer.Option(False, "--jump", "-j", help="Use node as jump host"),
-    command: str = typer.Option(None, "--command", "-c", help="Execute command instead of shell"),
+    command: str = typer.Option(None, "--command", "-cm", help="Execute command instead of shell"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """SSH into a container (IP resolved via interfaces API)."""

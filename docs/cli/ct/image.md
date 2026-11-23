@@ -28,7 +28,7 @@ pvecli ct image add [NODE] [STORAGE] [OPTIONS]
 
 | Option | Description |
 |:--|:--|
-| `--name VALUE` | Template filename to download. |
+| `-na`, `--name VALUE` | Template filename to download. |
 | `-p`, `--profile VALUE` | Profile to use. |
 
 ## remove
@@ -50,7 +50,7 @@ pvecli ct image remove [NODE] [STORAGE] [OPTIONS]
 
 | Option | Description |
 |:--|:--|
-| `--name VALUE` | Template filename to remove. |
+| `-na`, `--name VALUE` | Template filename to remove. |
 | `-y`, `--yes` | Skip confirmation. |
 | `-p`, `--profile VALUE` | Profile to use. |
 

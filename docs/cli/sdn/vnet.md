@@ -28,8 +28,8 @@ pvecli sdn vnet add [VNET] [OPTIONS]
 | Option | Description |
 |:--|:--|
 | `-z`, `--zone VALUE` | Zone this vnet belongs to. |
-| `--tag N` | VLAN tag or VXLAN VNI. |
-| `-a`, `--alias VALUE` | Free description. |
+| `-tg`, `--tag N` | VLAN tag or VXLAN VNI. |
+| `-as`, `--alias VALUE` | Free description. |
 | `--vlanaware` | Let guests tag their own VLANs. |
 | `-y`, `--yes` | Skip confirmation. |
 | `-p`, `--profile VALUE` | Profile to use. |

@@ -40,7 +40,7 @@ def created(api):
 
 def test_nfs_scanned_from_every_online_node_then_created(cli, cluster):
     cluster.route("GET", "/nodes/{node}/scan/nfs", [{"path": "/export/pve", "options": "10.0.0.0/24"}])
-    r = cli("storage", "add", "nas1", "-t", "nfs", "--server", "10.0.0.5", "-y", "-p", "p1")
+    r = cli("storage", "add", "nas1", "-ty", "nfs", "--server", "10.0.0.5", "-y", "-p", "p1")
     assert r.exit_code == 0, r.output
     scans = cluster.called("GET", "/nodes/{node}/scan/nfs")
     # The offline node is never asked
@@ -57,7 +57,7 @@ def test_nfs_scanned_from_every_online_node_then_created(cli, cluster):
 
 def test_nfs_several_exports_with_yes_refuses_instead_of_guessing(cli, cluster):
     cluster.route("GET", "/nodes/{node}/scan/nfs", [{"path": "/a"}, {"path": "/b"}])
-    r = cli("storage", "add", "nas1", "-t", "nfs", "--server", "10.0.0.5", "-y", "-p", "p1")
+    r = cli("storage", "add", "nas1", "-ty", "nfs", "--server", "10.0.0.5", "-y", "-p", "p1")
     assert r.exit_code == 1
     assert "--export" in r.output
     assert cluster.writes() == []
@@ -65,8 +65,8 @@ def test_nfs_several_exports_with_yes_refuses_instead_of_guessing(cli, cluster):
 
 def test_nfs_export_flag_kept_even_when_the_scan_does_not_list_it(cli, cluster):
     cluster.route("GET", "/nodes/{node}/scan/nfs", [{"path": "/other"}])
-    r = cli("storage", "add", "nas1", "-t", "nfs", "--server", "10.0.0.5", "--export", "/mine",
-            "-c", "iso,backup", "-n", "pve1", "-y", "-p", "p1")
+    r = cli("storage", "add", "nas1", "-ty", "nfs", "--server", "10.0.0.5", "--export", "/mine",
+            "-cn", "iso,backup", "-ns", "pve1", "-y", "-p", "p1")
     assert r.exit_code == 0, r.output
     assert created(cluster) == {
         "storage": "nas1", "type": "nfs", "server": "10.0.0.5", "export": "/mine",
@@ -79,7 +79,7 @@ def test_nfs_export_flag_kept_even_when_the_scan_does_not_list_it(cli, cluster):
 
 def test_nfs_unreachable_from_every_node_creates_nothing(cli, cluster):
     cluster.route("GET", "/nodes/{node}/scan/nfs", cluster.error(500, "mount error: timed out"))
-    r = cli("storage", "add", "nas1", "-t", "nfs", "--server", "10.9.9.9", "-y", "-p", "p1")
+    r = cli("storage", "add", "nas1", "-ty", "nfs", "--server", "10.9.9.9", "-y", "-p", "p1")
     assert r.exit_code == 1
     assert "No node could reach 10.9.9.9" in r.output
     assert cluster.writes() == []
@@ -93,7 +93,7 @@ def test_nfs_reachable_from_some_nodes_restricts_on_request(cli, cluster, ui):
 
     cluster.route("GET", "/nodes/{node}/scan/nfs", scan)
     ui.confirm(True, True)  # restrict to reachable nodes, then create
-    r = cli("storage", "add", "nas1", "-t", "nfs", "--server", "10.0.0.5", "-p", "p1")
+    r = cli("storage", "add", "nas1", "-ty", "nfs", "--server", "10.0.0.5", "-p", "p1")
     assert r.exit_code == 0, r.output
     assert created(cluster)["nodes"] == "pve1"
     assert not ui.left()
@@ -102,7 +102,7 @@ def test_nfs_reachable_from_some_nodes_restricts_on_request(cli, cluster, ui):
 def test_nfs_declined_summary_writes_nothing(cli, cluster, ui):
     cluster.route("GET", "/nodes/{node}/scan/nfs", [{"path": "/export/pve"}])
     ui.confirm(False)
-    r = cli("storage", "add", "nas1", "-t", "nfs", "--server", "10.0.0.5", "-p", "p1")
+    r = cli("storage", "add", "nas1", "-ty", "nfs", "--server", "10.0.0.5", "-p", "p1")
     assert r.exit_code == 0
     assert cluster.writes() == []
 
@@ -110,7 +110,7 @@ def test_nfs_declined_summary_writes_nothing(cli, cluster, ui):
 def test_created_but_inactive_everywhere_is_an_error(cli, cluster):
     cluster.route("GET", "/nodes/{node}/scan/nfs", [{"path": "/export/pve"}])
     cluster.route("GET", "/nodes/{node}/storage/{storage}/status", {"active": 0, "enabled": 1})
-    r = cli("storage", "add", "nas1", "-t", "nfs", "--server", "10.0.0.5", "-y", "-p", "p1")
+    r = cli("storage", "add", "nas1", "-ty", "nfs", "--server", "10.0.0.5", "-y", "-p", "p1")
     assert r.exit_code == 1
     assert "active on no node" in r.output
     assert "pvecli storage remove nas1" in r.output
@@ -123,7 +123,7 @@ def test_created_but_inactive_on_one_node_warns(cli, cluster):
         return ACTIVE if call.match["node"] == "pve1" else {"active": 0, "enabled": 1}
 
     cluster.route("GET", "/nodes/{node}/storage/{storage}/status", status)
-    r = cli("storage", "add", "nas1", "-t", "nfs", "--server", "10.0.0.5", "-y", "-p", "p1")
+    r = cli("storage", "add", "nas1", "-ty", "nfs", "--server", "10.0.0.5", "-y", "-p", "p1")
     assert r.exit_code == 0
     assert "not active on: pve2" in r.output
 
@@ -132,13 +132,13 @@ def test_created_but_inactive_on_one_node_warns(cli, cluster):
 
 
 @pytest.mark.parametrize("args, message", [
-    (("nas1", "-t", "zfs"), "Unsupported type 'zfs'"),
-    (("nas1", "-t", "pbs", "-c", "iso"), "not supported by 'pbs'"),
-    (("nas1", "-t", "nfs", "-c", ","), "At least one content type"),
-    (("1bad", "-t", "nfs"), "Invalid storage ID '1bad'"),
-    (("x", "-t", "nfs"), "Invalid storage ID 'x'"),
-    (("local", "-t", "nfs"), "'local' already exists"),
-    (("nas1", "-t", "nfs", "-n", "pve9"), "Unknown node(s): pve9"),
+    (("nas1", "-ty", "zfs"), "Unsupported type 'zfs'"),
+    (("nas1", "-ty", "pbs", "-cn", "iso"), "not supported by 'pbs'"),
+    (("nas1", "-ty", "nfs", "-cn", ","), "At least one content type"),
+    (("1bad", "-ty", "nfs"), "Invalid storage ID '1bad'"),
+    (("x", "-ty", "nfs"), "Invalid storage ID 'x'"),
+    (("local", "-ty", "nfs"), "'local' already exists"),
+    (("nas1", "-ty", "nfs", "-ns", "pve9"), "Unknown node(s): pve9"),
 ])
 def test_bad_input_refused_without_writing(cli, cluster, args, message):
     r = cli("storage", "add", *args, "--server", "10.0.0.5", "-y", "-p", "p1")
@@ -150,7 +150,7 @@ def test_bad_input_refused_without_writing(cli, cluster, args, message):
 
 def test_no_online_node(cli, cluster):
     cluster.route("GET", "/nodes", [{"node": "pve1", "status": "offline"}])
-    r = cli("storage", "add", "nas1", "-t", "nfs", "--server", "x", "-y", "-p", "p1")
+    r = cli("storage", "add", "nas1", "-ty", "nfs", "--server", "x", "-y", "-p", "p1")
     assert r.exit_code == 1
     assert "No online node" in r.output
 
@@ -158,7 +158,7 @@ def test_no_online_node(cli, cluster):
 def test_create_refused_by_pve_is_reported(cli, cluster):
     cluster.route("GET", "/nodes/{node}/scan/nfs", [{"path": "/export/pve"}])
     cluster.route("POST", "/storage", cluster.error(400, "storage ID 'nas1' already defined"))
-    r = cli("storage", "add", "nas1", "-t", "nfs", "--server", "10.0.0.5", "-y", "-p", "p1")
+    r = cli("storage", "add", "nas1", "-ty", "nfs", "--server", "10.0.0.5", "-y", "-p", "p1")
     assert r.exit_code == 1
     assert "already defined" in r.output
 
@@ -169,7 +169,7 @@ def test_create_refused_by_pve_is_reported(cli, cluster):
 def test_cifs_password_from_env_with_username(cli, cluster, monkeypatch):
     monkeypatch.setenv("SMBPW", "s3cret")
     cluster.route("GET", "/nodes/{node}/scan/cifs", [{"share": "data", "description": ""}])
-    r = cli("storage", "add", "smb1", "-t", "cifs", "--server", "10.0.0.6", "--share", "data",
+    r = cli("storage", "add", "smb1", "-ty", "cifs", "--server", "10.0.0.6", "--share", "data",
             "--username", "bob", "--password-env", "SMBPW", "-y", "-p", "p1")
     assert r.exit_code == 0, r.output
     assert created(cluster) == {
@@ -190,7 +190,7 @@ def test_cifs_scan_of_a_protected_share_carries_the_credentials(cli, cluster, mo
         return [{"share": "data"}]
 
     cluster.route("GET", "/nodes/{node}/scan/cifs", scan)
-    r = cli("storage", "add", "smb1", "-t", "cifs", "--server", "10.0.0.6", "--share", "data",
+    r = cli("storage", "add", "smb1", "-ty", "cifs", "--server", "10.0.0.6", "--share", "data",
             "--username", "bob", "--password-env", "SMBPW", "-y", "-p", "p1")
     assert r.exit_code == 0, r.output
     assert all(c.params.get("username") == "bob" for c in cluster.called("GET", "/nodes/{node}/scan/cifs"))
@@ -200,7 +200,7 @@ def test_cifs_scan_of_a_protected_share_carries_the_credentials(cli, cluster, mo
 def test_password_env_unset_refused(cli, cluster, monkeypatch):
     monkeypatch.delenv("NOPE", raising=False)
     cluster.route("GET", "/nodes/{node}/scan/cifs", [{"share": "data"}])
-    r = cli("storage", "add", "smb1", "-t", "cifs", "--server", "10.0.0.6", "--share", "data",
+    r = cli("storage", "add", "smb1", "-ty", "cifs", "--server", "10.0.0.6", "--share", "data",
             "--password-env", "NOPE", "-y", "-p", "p1")
     assert r.exit_code == 1
     assert "'NOPE' is empty or unset" in r.output
@@ -228,7 +228,7 @@ def test_cifs_interactive_password_prompt(cli, cluster, ui):
 def test_iscsi_scan_by_portal_single_target(cli, cluster):
     cluster.route("GET", "/nodes/{node}/scan/iscsi",
                   [{"target": "iqn.2003-01.org.linux-iscsi:san", "portal": "10.0.0.9:3260"}])
-    r = cli("storage", "add", "san1", "-t", "iscsi", "--portal", "10.0.0.9", "-y", "-p", "p1")
+    r = cli("storage", "add", "san1", "-ty", "iscsi", "--portal", "10.0.0.9", "-y", "-p", "p1")
     assert r.exit_code == 0, r.output
     assert all(c.params == {"portal": "10.0.0.9"} for c in cluster.called("GET", "/nodes/{node}/scan/iscsi"))
     assert created(cluster) == {
@@ -247,7 +247,7 @@ def test_iscsi_choice_among_targets_in_menu(cli, cluster, ui):
     cluster.route("GET", "/nodes/{node}/scan/iscsi", scan)
     ui.menu("iqn.b")
     ui.confirm(True)
-    r = cli("storage", "add", "san1", "-t", "iscsi", "--portal", "10.0.0.9", "-p", "p1")
+    r = cli("storage", "add", "san1", "-ty", "iscsi", "--portal", "10.0.0.9", "-p", "p1")
     assert r.exit_code == 0, r.output
     assert created(cluster)["target"] == "iqn.b"
     # The target only pve1 sees is flagged in the menu
@@ -258,7 +258,7 @@ def test_iscsi_choice_among_targets_in_menu(cli, cluster, ui):
 def test_iscsi_cancelled_menu_writes_nothing(cli, cluster, ui):
     cluster.route("GET", "/nodes/{node}/scan/iscsi", [{"target": "iqn.a"}, {"target": "iqn.b"}])
     ui.menu(None)
-    cli("storage", "add", "san1", "-t", "iscsi", "--portal", "10.0.0.9", "-p", "p1")
+    cli("storage", "add", "san1", "-ty", "iscsi", "--portal", "10.0.0.9", "-p", "p1")
     assert cluster.writes() == []
 
 
@@ -270,7 +270,7 @@ FP = "cd:6e:f4:9a:2f:82:d9:a8:e7:04:12:a8:23:5e:1f:43:07:10:b4:2b:7f:c3:af:b0:f8
 def test_pbs_with_fingerprint_and_credentials(cli, cluster, monkeypatch):
     monkeypatch.setenv("PBSPW", "pbspass")
     cluster.route("GET", "/nodes/{node}/scan/pbs", [{"store": "ds1"}])
-    r = cli("storage", "add", "pbs2", "-t", "pbs", "--server", "10.0.0.70", "--username", "backup@pbs",
+    r = cli("storage", "add", "pbs2", "-ty", "pbs", "--server", "10.0.0.70", "--username", "backup@pbs",
             "--password-env", "PBSPW", "--fingerprint", FP, "-y", "-p", "p1")
     assert r.exit_code == 0, r.output
     scan = cluster.called("GET", "/nodes/{node}/scan/pbs")[0]
@@ -287,7 +287,7 @@ def test_pbs_untrusted_certificate_names_the_fingerprint(cli, cluster, monkeypat
     monkeypatch.setenv("PBSPW", "pbspass")
     cluster.route("GET", "/nodes/{node}/scan/pbs", cluster.error(
         500, f"error fetching datastores - fingerprint '{FP.upper()}' not verified, abort!"))
-    r = cli("storage", "add", "pbs2", "-t", "pbs", "--server", "10.0.0.70", "--username", "backup@pbs",
+    r = cli("storage", "add", "pbs2", "-ty", "pbs", "--server", "10.0.0.70", "--username", "backup@pbs",
             "--password-env", "PBSPW", "-y", "-p", "p1")
     assert r.exit_code == 1
     assert f"--fingerprint {FP}" in r.output
@@ -295,7 +295,7 @@ def test_pbs_untrusted_certificate_names_the_fingerprint(cli, cluster, monkeypat
 
 
 def test_pbs_without_credentials_skips_discovery_and_needs_datastore(cli, cluster):
-    r = cli("storage", "add", "pbs2", "-t", "pbs", "--server", "10.0.0.70", "--datastore", "ds1",
+    r = cli("storage", "add", "pbs2", "-ty", "pbs", "--server", "10.0.0.70", "--datastore", "ds1",
             "-y", "-p", "p1")
     assert r.exit_code == 0, r.output
     assert "Discovery skipped" in r.output
@@ -310,7 +310,7 @@ def test_pbs_without_credentials_skips_discovery_and_needs_datastore(cli, cluste
 def test_rbd_sends_the_whole_keyring(cli, cluster, tmp_path):
     kf = tmp_path / "ceph.client.admin.keyring"
     kf.write_text(KEYRING)
-    r = cli("storage", "add", "ext-rbd", "-t", "rbd", "--monhost", "10.1.0.1,10.1.0.2",
+    r = cli("storage", "add", "ext-rbd", "-ty", "rbd", "--monhost", "10.1.0.1,10.1.0.2",
             "--pool", "vms", "--keyring-file", str(kf), "-y", "-p", "p1")
     assert r.exit_code == 0, r.output
     assert created(cluster) == {
@@ -325,7 +325,7 @@ def test_rbd_sends_the_whole_keyring(cli, cluster, tmp_path):
 def test_cephfs_extracts_the_bare_key_from_a_keyring(cli, cluster, tmp_path):
     kf = tmp_path / "ceph.client.pve.keyring"
     kf.write_text(KEYRING.replace("admin", "pve"))
-    r = cli("storage", "add", "ext-fs", "-t", "cephfs", "--monhost", "10.1.0.1", "--username", "pve",
+    r = cli("storage", "add", "ext-fs", "-ty", "cephfs", "--monhost", "10.1.0.1", "--username", "pve",
             "--fs-name", "data", "--keyring-file", str(kf), "-y", "-p", "p1")
     assert r.exit_code == 0, r.output
     assert created(cluster) == {
@@ -337,7 +337,7 @@ def test_cephfs_extracts_the_bare_key_from_a_keyring(cli, cluster, tmp_path):
 def test_cephfs_accepts_a_bare_key_file_as_is(cli, cluster, tmp_path):
     kf = tmp_path / "pve.secret"
     kf.write_text(KEY + "\n")
-    r = cli("storage", "add", "ext-fs", "-t", "cephfs", "--monhost", "10.1.0.1",
+    r = cli("storage", "add", "ext-fs", "-ty", "cephfs", "--monhost", "10.1.0.1",
             "--keyring-file", str(kf), "-y", "-p", "p1")
     assert r.exit_code == 0, r.output
     assert created(cluster)["keyring"] == KEY
@@ -345,7 +345,7 @@ def test_cephfs_accepts_a_bare_key_file_as_is(cli, cluster, tmp_path):
 
 
 def test_ceph_missing_keyring_file_refused(cli, cluster, tmp_path):
-    r = cli("storage", "add", "ext-rbd", "-t", "rbd", "--monhost", "10.1.0.1",
+    r = cli("storage", "add", "ext-rbd", "-ty", "rbd", "--monhost", "10.1.0.1",
             "--keyring-file", str(tmp_path / "missing"), "-y", "-p", "p1")
     assert r.exit_code == 1
     assert "Keyring file not found" in r.output
@@ -353,7 +353,7 @@ def test_ceph_missing_keyring_file_refused(cli, cluster, tmp_path):
 
 
 def test_ceph_without_keyring_warns_and_creates(cli, cluster):
-    r = cli("storage", "add", "ext-rbd", "-t", "rbd", "--monhost", "10.1.0.1", "-y", "-p", "p1")
+    r = cli("storage", "add", "ext-rbd", "-ty", "rbd", "--monhost", "10.1.0.1", "-y", "-p", "p1")
     assert r.exit_code == 0, r.output
     assert "No keyring provided" in r.output
     assert "keyring" not in created(cluster)
@@ -388,7 +388,7 @@ def test_cephfs_takes_the_key_of_the_requested_client(cli, cluster, tmp_path):
     kf = tmp_path / "ceph.keyring"
     # A keyring file can hold several entities (ceph auth export)
     kf.write_text(f"[client.admin]\n\tkey = {other}\n[client.pve]\n\tkey = {KEY}\n")
-    r = cli("storage", "add", "ext-fs", "-t", "cephfs", "--monhost", "10.1.0.1", "--username", "pve",
+    r = cli("storage", "add", "ext-fs", "-ty", "cephfs", "--monhost", "10.1.0.1", "--username", "pve",
             "--keyring-file", str(kf), "-y", "-p", "p1")
     assert r.exit_code == 0, r.output
     assert created(cluster)["keyring"] == KEY

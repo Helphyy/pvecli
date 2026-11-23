@@ -24,5 +24,5 @@ pvecli node vnc [NODE] [OPTIONS]
 | Option | Description |
 |:--|:--|
 | `-b`, `--no-background` | Run VNC server in foreground (blocking, single node only). |
-| `-s`, `--split` | Open each shell in a separate browser window instead of tabs. |
+| `-sp`, `--split` | Open each shell in a separate browser window instead of tabs. |
 | `-p`, `--profile VALUE` | Profile to use. |

@@ -23,21 +23,21 @@ pvecli storage add [STORAGE_ID] [OPTIONS]
 
 | Option | Description |
 |:--|:--|
-| `-t`, `--type VALUE` | Type: nfs, cifs, rbd, cephfs, pbs, iscsi. |
+| `-ty`, `--type VALUE` | Type: nfs, cifs, rbd, cephfs, pbs, iscsi. |
 | `--server VALUE` | Server for nfs, cifs, pbs. |
 | `--export VALUE` | NFS export path. |
 | `--share VALUE` | CIFS share name. |
 | `--portal VALUE` | iSCSI portal. |
-| `--target VALUE` | iSCSI target. |
+| `-ta`, `--target VALUE` | iSCSI target. |
 | `--datastore VALUE` | PBS datastore. |
 | `--fingerprint VALUE` | TLS fingerprint of the PBS server (self-signed certificates). |
 | `--monhost VALUE` | Ceph monitors, comma separated. |
-| `--pool VALUE` | Ceph RBD pool. |
+| `-pl`, `--pool VALUE` | Ceph RBD pool. |
 | `--fs-name VALUE` | CephFS filesystem name. |
 | `--username VALUE` | User name: Ceph client id (default admin), CIFS user, or PBS user. |
 | `--keyring-file VALUE` | Path to the Ceph keyring file (never pass the key on the command line). |
-| `--password-env VALUE` | Env var holding the CIFS or PBS password. |
-| `-c`, `--content VALUE` | Content types, comma separated. |
-| `-n`, `--nodes VALUE` | Restrict to these nodes, comma separated. |
+| `-pe`, `--password-env VALUE` | Env var holding the CIFS or PBS password. |
+| `-cn`, `--content VALUE` | Content types, comma separated. |
+| `-ns`, `--nodes VALUE` | Restrict to these nodes, comma separated. |
 | `-y`, `--yes` | Skip confirmation. |
 | `-p`, `--profile VALUE` | Profile to use. |

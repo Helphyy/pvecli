@@ -23,12 +23,12 @@ pvecli backup restore VOLID [OPTIONS]
 
 | Option | Description |
 |:--|:--|
-| `--vmid N` | Target ID (default: next free ID). |
-| `--node VALUE` | Node to restore on (default: where the backup or guest is). |
+| `-id`, `--vmid N` | Target ID (default: next free ID). |
+| `-n`, `--node VALUE` | Node to restore on (default: where the backup or guest is). |
 | `-s`, `--storage VALUE` | Target storage (VM default: from the backup; CT default: storage of its root disk). |
 | `--start` | Start the guest once restored. |
 | `--unique` | New random MAC addresses (the original may still run). |
-| `--force` | Overwrite an existing, stopped guest with this ID. |
+| `-f`, `--force` | Overwrite an existing, stopped guest with this ID. |
 | `-y`, `--yes` | Skip confirmation. |
 | `-p`, `--profile VALUE` | Profile to use. |
 

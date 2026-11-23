@@ -19,4 +19,4 @@ pvecli node list [OPTIONS]
 |:--|:--|
 | `-p`, `--profile VALUE` | Profile to use. |
 | `-o`, `--order VALUE` | Sort by column (moved to first position), e.g. node, cpu, memory, uptime. |
-| `--json` | Output raw JSON to stdout (no colors, no tables). |
+| `-js`, `--json` | Output raw JSON to stdout (no colors, no tables). |

@@ -19,4 +19,4 @@ pvecli pool list [OPTIONS]
 |:--|:--|
 | `-p`, `--profile VALUE` | Profile to use. |
 | `-o`, `--order VALUE` | Sort by column (moved to first position), e.g. pool, comment. |
-| `--json` | Output raw JSON to stdout (no colors, no tables). |
+| `-js`, `--json` | Output raw JSON to stdout (no colors, no tables). |

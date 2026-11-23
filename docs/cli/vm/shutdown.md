@@ -24,9 +24,9 @@ pvecli vm shutdown [VMIDS] [OPTIONS]
 | Option | Default | Description |
 |:--|:--|:--|
 | `-p`, `--profile VALUE` |  | Profile to use. |
-| `--tag VALUE` |  | Target the guests carrying this tag. |
-| `--pool VALUE` |  | Target the guests of this resource pool. |
-| `--node VALUE` |  | Target the guests currently on this node. |
+| `-tg`, `--tag VALUE` |  | Target the guests carrying this tag. |
+| `-pl`, `--pool VALUE` |  | Target the guests of this resource pool. |
+| `-n`, `--node VALUE` |  | Target the guests currently on this node. |
 | `-t`, `--timeout N` | `60` | Timeout before force stop. |
-| `--force` |  | Force stop after timeout. |
+| `-f`, `--force` |  | Force stop after timeout. |
 | `-y`, `--yes` |  | Skip confirmation. |

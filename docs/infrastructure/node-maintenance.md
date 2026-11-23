@@ -45,7 +45,7 @@ A node with a new kernel needs a reboot after the upgrade. The list comes from t
 
 --8<-- "screens/infrastructure-maintenance-enter.html"
 
-1. The guests go to the online node with the most free memory, here `pve3`. Choose it with `-t pve5`.
+1. The guests go to the online node with the most free memory, here `pve3`. Choose it with `-ta pve5`.
 2. `noout` is set only if Ceph runs on the cluster and the flag is not already set. `--no-ceph-flag` skips it.
 
 Running VMs move live. Containers cannot, so a running container is restarted on the target. VMs with local disks need `--with-local-disks`. If HA manages some of the guests and HA uses rules (PVE 9), pvecli pauses their failback until you exit maintenance, so HA does not pull them back each time the node reboots. With HA groups (PVE 8, or a PVE 9 cluster whose groups are not converted yet), it prints the `ha-manager` command to run on the node instead.
@@ -68,10 +68,10 @@ $ pvecli node maintenance status
 
 ## Work on the node
 
-The node is empty: upgrade it, reboot it, power it off. [node ssh](../cli/node/ssh.md) opens a shell on it (user, port and key from the profile, or `-u`, `-P`, `-i`); `-c` runs one command:
+The node is empty: upgrade it, reboot it, power it off. [node ssh](../cli/node/ssh.md) opens a shell on it (user, port and key from the profile, or `-u`, `-P`, `-i`); `-cm` runs one command:
 
 ```bash
-pvecli node ssh pve4 -c "apt full-upgrade -y" -p prod
+pvecli node ssh pve4 -cm "apt full-upgrade -y" -p prod
 ```
 
 [node vnc](../cli/node/vnc.md) opens the node shell of the web UI in your browser instead, which needs no SSH access but a profile that logs in with a password.

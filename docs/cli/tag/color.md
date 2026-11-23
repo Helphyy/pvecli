@@ -28,7 +28,7 @@ pvecli tag color add [NAME] [HEX_COLOR] [OPTIONS]
 
 | Option | Description |
 |:--|:--|
-| `-f`, `--font VALUE` | Font color: white or black. |
+| `-ft`, `--font VALUE` | Font color: white or black. |
 
 ## remove
 

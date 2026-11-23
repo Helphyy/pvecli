@@ -18,5 +18,5 @@ pvecli cluster resources [OPTIONS]
 | Option | Description |
 |:--|:--|
 | `-p`, `--profile VALUE` | Profile to use. |
-| `-t`, `--type VALUE` | Filter by type (vm, ct, node, storage). |
-| `--json` | Output raw JSON to stdout (no colors, no tables). |
+| `-ty`, `--type VALUE` | Filter by type (vm, ct, node, storage). |
+| `-js`, `--json` | Output raw JSON to stdout (no colors, no tables). |

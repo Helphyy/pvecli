@@ -27,5 +27,5 @@ pvecli vm ssh [VMID] [OPTIONS]
 | `-P`, `--port N` | SSH port. |
 | `-i`, `--key VALUE` | Path to SSH key. |
 | `-j`, `--jump` | Use node as jump host. |
-| `-c`, `--command VALUE` | Execute command instead of shell. |
+| `-cm`, `--command VALUE` | Execute command instead of shell. |
 | `-p`, `--profile VALUE` | Profile to use. |

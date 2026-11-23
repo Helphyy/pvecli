@@ -302,7 +302,7 @@ def test_remove_delete_error_exits_1(cli, api):
 def test_export_writes_ids_and_comments(cli, api, tmp_path):
     _pools(api)
     out = tmp_path / "out.json"
-    r = cli("pool", "export", "-o", str(out), "-p", "p1")
+    r = cli("pool", "export", "-ou", str(out), "-p", "p1")
     assert r.exit_code == 0, r.output
     assert json.loads(out.read_text()) == {
         "pools": [{"poolid": "dev"}, {"poolid": "staging", "comment": "pre-prod"}]
@@ -313,7 +313,7 @@ def test_export_writes_ids_and_comments(cli, api, tmp_path):
 def test_export_nothing_writes_no_file(cli, api, tmp_path):
     _pools(api, [])
     out = tmp_path / "out.json"
-    r = cli("pool", "export", "-o", str(out), "-p", "p1")
+    r = cli("pool", "export", "-ou", str(out), "-p", "p1")
     assert r.exit_code == 0
     assert not out.exists()
 
@@ -321,7 +321,7 @@ def test_export_nothing_writes_no_file(cli, api, tmp_path):
 def test_export_then_import_roundtrip(cli, api, tmp_path):
     _pools(api)
     out = tmp_path / "pools.json"
-    assert cli("pool", "export", "-o", str(out), "-p", "p1").exit_code == 0
+    assert cli("pool", "export", "-ou", str(out), "-p", "p1").exit_code == 0
     # Another cluster, with no pool yet
     api.route("GET", "/pools", [], host="h2")
     api.route("POST", "/pools", None)

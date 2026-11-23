@@ -24,25 +24,25 @@ pvecli ct add [NODE] [OPTIONS]
 | Option | Description |
 |:--|:--|
 | `-p`, `--profile VALUE` | Profile to use. |
-| `-c`, `--ctid N` | Container ID (auto-assigned if not specified). |
-| `-ho`, `--hostname VALUE` | Container hostname. |
-| `-po`, `--pool VALUE` | Pool name. |
+| `-ci`, `--ctid N` | Container ID (auto-assigned if not specified). |
+| `-hn`, `--hostname VALUE` | Container hostname. |
+| `-pl`, `--pool VALUE` | Pool name. |
 | `-ob`, `--onboot` / `--no-onboot` | Start at boot. |
-| `-ts`, `--template-storage VALUE` | Storage for LXC image. |
-| `-t`, `--template VALUE` | LXC image file name (from template-storage). |
-| `-u`, `--unprivileged` / `--privileged` `-pr` | Unprivileged container (default: unprivileged; the wizard asks). |
+| `-tps`, `--template-storage VALUE` | Storage for LXC image. |
+| `-tp`, `--template VALUE` | LXC image file name (from template-storage). |
+| `-up`, `--unprivileged` / `--privileged` `-pr` | Unprivileged container (default: unprivileged; the wizard asks). |
 | `-pw`, `--password VALUE` | Root password. |
 | `-co`, `--cores N` | Number of CPU cores. |
 | `-me`, `--memory N` | RAM in MiB. |
-| `-s`, `--swap N` | Swap in MiB. |
+| `-sw`, `--swap N` | Swap in MiB. |
 | `-rs`, `--rootfs-storage VALUE` | Storage for root filesystem. |
 | `-rz`, `--rootfs-size N` | Root filesystem size in GB. |
-| `-b`, `--bridge VALUE` | Network bridge. |
-| `-i`, `--ip VALUE` | IPv4 configuration: dhcp, cidr (e.g., 192.168.1.100/24), or none. |
+| `-br`, `--bridge VALUE` | Network bridge. |
+| `-ip`, `--ip VALUE` | IPv4 configuration: dhcp, cidr (e.g., 192.168.1.100/24), or none. |
 | `-gw`, `--gateway VALUE` | IPv4 gateway address. |
-| `-i6`, `--ip6 VALUE` | IPv6 configuration: dhcp, auto, cidr (e.g., 2001:db8::1/64), or none. |
+| `-ip6`, `--ip6 VALUE` | IPv6 configuration: dhcp, auto, cidr (e.g., 2001:db8::1/64), or none. |
 | `-gw6`, `--gateway6 VALUE` | IPv6 gateway address. |
-| `-v`, `--vlan VALUE` | VLAN tag. |
+| `-vl`, `--vlan VALUE` | VLAN tag. |
 | `-fw`, `--firewall` / `--no-firewall` | Enable firewall. |
 | `-k`, `--keyctl` / `--no-keyctl` | Enable keyctl. |
-| `-f`, `--fuse` / `--no-fuse` | Enable FUSE. |
+| `-fus`, `--fuse` / `--no-fuse` | Enable FUSE. |

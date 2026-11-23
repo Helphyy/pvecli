@@ -14,7 +14,7 @@ err_console = Console(stderr=True)
 
 JSON_OPTION = typer.Option(
     False,
-    "--json",
+    "--json", "-js",
     help="Output raw JSON to stdout (no colors, no tables)",
 )
 

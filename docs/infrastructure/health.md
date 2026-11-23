@@ -45,11 +45,11 @@ Each item of the health view has its own command.
 
 --8<-- "screens/infrastructure-tasks.html"
 
-`-l` sets how many tasks to show (50 by default) and `-r` keeps only the running ones, for instance a migration or a backup that does not end.
+`-l` sets how many tasks to show (50 by default) and `-rn` keeps only the running ones, for instance a migration or a backup that does not end.
 
 ### Where a guest or a storage is
 
-[cluster resources](../cli/cluster/resources.md) lists every guest, node, storage and SDN zone of the cluster with its node and status, one table per type. `-t vm`, `-t node` or `-t storage` keeps one type.
+[cluster resources](../cli/cluster/resources.md) lists every guest, node, storage and SDN zone of the cluster with its node and status, one table per type. `-ty vm`, `-ty node` or `-ty storage` keeps one type.
 
 ### SDN
 

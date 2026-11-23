@@ -26,7 +26,7 @@ pvecli audit [OPTIONS]
 | `--skip-orphans` |  | Skip the orphan disk scan (lists every storage). |
 | `--problems` |  | Hide OK lines. |
 | `-p`, `--profile VALUE` |  | Profile(s): name, list, pattern ('client-*') or @group. |
-| `--json` |  | Output raw JSON to stdout (no colors, no tables). |
+| `-js`, `--json` |  | Output raw JSON to stdout (no colors, no tables). |
 
 ## Examples
 

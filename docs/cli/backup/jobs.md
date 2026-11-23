@@ -22,7 +22,7 @@ pvecli backup jobs list [OPTIONS]
 | Option | Description |
 |:--|:--|
 | `-p`, `--profile VALUE` | Profile(s): name, list, pattern ('client-*') or @group. |
-| `--json` | Output raw JSON to stdout (no colors, no tables). |
+| `-js`, `--json` | Output raw JSON to stdout (no colors, no tables). |
 
 ## add
 
@@ -40,15 +40,15 @@ pvecli backup jobs add [OPTIONS]
 |:--|:--|:--|
 | `--schedule VALUE` |  | When: '02:00', 'sat 03:30', 'mon..fri 22:00'. |
 | `-s`, `--storage VALUE` |  | Backup storage. |
-| `--vmid VALUE` |  | Guests: 100,101. |
-| `--all` |  | Every guest. |
-| `--pool VALUE` |  | Guests of this pool. |
-| `--exclude VALUE` |  | With --all: guests to leave out. |
-| `--mode VALUE` | `snapshot` | snapshot, suspend or stop. |
-| `--compress VALUE` | `zstd` | zstd, gzip, lzo or 0 (none; ignored by PBS). |
+| `-id`, `--vmid VALUE` |  | Guests: 100,101. |
+| `-a`, `--all` |  | Every guest. |
+| `-pl`, `--pool VALUE` |  | Guests of this pool. |
+| `-ex`, `--exclude VALUE` |  | With --all: guests to leave out. |
+| `-m`, `--mode VALUE` | `snapshot` | snapshot, suspend or stop. |
+| `-cp`, `--compress VALUE` | `zstd` | zstd, gzip, lzo or 0 (none; ignored by PBS). |
 | `--notes-template VALUE` |  | Notes of each backup ({{guestname}}...). |
-| `--comment VALUE` |  | Description of the job. |
-| `--node VALUE` |  | Only run on this node. |
+| `-c`, `--comment VALUE` |  | Description of the job. |
+| `-n`, `--node VALUE` |  | Only run on this node. |
 | `--keep-last N` |  | Retention: keep the N newest backups. |
 | `--keep-daily N` |  | Retention: one per day, N days. |
 | `--keep-weekly N` |  | Retention: one per week, N weeks. |
@@ -85,15 +85,15 @@ pvecli backup jobs edit JOB_ID [OPTIONS]
 |:--|:--|
 | `--schedule VALUE` | When: '02:00', 'sat 03:30'. |
 | `-s`, `--storage VALUE` | Backup storage. |
-| `--vmid VALUE` | Guests: 100,101 (replaces the selection). |
-| `--all` | Every guest (replaces the selection). |
-| `--pool VALUE` | Guests of this pool (replaces the selection). |
-| `--exclude VALUE` | With --all: guests to leave out. |
-| `--mode VALUE` | snapshot, suspend or stop. |
-| `--compress VALUE` | zstd, gzip, lzo or 0. |
+| `-id`, `--vmid VALUE` | Guests: 100,101 (replaces the selection). |
+| `-a`, `--all` | Every guest (replaces the selection). |
+| `-pl`, `--pool VALUE` | Guests of this pool (replaces the selection). |
+| `-ex`, `--exclude VALUE` | With --all: guests to leave out. |
+| `-m`, `--mode VALUE` | snapshot, suspend or stop. |
+| `-cp`, `--compress VALUE` | zstd, gzip, lzo or 0. |
 | `--notes-template VALUE` | Notes of each backup. |
-| `--comment VALUE` | Description of the job. |
-| `--node VALUE` | Only run on this node. |
+| `-c`, `--comment VALUE` | Description of the job. |
+| `-n`, `--node VALUE` | Only run on this node. |
 | `--keep-last N` | Retention: keep the N newest backups. |
 | `--keep-daily N` | Retention: one per day, N days. |
 | `--keep-weekly N` | Retention: one per week, N weeks. |

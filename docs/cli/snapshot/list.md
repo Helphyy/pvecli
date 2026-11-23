@@ -17,11 +17,11 @@ pvecli snapshot list [OPTIONS]
 
 | Option | Description |
 |:--|:--|
-| `--vms VALUE` | Guest IDs: 100,101 or 100-110. |
-| `--tag VALUE` | Guests carrying this tag. |
-| `--pool VALUE` | Guests of this resource pool. |
-| `--node VALUE` | Guests currently on this node. |
-| `--older-than VALUE` | Only snapshots older than this (30d, 12h, 2w). |
-| `--name-prefix VALUE` | Only snapshots whose name starts with this. |
+| `-vm`, `--vms VALUE` | Guest IDs: 100,101 or 100-110. |
+| `-tg`, `--tag VALUE` | Guests carrying this tag. |
+| `-pl`, `--pool VALUE` | Guests of this resource pool. |
+| `-n`, `--node VALUE` | Guests currently on this node. |
+| `-ol`, `--older-than VALUE` | Only snapshots older than this (30d, 12h, 2w). |
+| `-np`, `--name-prefix VALUE` | Only snapshots whose name starts with this. |
 | `-p`, `--profile VALUE` | Profile(s): name, list, pattern ('client-*') or @group. |
-| `--json` | Output raw JSON to stdout (no colors, no tables). |
+| `-js`, `--json` | Output raw JSON to stdout (no colors, no tables). |

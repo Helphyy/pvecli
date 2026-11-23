@@ -24,7 +24,7 @@ pvecli ct clone [CTID] [OPTIONS]
 | Option | Description |
 |:--|:--|
 | `-p`, `--profile VALUE` | Profile to use. |
-| `-id`, `--newid N` | New container ID (auto-assigned if not specified). |
+| `-ni`, `--newid N` | New container ID (auto-assigned if not specified). |
 | `-hn`, `--hostname VALUE` | New container hostname. |
 | `-pl`, `--pool VALUE` | Pool name. |
 | `-ob`, `--onboot` / `--no-onboot` | Start at boot. |

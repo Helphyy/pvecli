@@ -17,12 +17,12 @@ pvecli backup list [OPTIONS]
 
 | Option | Description |
 |:--|:--|
-| `--vmid VALUE` | Only these guests: 100,101 or 100-110. |
-| `--tag VALUE` | Only guests carrying this tag. |
-| `--pool VALUE` | Only guests of this resource pool. |
-| `--storage VALUE` | Only this backup storage. |
+| `-id`, `--vmid VALUE` | Only these guests: 100,101 or 100-110. |
+| `-tg`, `--tag VALUE` | Only guests carrying this tag. |
+| `-pl`, `--pool VALUE` | Only guests of this resource pool. |
+| `-s`, `--storage VALUE` | Only this backup storage. |
 | `-p`, `--profile VALUE` | Profile(s): name, list, pattern ('client-*') or @group. |
-| `--json` | Output raw JSON to stdout (no colors, no tables). |
+| `-js`, `--json` | Output raw JSON to stdout (no colors, no tables). |
 
 ## Examples
 

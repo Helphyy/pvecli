@@ -71,7 +71,7 @@ def test_unmatched_filter_is_an_error(cli, api):
 
 def test_add_all_skips_templates_and_guests_already_having_the_name(cli, api):
     setup(api, {301: [snap("pre-up", 2)]})
-    r = cli("snapshot", "add", "pre-up", "--all", "-y", "-d", "before upgrade", "-p", "p1")
+    r = cli("snapshot", "add", "pre-up", "--all", "-y", "-de", "before upgrade", "-p", "p1")
     assert r.exit_code == 0, r.output
     assert "skipped: 301" in r.output
     posts = {c.path: c.data for c in api.writes()}

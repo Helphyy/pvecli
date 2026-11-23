@@ -19,4 +19,4 @@ pvecli cluster preflight [OPTIONS]
 |:--|:--|:--|
 | `--max-drift N` | `2` | Clock drift tolerated between nodes, in seconds. |
 | `-p`, `--profile VALUE` |  | Profile to use. |
-| `--json` |  | Output raw JSON to stdout (no colors, no tables). |
+| `-js`, `--json` |  | Output raw JSON to stdout (no colors, no tables). |

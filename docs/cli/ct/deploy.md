@@ -27,31 +27,31 @@ pvecli ct deploy TEMPLATE [OPTIONS]
 
 | Option | Default | Description |
 |:--|:--|:--|
-| `--hostname VALUE` |  | Hostname (default: PVE's CT<id>, or the template's). |
-| `--ctid N` |  | ID of the new container (default: next free). |
-| `--node VALUE` |  | Node (default: the CT template's, or the only online node for a file template). |
-| `--storage VALUE` |  | Root disk storage (default: PVE's 'local' for a file template; on a clone, means a full clone there). |
-| `--full` |  | Full clone of a CT template (default: linked when possible). |
-| `--disk-size VALUE` |  | Root disk size, whole GiB (PVE default: 4G); a clone only grows. |
-| `--cores N` |  | CPU cores (PVE default: all of the host). |
-| `--memory VALUE` |  | Memory: 1G, 512M... (PVE default: 512M). |
-| `--swap VALUE` |  | Swap: 512M, 0... (PVE default: 512M). |
-| `--ip VALUE` |  | IPv4 CIDR (10.0.0.21/24), dhcp or manual. |
+| `-hn`, `--hostname VALUE` |  | Hostname (default: PVE's CT<id>, or the template's). |
+| `-ci`, `--ctid N` |  | ID of the new container (default: next free). |
+| `-n`, `--node VALUE` |  | Node (default: the CT template's, or the only online node for a file template). |
+| `-s`, `--storage VALUE` |  | Root disk storage (default: PVE's 'local' for a file template; on a clone, means a full clone there). |
+| `-fu`, `--full` |  | Full clone of a CT template (default: linked when possible). |
+| `-dz`, `--disk-size VALUE` |  | Root disk size, whole GiB (PVE default: 4G); a clone only grows. |
+| `-co`, `--cores N` |  | CPU cores (PVE default: all of the host). |
+| `-me`, `--memory VALUE` |  | Memory: 1G, 512M... (PVE default: 512M). |
+| `-sw`, `--swap VALUE` |  | Swap: 512M, 0... (PVE default: 512M). |
+| `-ip`, `--ip VALUE` |  | IPv4 CIDR (10.0.0.21/24), dhcp or manual. |
 | `--gw VALUE` |  | IPv4 gateway. |
-| `--ip6 VALUE` |  | IPv6 CIDR, dhcp, auto or manual. |
+| `-ip6`, `--ip6 VALUE` |  | IPv6 CIDR, dhcp, auto or manual. |
 | `--gw6 VALUE` |  | IPv6 gateway. |
-| `--bridge VALUE` |  | Bridge or SDN vnet (default vmbr0 for a new NIC). |
-| `--vlan N` |  | VLAN tag of net0. |
+| `-br`, `--bridge VALUE` |  | Bridge or SDN vnet (default vmbr0 for a new NIC). |
+| `-vl`, `--vlan N` |  | VLAN tag of net0. |
 | `--dns VALUE` |  | DNS server(s), space separated (PVE default: the host's). |
-| `--search-domain VALUE` |  | DNS search domain. |
-| `--ssh-key VALUE` |  | Public key file or key for root (repeatable; file template only). |
-| `--password-env VALUE` |  | Env var holding the root password (file template only). |
-| `--unprivileged` / `--privileged` |  | Unprivileged container (PVE default at creation: unprivileged). |
+| `-sd`, `--search-domain VALUE` |  | DNS search domain. |
+| `-sk`, `--ssh-key VALUE` |  | Public key file or key for root (repeatable; file template only). |
+| `-pe`, `--password-env VALUE` |  | Env var holding the root password (file template only). |
+| `-up`, `--unprivileged` / `--privileged` `-pr` |  | Unprivileged container (PVE default at creation: unprivileged). |
 | `--features VALUE` |  | Features, e.g. nesting=1 or nesting=1,keyctl=1. |
-| `--tags VALUE` |  | Tags, comma separated. |
-| `--pool VALUE` |  | Resource pool. |
+| `-tgs`, `--tags VALUE` |  | Tags, comma separated. |
+| `-pl`, `--pool VALUE` |  | Resource pool. |
 | `--start` / `--no-start` | `--start` | Start the container once configured. |
-| `--wait-ip N` | `0` | Seconds to wait for its IPv4 address (0: don't). |
+| `-wi`, `--wait-ip N` | `0` | Seconds to wait for its IPv4 address (0: don't). |
 | `-p`, `--profile VALUE` |  | Profile to use. |
 
 ## Examples

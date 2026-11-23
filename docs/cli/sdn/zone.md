@@ -27,14 +27,14 @@ pvecli sdn zone add [ZONE] [OPTIONS]
 
 | Option | Description |
 |:--|:--|
-| `-t`, `--type VALUE` | Type: simple, vlan, qinq, vxlan, evpn. |
-| `-b`, `--bridge VALUE` | Bridge, for vlan and qinq zones. |
+| `-ty`, `--type VALUE` | Type: simple, vlan, qinq, vxlan, evpn. |
+| `-br`, `--bridge VALUE` | Bridge, for vlan and qinq zones. |
 | `--peers VALUE` | Peer IPs, for vxlan zones, comma separated. |
-| `--tag N` | Service VLAN tag, for qinq zones. |
+| `-tg`, `--tag N` | Service VLAN tag, for qinq zones. |
 | `--controller VALUE` | Controller, for evpn zones. |
 | `--vrf-vxlan N` | VRF VNI, for evpn zones. |
 | `--mtu N` | MTU of the vnet bridges. |
-| `-n`, `--nodes VALUE` | Restrict the zone to these nodes. |
+| `-ns`, `--nodes VALUE` | Restrict the zone to these nodes. |
 | `--ipam VALUE` | IPAM to use (default pve). |
 | `--dhcp` | Serve DHCP on this zone through dnsmasq (technology preview). |
 | `-y`, `--yes` | Skip confirmation. |
@@ -60,7 +60,7 @@ pvecli sdn zone set [ZONE] [OPTIONS]
 |:--|:--|
 | `--dhcp` / `--no-dhcp` | Enable or disable the dnsmasq DHCP backend. |
 | `--mtu N` | MTU of the vnet bridges. |
-| `-n`, `--nodes VALUE` | Restrict the zone to these nodes. |
+| `-ns`, `--nodes VALUE` | Restrict the zone to these nodes. |
 | `--peers VALUE` | Peer IPs for a vxlan zone. |
 | `-y`, `--yes` | Skip confirmation. |
 | `-p`, `--profile VALUE` | Profile to use. |

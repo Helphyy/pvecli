@@ -27,7 +27,7 @@ pvecli sdn subnet remove [CIDR] [OPTIONS]
 
 | Option | Description |
 |:--|:--|
-| `-v`, `--vnet VALUE` | Vnet the subnet belongs to. |
+| `-vn`, `--vnet VALUE` | Vnet the subnet belongs to. |
 | `-y`, `--yes` | Skip confirmation. |
 | `-p`, `--profile VALUE` | Profile to use. |
 
@@ -49,8 +49,8 @@ pvecli sdn subnet add [CIDR] [OPTIONS]
 
 | Option | Description |
 |:--|:--|
-| `-v`, `--vnet VALUE` | Vnet to attach the subnet to. |
-| `-g`, `--gateway VALUE` | Gateway address. |
+| `-vn`, `--vnet VALUE` | Vnet to attach the subnet to. |
+| `-gw`, `--gateway VALUE` | Gateway address. |
 | `--snat` | Masquerade outgoing traffic. |
 | `--dhcp-range VALUE` | DHCP range as start-ip:end-ip. |
 | `--dhcp-dns VALUE` | DNS server handed out by DHCP. |

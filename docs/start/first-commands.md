@@ -30,7 +30,7 @@ For a verdict on the state of the cluster (quorum, failure tolerance, HA, Ceph),
 
 --8<-- "screens/start-ct-list.html"
 
-Both take `-n NODE` to keep the guests of one node and `-s running` or `-s stopped` to keep one state.
+Both take `-n NODE` to keep the guests of one node and `-ss running` or `-ss stopped` to keep one state.
 
 ## Sort a list
 

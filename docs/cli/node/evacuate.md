@@ -26,8 +26,8 @@ pvecli node evacuate NODE TARGET [OPTIONS]
 
 | Option | Description |
 |:--|:--|
-| `--with-local-disks` | Copy local disks during live migrations. |
-| `--max-workers N` | Migrations running at the same time. |
+| `-wl`, `--with-local-disks` | Copy local disks during live migrations. |
+| `-mw`, `--max-workers N` | Migrations running at the same time. |
 | `-y`, `--yes` | Skip confirmation. |
 | `-p`, `--profile VALUE` | Profile to use. |
 

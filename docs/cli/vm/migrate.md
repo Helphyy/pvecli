@@ -28,7 +28,7 @@ pvecli vm migrate [VMID] [TARGET] [OPTIONS]
 | Option | Description |
 |:--|:--|
 | `--online` / `--offline` | Live migration (default when the VM runs). |
-| `--with-local-disks` | Copy local disks during a live migration. |
+| `-wl`, `--with-local-disks` | Copy local disks during a live migration. |
 | `--target-storage VALUE` | Storage on the target, or a source:target mapping. |
 | `-y`, `--yes` | Skip confirmation. |
 | `-p`, `--profile VALUE` | Profile to use. |

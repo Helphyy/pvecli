@@ -32,9 +32,9 @@ pvecli backup prune STORAGE [OPTIONS]
 | `--keep-weekly N` | Keep one backup per week, N weeks. |
 | `--keep-monthly N` | Keep one backup per month, N months. |
 | `--keep-yearly N` | Keep one backup per year, N years. |
-| `--vmid N` | Only the backups of this guest. |
-| `--type VALUE` | Only qemu or lxc backups. |
-| `--dry-run` | Show what would be removed, remove nothing. |
+| `-id`, `--vmid N` | Only the backups of this guest. |
+| `-ty`, `--type VALUE` | Only qemu or lxc backups. |
+| `-dr`, `--dry-run` | Show what would be removed, remove nothing. |
 | `-y`, `--yes` | Skip confirmation. |
 | `-p`, `--profile VALUE` | Profile to use. |
 

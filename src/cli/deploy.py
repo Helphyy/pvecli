@@ -541,10 +541,10 @@ async def _run(doc: Any, cli_profile: str | None, dry_run: bool, yes: bool, para
 
 def deploy(
     file: str = typer.Argument(..., help="YAML file describing the guests"),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Check everything and show the plan, create nothing"),
+    dry_run: bool = typer.Option(False, "--dry-run", "-dr", help="Check everything and show the plan, create nothing"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
     parallel: int = typer.Option(4, "--parallel", help="Guests created at the same time"),
-    wait_ip: int = typer.Option(0, "--wait-ip", help="Seconds to wait for each guest's IPv4 address (0: don't)"),
+    wait_ip: int = typer.Option(0, "--wait-ip", "-wi", help="Seconds to wait for each guest's IPv4 address (0: don't)"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile of the guests that name none in the file"),
 ) -> None:
     """Deploy the VMs and containers described in a YAML file.

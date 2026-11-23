@@ -23,5 +23,5 @@ pvecli backup protect VOLIDS [OPTIONS]
 
 | Option | Description |
 |:--|:--|
-| `--node VALUE` | Node to go through (default: the node holding the backup). |
+| `-n`, `--node VALUE` | Node to go through (default: the node holding the backup). |
 | `-p`, `--profile VALUE` | Profile to use. |

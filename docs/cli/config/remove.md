@@ -23,4 +23,4 @@ pvecli config remove [NAME] [OPTIONS]
 
 | Option | Description |
 |:--|:--|
-| `-al`, `--all` | Remove all profiles. |
+| `-a`, `--all` | Remove all profiles. |

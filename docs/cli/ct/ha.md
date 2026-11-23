@@ -28,9 +28,9 @@ pvecli ct ha status [CTIDS] [OPTIONS]
 | Option | Description |
 |:--|:--|
 | `-p`, `--profile VALUE` | Profile to use. |
-| `--tag VALUE` | Target the guests carrying this tag. |
-| `--pool VALUE` | Target the guests of this resource pool. |
-| `--node VALUE` | Target the guests currently on this node. |
+| `-tg`, `--tag VALUE` | Target the guests carrying this tag. |
+| `-pl`, `--pool VALUE` | Target the guests of this resource pool. |
+| `-n`, `--node VALUE` | Target the guests currently on this node. |
 
 ## add
 
@@ -51,13 +51,13 @@ pvecli ct ha add [CTIDS] [OPTIONS]
 | Option | Description |
 |:--|:--|
 | `-p`, `--profile VALUE` | Profile to use. |
-| `--tag VALUE` | Target the guests carrying this tag. |
-| `--pool VALUE` | Target the guests of this resource pool. |
-| `--node VALUE` | Target the guests currently on this node. |
+| `-tg`, `--tag VALUE` | Target the guests carrying this tag. |
+| `-pl`, `--pool VALUE` | Target the guests of this resource pool. |
+| `-n`, `--node VALUE` | Target the guests currently on this node. |
 | `-g`, `--group VALUE` | HA group (clusters still using groups). |
-| `-n`, `--nodes VALUE` | Preferred nodes '<node>[:<priority>],...' (clusters using HA rules, PVE 9). '' drops the pin. |
+| `-ns`, `--nodes VALUE` | Preferred nodes '<node>[:<priority>],...' (clusters using HA rules, PVE 9). '' drops the pin. |
 | `--strict` / `--no-strict` | With --nodes: restrict to those nodes instead of preferring them. |
-| `-s`, `--state VALUE` | Initial state: started\|stopped\|enabled\|disabled\|ignored. |
+| `-st`, `--state VALUE` | Initial state: started\|stopped\|enabled\|disabled\|ignored. |
 | `-mr`, `--max-restart N` | Max restart attempts. |
 | `-mo`, `--max-relocate N` | Max relocate attempts. |
 | `-c`, `--comment VALUE` | Comment. |
@@ -82,13 +82,13 @@ pvecli ct ha set [CTIDS] [OPTIONS]
 | Option | Description |
 |:--|:--|
 | `-p`, `--profile VALUE` | Profile to use. |
-| `--tag VALUE` | Target the guests carrying this tag. |
-| `--pool VALUE` | Target the guests of this resource pool. |
-| `--node VALUE` | Target the guests currently on this node. |
+| `-tg`, `--tag VALUE` | Target the guests carrying this tag. |
+| `-pl`, `--pool VALUE` | Target the guests of this resource pool. |
+| `-n`, `--node VALUE` | Target the guests currently on this node. |
 | `-y`, `--yes` | Skip confirmation. |
-| `-s`, `--state VALUE` | State: started\|stopped\|enabled\|disabled\|ignored. |
+| `-st`, `--state VALUE` | State: started\|stopped\|enabled\|disabled\|ignored. |
 | `-g`, `--group VALUE` | HA group (clusters still using groups). |
-| `-n`, `--nodes VALUE` | Preferred nodes '<node>[:<priority>],...' (clusters using HA rules, PVE 9). '' drops the pin. |
+| `-ns`, `--nodes VALUE` | Preferred nodes '<node>[:<priority>],...' (clusters using HA rules, PVE 9). '' drops the pin. |
 | `--strict` / `--no-strict` | With --nodes: restrict to those nodes instead of preferring them. |
 | `-mr`, `--max-restart N` | Max restart attempts. |
 | `-mo`, `--max-relocate N` | Max relocate attempts. |
@@ -113,7 +113,7 @@ pvecli ct ha remove [CTIDS] [OPTIONS]
 | Option | Description |
 |:--|:--|
 | `-p`, `--profile VALUE` | Profile to use. |
-| `--tag VALUE` | Target the guests carrying this tag. |
-| `--pool VALUE` | Target the guests of this resource pool. |
-| `--node VALUE` | Target the guests currently on this node. |
+| `-tg`, `--tag VALUE` | Target the guests carrying this tag. |
+| `-pl`, `--pool VALUE` | Target the guests of this resource pool. |
+| `-n`, `--node VALUE` | Target the guests currently on this node. |
 | `-y`, `--yes` | Skip confirmation. |

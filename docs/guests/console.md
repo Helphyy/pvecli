@@ -42,7 +42,7 @@ pvecli vm ssh 810 -u debian -p prod
 Connecting to debian@10.0.0.24...
 ```
 
-`-c` runs one command instead of a shell. `-i` gives the private key, `-P` the port. `-j` jumps through the node the profile connects to, for VMs on a network your machine does not reach. The user, port and key default to the `ssh_user` (else `root`), `ssh_port` and `ssh_key` of the profile (see [Configuration file](../reference/config-file.md)).
+`-cm` runs one command instead of a shell. `-i` gives the private key, `-P` the port. `-j` jumps through the node the profile connects to, for VMs on a network your machine does not reach. The user, port and key default to the `ssh_user` (else `root`), `ssh_port` and `ssh_key` of the profile (see [Configuration file](../reference/config-file.md)).
 
 pvecli passes `StrictHostKeyChecking=no` and `UserKnownHostsFile=/dev/null` to `ssh`: the host key of the guest is neither checked nor saved in your `known_hosts`, and `ssh` prints a `Permanently added` warning at each connection.
 
@@ -55,7 +55,7 @@ Without a guest agent, pvecli cannot find the address and refuses:
 [ct ssh](../cli/ct/ssh.md) reads the container's address from Proxmox VE, no agent needed, and takes the same options. The container must run an SSH server:
 
 ```bash
-pvecli ct ssh 812 -c hostname -p prod
+pvecli ct ssh 812 -cm hostname -p prod
 ```
 
 ```text
@@ -72,7 +72,7 @@ dns-02
 pvecli vm rdp 815 -u Administrator -p prod
 ```
 
-`-f` opens it full screen, `-r 1920x1080` sets a fixed resolution, `-m ~/Documents` shares a local folder (FreeRDP and rdesktop only), `-j` goes through an SSH tunnel to the node. The user and port default to `rdp_user` and `rdp_port` of the profile.
+`-fs` opens it full screen, `-r 1920x1080` sets a fixed resolution, `-mt ~/Documents` shares a local folder (FreeRDP and rdesktop only), `-j` goes through an SSH tunnel to the node. The user and port default to `rdp_user` and `rdp_port` of the profile.
 
 ## Run a command in VMs
 
@@ -80,7 +80,7 @@ pvecli vm rdp 815 -u Administrator -p prod
 
 --8<-- "screens/guests-vm-exec.html"
 
-- The command runs in `sh -c` on Linux, `cmd /c` on Windows; `-s bash` or `-s powershell` changes that.
+- The command runs in `sh -c` on Linux, `cmd /c` on Windows; `-sh bash` or `-sh powershell` changes that.
 - pvecli waits 30 seconds for the command to end (`-t` to change).
 - With several VMs, each output gets a header and the summary counts the failures. `--tag`, `--pool` and `--node` select the VMs, as in [Start, stop and reboot guests](power.md).
 - The exit code is 1 when the command fails in at least one VM.

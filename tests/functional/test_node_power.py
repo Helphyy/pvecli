@@ -423,7 +423,7 @@ def ssh(monkeypatch: pytest.MonkeyPatch) -> list[list[str]]:
 
 
 def test_ssh_options_are_passed(cli, cluster, ssh):
-    r = cli("node", "ssh", "pve-lab1", "-u", "admin", "-P", "2222", "-i", "/k", "-c", "uptime", "-p", "p1")
+    r = cli("node", "ssh", "pve-lab1", "-u", "admin", "-P", "2222", "-i", "/k", "-cm", "uptime", "-p", "p1")
     assert r.exit_code == 0
     [args] = ssh
     assert args[0] == "ssh"

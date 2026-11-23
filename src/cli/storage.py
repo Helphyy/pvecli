@@ -197,22 +197,22 @@ def _scan_key(scan_type: str, entry: dict) -> str:
 @async_to_sync
 async def add_storage(
     storage_id: str = typer.Argument(None, help="Storage ID to create"),
-    storage_type: str = typer.Option(None, "--type", "-t", help=f"Type: {', '.join(_STORAGE_TYPES)}"),
+    storage_type: str = typer.Option(None, "--type", "-ty", help=f"Type: {', '.join(_STORAGE_TYPES)}"),
     server: str = typer.Option(None, "--server", help="Server for nfs, cifs, pbs"),
     export: str = typer.Option(None, "--export", help="NFS export path"),
     share: str = typer.Option(None, "--share", help="CIFS share name"),
     portal: str = typer.Option(None, "--portal", help="iSCSI portal"),
-    target: str = typer.Option(None, "--target", help="iSCSI target"),
+    target: str = typer.Option(None, "--target", "-ta", help="iSCSI target"),
     datastore: str = typer.Option(None, "--datastore", help="PBS datastore"),
     fingerprint: str = typer.Option(None, "--fingerprint", help="TLS fingerprint of the PBS server (self-signed certificates)"),
     monhost: str = typer.Option(None, "--monhost", help="Ceph monitors, comma separated"),
-    ceph_pool: str = typer.Option(None, "--pool", help="Ceph RBD pool"),
+    ceph_pool: str = typer.Option(None, "--pool", "-pl", help="Ceph RBD pool"),
     fs_name: str = typer.Option(None, "--fs-name", help="CephFS filesystem name"),
     username: str = typer.Option(None, "--username", help="User name: Ceph client id (default admin), CIFS user, or PBS user"),
     keyring_file: str = typer.Option(None, "--keyring-file", help="Path to the Ceph keyring file (never pass the key on the command line)"),
-    password_env: str = typer.Option(None, "--password-env", help="Env var holding the CIFS or PBS password"),
-    content: str = typer.Option(None, "--content", "-c", help="Content types, comma separated"),
-    nodes: str = typer.Option(None, "--nodes", "-n", help="Restrict to these nodes, comma separated"),
+    password_env: str = typer.Option(None, "--password-env", "-pe", help="Env var holding the CIFS or PBS password"),
+    content: str = typer.Option(None, "--content", "-cn", help="Content types, comma separated"),
+    nodes: str = typer.Option(None, "--nodes", "-ns", help="Restrict to these nodes, comma separated"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
@@ -968,7 +968,7 @@ async def list_content(
     node: str = typer.Argument(None, help="Node name"),
     storage: str = typer.Argument(None, help="Storage ID"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
-    content_type: str = typer.Option(None, "--type", "-t", help="Filter by content type"),
+    content_type: str = typer.Option(None, "--type", "-ty", help="Filter by content type"),
 ) -> None:
     """List storage content."""
     config_manager = ConfigManager()
@@ -1020,8 +1020,8 @@ async def list_content(
 async def add_content(
     node: str = typer.Argument(None, help="Node name"),
     storage: str = typer.Argument(None, help="Storage ID"),
-    source_file: str = typer.Option(None, "--source-file", "-s", help="Path to file to upload"),
-    content_type: str = typer.Option(None, "--type", "-t", help="Content type: iso, vztmpl, or import"),
+    source_file: str = typer.Option(None, "--source-file", "-sf", help="Path to file to upload"),
+    content_type: str = typer.Option(None, "--type", "-ty", help="Content type: iso, vztmpl, or import"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ) -> None:
@@ -1122,14 +1122,14 @@ async def add_content(
 async def download_content(
     node: str = typer.Argument(None, help="Node name"),
     storage: str = typer.Argument(None, help="Storage ID"),
-    url: str = typer.Option(None, "--url", "-u", help="URL to download from"),
-    filename: str = typer.Option(None, "--filename", "-f", help="Target filename (default: extracted from URL)"),
-    content_type: str = typer.Option(None, "--type", "-t", help="Content type: iso, vztmpl or import"),
-    checksum: str = typer.Option(None, "--checksum", "-c", help="Expected checksum"),
+    url: str = typer.Option(None, "--url", "-ur", help="URL to download from"),
+    filename: str = typer.Option(None, "--filename", "-fn", help="Target filename (default: extracted from URL)"),
+    content_type: str = typer.Option(None, "--type", "-ty", help="Content type: iso, vztmpl or import"),
+    checksum: str = typer.Option(None, "--checksum", "-cs", help="Expected checksum"),
     checksum_algorithm: str | None = typer.Option(
         None, "--checksum-algorithm", "-ca", help="Checksum algorithm (md5, sha1, sha256, sha512)"
     ),
-    background: bool = typer.Option(False, "--background", "-b", help="Start download and return immediately"),
+    background: bool = typer.Option(False, "--background", "-bg", help="Start download and return immediately"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ) -> None:

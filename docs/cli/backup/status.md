@@ -20,10 +20,10 @@ pvecli backup status [OPTIONS]
 
 | Option | Description |
 |:--|:--|
-| `--older-than VALUE` | Only guests whose last backup is older (2d, 12h, 1w) or missing. |
+| `-ol`, `--older-than VALUE` | Only guests whose last backup is older (2d, 12h, 1w) or missing. |
 | `--failed` | Only guests whose last backup run failed. |
 | `-p`, `--profile VALUE` | Profile(s): name, list, pattern ('client-*') or @group. |
-| `--json` | Output raw JSON to stdout (no colors, no tables). |
+| `-js`, `--json` | Output raw JSON to stdout (no colors, no tables). |
 
 ## Examples
 

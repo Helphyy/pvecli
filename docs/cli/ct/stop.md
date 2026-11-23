@@ -24,8 +24,8 @@ pvecli ct stop [CTIDS] [OPTIONS]
 | Option | Description |
 |:--|:--|
 | `-p`, `--profile VALUE` | Profile to use. |
-| `--tag VALUE` | Target the guests carrying this tag. |
-| `--pool VALUE` | Target the guests of this resource pool. |
-| `--node VALUE` | Target the guests currently on this node. |
+| `-tg`, `--tag VALUE` | Target the guests carrying this tag. |
+| `-pl`, `--pool VALUE` | Target the guests of this resource pool. |
+| `-n`, `--node VALUE` | Target the guests currently on this node. |
 | `-t`, `--timeout N` | Timeout in seconds. |
 | `-y`, `--yes` | Skip confirmation. |

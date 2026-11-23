@@ -23,12 +23,12 @@ pvecli snapshot add NAME [OPTIONS]
 
 | Option | Description |
 |:--|:--|
-| `--vms VALUE` | Guest IDs: 100,101 or 100-110. |
-| `--tag VALUE` | Guests carrying this tag. |
-| `--pool VALUE` | Guests of this resource pool. |
-| `--node VALUE` | Guests currently on this node. |
-| `--all` | Every guest (when no other filter is given). |
-| `-d`, `--description VALUE` | Snapshot description. |
+| `-vm`, `--vms VALUE` | Guest IDs: 100,101 or 100-110. |
+| `-tg`, `--tag VALUE` | Guests carrying this tag. |
+| `-pl`, `--pool VALUE` | Guests of this resource pool. |
+| `-n`, `--node VALUE` | Guests currently on this node. |
+| `-a`, `--all` | Every guest (when no other filter is given). |
+| `-de`, `--description VALUE` | Snapshot description. |
 | `--vmstate` | Include the RAM of running VMs. |
 | `-y`, `--yes` | Skip confirmation. |
 | `-p`, `--profile VALUE` | Profile(s): name, list, pattern ('client-*') or @group. |

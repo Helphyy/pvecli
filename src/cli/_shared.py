@@ -234,9 +234,9 @@ async def validate_resources(
 
 # Guest filters shared by every multi-target vm/ct command. The node filter
 # is bound to `node_filter`: most commands use `node` as a local variable.
-TAG_FILTER = typer.Option(None, "--tag", help="Target the guests carrying this tag")
-POOL_FILTER = typer.Option(None, "--pool", help="Target the guests of this resource pool")
-NODE_FILTER = typer.Option(None, "--node", help="Target the guests currently on this node")
+TAG_FILTER = typer.Option(None, "--tag", "-tg", help="Target the guests carrying this tag")
+POOL_FILTER = typer.Option(None, "--pool", "-pl", help="Target the guests of this resource pool")
+NODE_FILTER = typer.Option(None, "--node", "-n", help="Target the guests currently on this node")
 
 
 def has_filters(tag: str | None, pool: str | None, node_filter: str | None) -> bool:

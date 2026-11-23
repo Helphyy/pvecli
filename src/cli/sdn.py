@@ -892,14 +892,14 @@ async def sdn_discard(
 @async_to_sync
 async def sdn_zone_add(
     zone: str = typer.Argument(None, help="Zone name (8 characters max)"),
-    zone_type: str = typer.Option(None, "--type", "-t", help=f"Type: {', '.join(_ZONE_TYPES)}"),
-    bridge: str = typer.Option(None, "--bridge", "-b", help="Bridge, for vlan and qinq zones"),
+    zone_type: str = typer.Option(None, "--type", "-ty", help=f"Type: {', '.join(_ZONE_TYPES)}"),
+    bridge: str = typer.Option(None, "--bridge", "-br", help="Bridge, for vlan and qinq zones"),
     peers: str = typer.Option(None, "--peers", help="Peer IPs, for vxlan zones, comma separated"),
-    tag: int = typer.Option(None, "--tag", help="Service VLAN tag, for qinq zones"),
+    tag: int = typer.Option(None, "--tag", "-tg", help="Service VLAN tag, for qinq zones"),
     controller: str = typer.Option(None, "--controller", help="Controller, for evpn zones"),
     vrf_vxlan: int = typer.Option(None, "--vrf-vxlan", help="VRF VNI, for evpn zones"),
     mtu: int = typer.Option(None, "--mtu", help="MTU of the vnet bridges"),
-    nodes: str = typer.Option(None, "--nodes", "-n", help="Restrict the zone to these nodes"),
+    nodes: str = typer.Option(None, "--nodes", "-ns", help="Restrict the zone to these nodes"),
     ipam: str = typer.Option(None, "--ipam", help="IPAM to use (default pve)"),
     dhcp: bool = typer.Option(False, "--dhcp", help="Serve DHCP on this zone through dnsmasq (technology preview)"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
@@ -1068,7 +1068,7 @@ async def sdn_zone_set(
     zone: str = typer.Argument(None, help="Zone to modify"),
     dhcp: bool = typer.Option(None, "--dhcp/--no-dhcp", help="Enable or disable the dnsmasq DHCP backend"),
     mtu: int = typer.Option(None, "--mtu", help="MTU of the vnet bridges"),
-    nodes: str = typer.Option(None, "--nodes", "-n", help="Restrict the zone to these nodes"),
+    nodes: str = typer.Option(None, "--nodes", "-ns", help="Restrict the zone to these nodes"),
     peers: str = typer.Option(None, "--peers", help="Peer IPs for a vxlan zone"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
@@ -1204,8 +1204,8 @@ async def sdn_zone_remove(
 async def sdn_vnet_add(
     vnet: str = typer.Argument(None, help="Vnet name (8 characters max)"),
     zone: str = typer.Option(None, "--zone", "-z", help="Zone this vnet belongs to"),
-    tag: int = typer.Option(None, "--tag", help="VLAN tag or VXLAN VNI"),
-    alias: str = typer.Option(None, "--alias", "-a", help="Free description"),
+    tag: int = typer.Option(None, "--tag", "-tg", help="VLAN tag or VXLAN VNI"),
+    alias: str = typer.Option(None, "--alias", "-as", help="Free description"),
     vlanaware: bool = typer.Option(False, "--vlanaware", help="Let guests tag their own VLANs"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
@@ -1399,7 +1399,7 @@ async def sdn_vnet_remove(
 @async_to_sync
 async def sdn_subnet_remove(
     cidr: str = typer.Argument(None, help="Subnet to detach, in CIDR form"),
-    vnet: str = typer.Option(None, "--vnet", "-v", help="Vnet the subnet belongs to"),
+    vnet: str = typer.Option(None, "--vnet", "-vn", help="Vnet the subnet belongs to"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
@@ -1468,8 +1468,8 @@ async def sdn_subnet_remove(
 @async_to_sync
 async def sdn_subnet_add(
     cidr: str = typer.Argument(None, help="Subnet in CIDR form, e.g. 10.0.30.0/24"),
-    vnet: str = typer.Option(None, "--vnet", "-v", help="Vnet to attach the subnet to"),
-    gateway: str = typer.Option(None, "--gateway", "-g", help="Gateway address"),
+    vnet: str = typer.Option(None, "--vnet", "-vn", help="Vnet to attach the subnet to"),
+    gateway: str = typer.Option(None, "--gateway", "-gw", help="Gateway address"),
     snat: bool = typer.Option(False, "--snat", help="Masquerade outgoing traffic"),
     dhcp_range: str = typer.Option(None, "--dhcp-range", help="DHCP range as start-ip:end-ip"),
     dhcp_dns: str = typer.Option(None, "--dhcp-dns", help="DNS server handed out by DHCP"),

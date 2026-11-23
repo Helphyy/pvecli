@@ -29,7 +29,7 @@ pvecli storage content list [NODE] [STORAGE] [OPTIONS]
 | Option | Description |
 |:--|:--|
 | `-p`, `--profile VALUE` | Profile to use. |
-| `-t`, `--type VALUE` | Filter by content type. |
+| `-ty`, `--type VALUE` | Filter by content type. |
 
 ## add
 
@@ -50,8 +50,8 @@ pvecli storage content add [NODE] [STORAGE] [OPTIONS]
 
 | Option | Description |
 |:--|:--|
-| `-s`, `--source-file VALUE` | Path to file to upload. |
-| `-t`, `--type VALUE` | Content type: iso, vztmpl, or import. |
+| `-sf`, `--source-file VALUE` | Path to file to upload. |
+| `-ty`, `--type VALUE` | Content type: iso, vztmpl, or import. |
 | `-p`, `--profile VALUE` | Profile to use. |
 | `-y`, `--yes` | Skip confirmation. |
 
@@ -74,12 +74,12 @@ pvecli storage content download [NODE] [STORAGE] [OPTIONS]
 
 | Option | Description |
 |:--|:--|
-| `-u`, `--url VALUE` | URL to download from. |
-| `-f`, `--filename VALUE` | Target filename (default: extracted from URL). |
-| `-t`, `--type VALUE` | Content type: iso, vztmpl or import. |
-| `-c`, `--checksum VALUE` | Expected checksum. |
+| `-ur`, `--url VALUE` | URL to download from. |
+| `-fn`, `--filename VALUE` | Target filename (default: extracted from URL). |
+| `-ty`, `--type VALUE` | Content type: iso, vztmpl or import. |
+| `-cs`, `--checksum VALUE` | Expected checksum. |
 | `-ca`, `--checksum-algorithm VALUE` | Checksum algorithm (md5, sha1, sha256, sha512). |
-| `-b`, `--background` | Start download and return immediately. |
+| `-bg`, `--background` | Start download and return immediately. |
 | `-p`, `--profile VALUE` | Profile to use. |
 | `-y`, `--yes` | Skip confirmation. |
 

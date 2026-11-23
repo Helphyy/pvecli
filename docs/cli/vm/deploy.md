@@ -27,26 +27,26 @@ pvecli vm deploy TEMPLATE NAME [OPTIONS]
 
 | Option | Default | Description |
 |:--|:--|:--|
-| `--vmid N` |  | ID of the new VM (default: next free). |
-| `--full` |  | Full clone instead of a linked clone. |
-| `--storage VALUE` |  | Target storage (implies --full). |
-| `--cores N` |  | vCPUs. |
-| `--memory VALUE` |  | Memory: 2G, 4096M. |
-| `--disk-size VALUE` |  | Grow the boot disk to this size (20G). |
-| `--tags VALUE` |  | Tags, comma separated. |
-| `--pool VALUE` |  | Resource pool. |
-| `--user VALUE` |  | Cloud-init user. |
-| `--password-env VALUE` |  | Env var holding the user password. |
-| `--ssh-key VALUE` |  | Public key file or key (repeatable). |
-| `--ip VALUE` |  | IPv4 CIDR (10.0.0.21/24) or dhcp. |
+| `-id`, `--vmid N` |  | ID of the new VM (default: next free). |
+| `-fu`, `--full` |  | Full clone instead of a linked clone. |
+| `-s`, `--storage VALUE` |  | Target storage (implies --full). |
+| `-co`, `--cores N` |  | vCPUs. |
+| `-me`, `--memory VALUE` |  | Memory: 2G, 4096M. |
+| `-dz`, `--disk-size VALUE` |  | Grow the boot disk to this size (20G). |
+| `-tgs`, `--tags VALUE` |  | Tags, comma separated. |
+| `-pl`, `--pool VALUE` |  | Resource pool. |
+| `-u`, `--user VALUE` |  | Cloud-init user. |
+| `-pe`, `--password-env VALUE` |  | Env var holding the user password. |
+| `-sk`, `--ssh-key VALUE` |  | Public key file or key (repeatable). |
+| `-ip`, `--ip VALUE` |  | IPv4 CIDR (10.0.0.21/24) or dhcp. |
 | `--gw VALUE` |  | IPv4 gateway. |
-| `--ip6 VALUE` |  | IPv6 CIDR, dhcp or auto. |
+| `-ip6`, `--ip6 VALUE` |  | IPv6 CIDR, dhcp or auto. |
 | `--gw6 VALUE` |  | IPv6 gateway. |
 | `--dns VALUE` |  | DNS server(s). |
-| `--search-domain VALUE` |  | DNS search domain. |
+| `-sd`, `--search-domain VALUE` |  | DNS search domain. |
 | `--upgrade` / `--no-upgrade` |  | Upgrade packages at first boot. |
 | `--start` / `--no-start` | `--start` | Start the VM once configured. |
-| `--wait-ip N` | `0` | Seconds to wait for its IP from the guest agent (0: don't). |
+| `-wi`, `--wait-ip N` | `0` | Seconds to wait for its IP from the guest agent (0: don't). |
 | `-p`, `--profile VALUE` |  | Profile to use. |
 
 ## Examples

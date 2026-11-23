@@ -27,10 +27,10 @@ pvecli deploy FILE [OPTIONS]
 
 | Option | Default | Description |
 |:--|:--|:--|
-| `--dry-run` |  | Check everything and show the plan, create nothing. |
+| `-dr`, `--dry-run` |  | Check everything and show the plan, create nothing. |
 | `-y`, `--yes` |  | Skip confirmation. |
 | `--parallel N` | `4` | Guests created at the same time. |
-| `--wait-ip N` | `0` | Seconds to wait for each guest's IPv4 address (0: don't). |
+| `-wi`, `--wait-ip N` | `0` | Seconds to wait for each guest's IPv4 address (0: don't). |
 | `-p`, `--profile VALUE` |  | Profile of the guests that name none in the file. |
 
 ## Examples

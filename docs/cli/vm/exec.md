@@ -28,10 +28,10 @@ pvecli vm exec [VMIDS] [OPTIONS]
 | `-p`, `--profile VALUE` |  | Profile to use. |
 | `-t`, `--timeout N` | `30` | Timeout in seconds. |
 | `-q`, `--quiet` |  | Suppress stderr output. |
-| `-s`, `--shell VALUE` |  | Shell override (default: sh on Linux, cmd on Windows). One of `sh` \| `bash` \| `cmd` \| `powershell`. |
-| `--tag VALUE` |  | Target the guests carrying this tag. |
-| `--pool VALUE` |  | Target the guests of this resource pool. |
-| `--node VALUE` |  | Target the guests currently on this node. |
+| `-sh`, `--shell VALUE` |  | Shell override (default: sh on Linux, cmd on Windows). One of `sh` \| `bash` \| `cmd` \| `powershell`. |
+| `-tg`, `--tag VALUE` |  | Target the guests carrying this tag. |
+| `-pl`, `--pool VALUE` |  | Target the guests of this resource pool. |
+| `-n`, `--node VALUE` |  | Target the guests currently on this node. |
 | `-y`, `--yes` |  | Skip the confirmation asked when targeting by filter. |
 
 ## Examples
@@ -43,7 +43,7 @@ pvecli vm exec 102 -t 60 -- echo hello
 pvecli vm exec 102,103,104 -- apt install chrony -y
 pvecli vm exec 10{2..5} -- systemctl status chrony
 pvecli vm exec 102 -- 'apt install chrony -y; systemctl restart chrony'
-pvecli vm exec 106 -s powershell -- Get-Service
+pvecli vm exec 106 -sh powershell -- Get-Service
 pvecli vm exec --tag debian -- apt update
 pvecli vm exec --pool PROD -p 'client-*' -- uptime
 ```

@@ -24,9 +24,9 @@ pvecli vm vnc [VMIDS] [OPTIONS]
 | Option | Description |
 |:--|:--|
 | `-b`, `--no-background` | Run VNC server in foreground (blocking, single VM only). |
-| `-s`, `--split` | Open each console in a separate browser window instead of tabs. |
+| `-sp`, `--split` | Open each console in a separate browser window instead of tabs. |
 | `-p`, `--profile VALUE` | Profile to use. |
-| `--tag VALUE` | Target the guests carrying this tag. |
-| `--pool VALUE` | Target the guests of this resource pool. |
-| `--node VALUE` | Target the guests currently on this node. |
+| `-tg`, `--tag VALUE` | Target the guests carrying this tag. |
+| `-pl`, `--pool VALUE` | Target the guests of this resource pool. |
+| `-n`, `--node VALUE` | Target the guests currently on this node. |
 | `-y`, `--yes` | Skip confirmation. |

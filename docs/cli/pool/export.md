@@ -17,5 +17,5 @@ pvecli pool export [OPTIONS]
 
 | Option | Default | Description |
 |:--|:--|:--|
-| `-o`, `--output VALUE` | `pools.json` | Output file path. |
+| `-ou`, `--output VALUE` | `pools.json` | Output file path. |
 | `-p`, `--profile VALUE` |  | Profile to use. |

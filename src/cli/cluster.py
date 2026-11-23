@@ -1002,7 +1002,7 @@ async def cluster_status(
 async def cluster_resources(
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
     resource_type: str = typer.Option(
-        None, "--type", "-t", help="Filter by type (vm, ct, node, storage)"
+        None, "--type", "-ty", help="Filter by type (vm, ct, node, storage)"
     ),
     json_output: bool = JSON_OPTION,
 ) -> None:
@@ -1182,7 +1182,7 @@ def _print_resources_table(resources: list[dict], title: str) -> None:
 async def cluster_usage(
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
     no_storage: bool = typer.Option(False, "--no-storage", help="Skip the storage scan (faster)"),
-    storage: str = typer.Option(None, "--storage", help="Only scan this storage for guest disks"),
+    storage: str = typer.Option(None, "--storage", "-s", help="Only scan this storage for guest disks"),
     json_output: bool = JSON_OPTION,
 ) -> None:
     """Show cluster usage: node load, guest workload, overhead, pools, storage."""
@@ -1212,7 +1212,7 @@ async def cluster_usage(
 @async_to_sync
 async def cluster_tasks(
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
-    running: bool = typer.Option(False, "--running", "-r", help="Only show running tasks"),
+    running: bool = typer.Option(False, "--running", "-rn", help="Only show running tasks"),
     limit: int = typer.Option(50, "--limit", "-l", help="Maximum number of tasks"),
 ) -> None:
     """Show cluster tasks."""
@@ -2047,10 +2047,10 @@ async def _bulk_missed(
 
 
 _GUEST_FILTERS = {
-    "vms": typer.Option(None, "--vms", help="Guest IDs: 100,101 or 100-110"),
-    "tag": typer.Option(None, "--tag", help="Only guests carrying this tag"),
-    "pool": typer.Option(None, "--pool", help="Only guests of this resource pool"),
-    "node": typer.Option(None, "--node", help="Only guests currently on this node"),
+    "vms": typer.Option(None, "--vms", "-vm", help="Guest IDs: 100,101 or 100-110"),
+    "tag": typer.Option(None, "--tag", "-tg", help="Only guests carrying this tag"),
+    "pool": typer.Option(None, "--pool", "-pl", help="Only guests of this resource pool"),
+    "node": typer.Option(None, "--node", "-n", help="Only guests currently on this node"),
 }
 
 
@@ -2061,7 +2061,7 @@ async def guests_start(
     tag: str = _GUEST_FILTERS["tag"],
     pool: str = _GUEST_FILTERS["pool"],
     node: str = _GUEST_FILTERS["node"],
-    max_workers: int = typer.Option(None, "--max-workers", help="Guests handled at the same time"),
+    max_workers: int = typer.Option(None, "--max-workers", "-mw", help="Guests handled at the same time"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
@@ -2083,7 +2083,7 @@ async def guests_shutdown(
     node: str = _GUEST_FILTERS["node"],
     timeout: int = typer.Option(None, "--timeout", "-t", help="Shutdown timeout per guest, in seconds"),
     force_stop: bool = typer.Option(False, "--force-stop", help="Hard stop guests still running after the timeout"),
-    max_workers: int = typer.Option(None, "--max-workers", help="Guests handled at the same time"),
+    max_workers: int = typer.Option(None, "--max-workers", "-mw", help="Guests handled at the same time"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
@@ -2103,7 +2103,7 @@ async def guests_suspend(
     pool: str = _GUEST_FILTERS["pool"],
     node: str = _GUEST_FILTERS["node"],
     to_disk: bool = typer.Option(False, "--to-disk", help="Hibernate to disk instead of pausing in memory"),
-    max_workers: int = typer.Option(None, "--max-workers", help="Guests handled at the same time"),
+    max_workers: int = typer.Option(None, "--max-workers", "-mw", help="Guests handled at the same time"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
@@ -2124,8 +2124,8 @@ async def guests_migrate(
     tag: str = _GUEST_FILTERS["tag"],
     pool: str = _GUEST_FILTERS["pool"],
     node: str = _GUEST_FILTERS["node"],
-    with_local_disks: bool = typer.Option(False, "--with-local-disks", help="Copy local disks during live migrations"),
-    max_workers: int = typer.Option(None, "--max-workers", help="Migrations running at the same time"),
+    with_local_disks: bool = typer.Option(False, "--with-local-disks", "-wl", help="Copy local disks during live migrations"),
+    max_workers: int = typer.Option(None, "--max-workers", "-mw", help="Migrations running at the same time"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:

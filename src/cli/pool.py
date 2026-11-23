@@ -207,7 +207,7 @@ async def pool_usage(
     poolid: str = typer.Argument(None, help="Pool ID"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
     no_storage: bool = typer.Option(False, "--no-storage", help="Skip the storage scan (faster)"),
-    storage: str = typer.Option(None, "--storage", help="Only scan this storage for guest disks"),
+    storage: str = typer.Option(None, "--storage", "-s", help="Only scan this storage for guest disks"),
     json_output: bool = JSON_OPTION,
 ) -> None:
     """Show aggregated CPU, memory and provisioned disk usage for a pool."""
@@ -255,7 +255,7 @@ async def pool_usage(
 @app.command("export")
 @async_to_sync
 async def export_pools(
-    output: str = typer.Option("pools.json", "--output", "-o", help="Output file path"),
+    output: str = typer.Option("pools.json", "--output", "-ou", help="Output file path"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """Export all pools to a JSON file."""

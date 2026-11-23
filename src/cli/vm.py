@@ -141,7 +141,7 @@ async def _select_vms(client: ProxmoxClient) -> list[int] | None:
 async def list_vms(
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
     node: str = typer.Option(None, "--node", "-n", help="Filter by node"),
-    status: str = typer.Option(None, "--status", "-s", help="Filter by status (running, stopped)"),
+    status: str = typer.Option(None, "--status", "-ss", help="Filter by status (running, stopped)"),
     order: str = typer.Option(None, "--order", "-o", help="Sort by column (moved to first position), e.g. name, node, pool, cpu, memory"),
 ) -> None:
     """List all VMs."""
@@ -1327,7 +1327,7 @@ async def shutdown_vm(
     pool: str = POOL_FILTER,
     node_filter: str = NODE_FILTER,
     timeout: int = typer.Option(60, "--timeout", "-t", help="Timeout before force stop"),
-    force: bool = typer.Option(False, "--force", help="Force stop after timeout"),
+    force: bool = typer.Option(False, "--force", "-f", help="Force stop after timeout"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ) -> None:
     """Shutdown one or more VMs gracefully."""
@@ -1805,7 +1805,7 @@ async def exec_vm_command(
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
     timeout: int = typer.Option(30, "--timeout", "-t", help="Timeout in seconds"),
     quiet: bool = typer.Option(False, "--quiet", "-q", help="Suppress stderr output"),
-    shell: ExecShell = typer.Option(None, "--shell", "-s", help="Shell override (default: sh on Linux, cmd on Windows)"),
+    shell: ExecShell = typer.Option(None, "--shell", "-sh", help="Shell override (default: sh on Linux, cmd on Windows)"),
     tag: str = TAG_FILTER,
     pool: str = POOL_FILTER,
     node_filter: str = NODE_FILTER,
@@ -1822,7 +1822,7 @@ async def exec_vm_command(
         pvecli vm exec 102,103,104 -- apt install chrony -y
         pvecli vm exec 10{2..5} -- systemctl status chrony
         pvecli vm exec 102 -- 'apt install chrony -y; systemctl restart chrony'
-        pvecli vm exec 106 -s powershell -- Get-Service
+        pvecli vm exec 106 -sh powershell -- Get-Service
         pvecli vm exec --tag debian -- apt update
         pvecli vm exec --pool PROD -p 'client-*' -- uptime
     """
@@ -1904,7 +1904,7 @@ async def exec_vm_command(
 def clone_vm(
     vmid: int = typer.Argument(None, help="Source VM ID"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
-    newid: int = typer.Option(None, "--newid", "-id", help="New VM ID (auto-assigned if not specified)"),
+    newid: int = typer.Option(None, "--newid", "-ni", help="New VM ID (auto-assigned if not specified)"),
     name: str = typer.Option(None, "--name", "-na", help="New VM name"),
     pool: str = typer.Option(None, "--pool", "-pl", help="Pool name"),
     onboot: bool = typer.Option(None, "--onboot/--no-onboot", "-ob", help="Start at boot"),
@@ -2386,9 +2386,9 @@ async def ha_add(
     pool: str = POOL_FILTER,
     node_filter: str = NODE_FILTER,
     group: str = typer.Option(None, "--group", "-g", help="HA group (clusters still using groups)"),
-    nodes: str = typer.Option(None, "--nodes", "-n", help="Preferred nodes '<node>[:<priority>],...' (clusters using HA rules, PVE 9). '' drops the pin"),
+    nodes: str = typer.Option(None, "--nodes", "-ns", help="Preferred nodes '<node>[:<priority>],...' (clusters using HA rules, PVE 9). '' drops the pin"),
     strict: bool = typer.Option(None, "--strict/--no-strict", help="With --nodes: restrict to those nodes instead of preferring them"),
-    state: str = typer.Option(None, "--state", "-s", help="Initial state: started|stopped|enabled|disabled|ignored"),
+    state: str = typer.Option(None, "--state", "-st", help="Initial state: started|stopped|enabled|disabled|ignored"),
     max_restart: int = typer.Option(None, "--max-restart", "-mr", help="Max restart attempts"),
     max_relocate: int = typer.Option(None, "--max-relocate", "-mo", help="Max relocate attempts"),
     comment: str = typer.Option(None, "--comment", "-c", help="Comment"),
@@ -2443,9 +2443,9 @@ async def ha_set(
     pool: str = POOL_FILTER,
     node_filter: str = NODE_FILTER,
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
-    state: str = typer.Option(None, "--state", "-s", help="State: started|stopped|enabled|disabled|ignored"),
+    state: str = typer.Option(None, "--state", "-st", help="State: started|stopped|enabled|disabled|ignored"),
     group: str = typer.Option(None, "--group", "-g", help="HA group (clusters still using groups)"),
-    nodes: str = typer.Option(None, "--nodes", "-n", help="Preferred nodes '<node>[:<priority>],...' (clusters using HA rules, PVE 9). '' drops the pin"),
+    nodes: str = typer.Option(None, "--nodes", "-ns", help="Preferred nodes '<node>[:<priority>],...' (clusters using HA rules, PVE 9). '' drops the pin"),
     strict: bool = typer.Option(None, "--strict/--no-strict", help="With --nodes: restrict to those nodes instead of preferring them"),
     max_restart: int = typer.Option(None, "--max-restart", "-mr", help="Max restart attempts"),
     max_relocate: int = typer.Option(None, "--max-relocate", "-mo", help="Max relocate attempts"),
@@ -2891,7 +2891,7 @@ def create_vm(
     pool: str = typer.Option(None, "--pool", "-pl", help="Pool name"),
     onboot: bool = typer.Option(None, "--onboot/--no-onboot", "-ob", help="Start at boot"),
     iso_storage: str = typer.Option(None, "--iso-storage", "-iss", help="Storage for ISO"),
-    iso: str = typer.Option(None, "--iso", "-i", help="ISO file name (from iso-storage)"),
+    iso: str = typer.Option(None, "--iso", "-iso", help="ISO file name (from iso-storage)"),
     os_type: str = typer.Option(None, "--os-type", "-ot", help="OS type: linux or windows"),
     os_version: str = typer.Option(None, "--os-version", "-ov", help="OS version (e.g., '11/2022/2025', '6.x')"),
     agent: bool = typer.Option(True, "--agent/--no-agent", "-ag", help="Enable QEMU Guest Agent"),
@@ -2909,7 +2909,7 @@ def create_vm(
     link_down: bool = typer.Option(None, "--link-down/--no-link-down", "-ld", help="Start disconnected"),
     virtio_iso_storage: str = typer.Option(None, "--virtio-iso-storage", "-vis", help="Storage for VirtIO ISO (Windows only)"),
     virtio_iso: str = typer.Option(None, "--virtio-iso", "-vi", help="VirtIO ISO file name (Windows only)"),
-    tpm_storage: str = typer.Option(None, "--tpm-storage", "-ts", help="Storage for TPM (Windows 11/2022/2025 only)"),
+    tpm_storage: str = typer.Option(None, "--tpm-storage", "-tpm", help="Storage for TPM (Windows 11/2022/2025 only)"),
     efi_storage: str = typer.Option(None, "--efi-storage", "-es", help="Storage for EFI (Windows 11/2022/2025 only)"),
 ) -> None:
     """Create a new VM interactively or with options."""
@@ -3507,7 +3507,7 @@ def create_vm(
 async def vm_vnc(
     vmids: str = typer.Argument(None, help="VM ID(s) - single, comma-separated, or range (e.g., 100, 100,101, 100-105)"),
     no_background: bool = typer.Option(False, "--no-background", "-b", help="Run VNC server in foreground (blocking, single VM only)"),
-    split: bool = typer.Option(False, "--split", "-s", help="Open each console in a separate browser window instead of tabs"),
+    split: bool = typer.Option(False, "--split", "-sp", help="Open each console in a separate browser window instead of tabs"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
     tag: str = TAG_FILTER,
     pool: str = POOL_FILTER,
@@ -3606,7 +3606,7 @@ async def vm_ssh(
     port: int = typer.Option(None, "--port", "-P", help="SSH port"),
     key: str = typer.Option(None, "--key", "-i", help="Path to SSH key"),
     jump: bool = typer.Option(False, "--jump", "-j", help="Use node as jump host"),
-    command: str = typer.Option(None, "--command", "-c", help="Execute command instead of shell"),
+    command: str = typer.Option(None, "--command", "-cm", help="Execute command instead of shell"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
     """SSH into a VM (IP resolved via QEMU Guest Agent)."""
@@ -3664,11 +3664,11 @@ async def vm_rdp(
     user: str = typer.Option(None, "--user", "-u", help="RDP user (default: the profile's, else Administrator)"),
     domain: str = typer.Option(None, "--domain", "-d", help="RDP domain"),
     port: int = typer.Option(None, "--port", "-P", help="RDP port"),
-    fullscreen: bool = typer.Option(False, "--fullscreen", "-f", help="Fullscreen mode"),
+    fullscreen: bool = typer.Option(False, "--fullscreen", "-fs", help="Fullscreen mode"),
     resolution: str = typer.Option(None, "--resolution", "-r", help="Fixed resolution, e.g. 1920x1080 (disables dynamic resize)"),
-    scale: int = typer.Option(None, "--scale", "-s", help="Desktop scale factor for HiDPI/4K, e.g. 200"),
+    scale: int = typer.Option(None, "--scale", "-sc", help="Desktop scale factor for HiDPI/4K, e.g. 200"),
     smart_sizing: bool = typer.Option(False, "--smart-sizing", "-S", help="Scale remote desktop to window size"),
-    mount: list[str] = typer.Option([], "--mount", "-m", help="Share a local folder (repeatable, e.g. -m ~/Documents)"),
+    mount: list[str] = typer.Option([], "--mount", "-mt", help="Share a local folder (repeatable, e.g. -m ~/Documents)"),
     jump: bool = typer.Option(False, "--jump", "-j", help="Use node as jump host for RDP"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
 ) -> None:
@@ -3904,7 +3904,7 @@ async def migrate_vm(
     vmid: int = typer.Argument(None, help="VM ID"),
     target: str = typer.Argument(None, help="Target node (menu when omitted)"),
     online: bool = typer.Option(None, "--online/--offline", help="Live migration (default when the VM runs)"),
-    with_local_disks: bool = typer.Option(False, "--with-local-disks", help="Copy local disks during a live migration"),
+    with_local_disks: bool = typer.Option(False, "--with-local-disks", "-wl", help="Copy local disks during a live migration"),
     target_storage: str = typer.Option(None, "--target-storage", help="Storage on the target, or a source:target mapping"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
     profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),

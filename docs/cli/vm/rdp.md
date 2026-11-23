@@ -26,10 +26,10 @@ pvecli vm rdp [VMID] [OPTIONS]
 | `-u`, `--user VALUE` |  | RDP user (default: the profile's, else Administrator). |
 | `-d`, `--domain VALUE` |  | RDP domain. |
 | `-P`, `--port N` |  | RDP port. |
-| `-f`, `--fullscreen` |  | Fullscreen mode. |
+| `-fs`, `--fullscreen` |  | Fullscreen mode. |
 | `-r`, `--resolution VALUE` |  | Fixed resolution, e.g. 1920x1080 (disables dynamic resize). |
-| `-s`, `--scale N` |  | Desktop scale factor for HiDPI/4K, e.g. 200. |
+| `-sc`, `--scale N` |  | Desktop scale factor for HiDPI/4K, e.g. 200. |
 | `-S`, `--smart-sizing` |  | Scale remote desktop to window size. |
-| `-m`, `--mount VALUE` | `[]` | Share a local folder (repeatable, e.g. -m ~/Documents). |
+| `-mt`, `--mount VALUE` | `[]` | Share a local folder (repeatable, e.g. -m ~/Documents). |
 | `-j`, `--jump` |  | Use node as jump host for RDP. |
 | `-p`, `--profile VALUE` |  | Profile to use. |
