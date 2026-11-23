@@ -48,7 +48,7 @@ pvecli node firewall enable [TARGET] [OPTIONS]
 
 | Option | Description |
 |:--|:--|
-| `-f`, `--force` | Go on even if the API would be closed to this machine (undone if it is). |
+| `-f`, `--force` | Go on even if the API would be closed to this machine. |
 | `-p`, `--profile VALUE` | Profile to use. |
 | `-y`, `--yes` | Do not ask for confirmation. |
 
@@ -93,7 +93,7 @@ pvecli node firewall set [TARGET] [SETTINGS] [OPTIONS]
 | Option | Description |
 |:--|:--|
 | `--clear VALUE` | Options back to their default, comma separated. |
-| `-f`, `--force` | Go on even if the API would be closed to this machine (undone if it is). |
+| `-f`, `--force` | Go on even if the API would be closed to this machine. |
 | `-p`, `--profile VALUE` | Profile to use. |
 | `-y`, `--yes` | Do not ask for confirmation. |
 

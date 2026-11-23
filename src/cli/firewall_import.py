@@ -35,8 +35,10 @@ from .firewall import (
     _vnets,
     cluster_scope,
     describe_rule,
+    effective,
     group_scope,
     guest_scope,
+    is_on,
     node_scope,
     read_rules,
     vnet_scope,
@@ -130,10 +132,23 @@ def _check_rule(label: str, rule: Any) -> None:
         fail(f"{label}: unknown key(s) {', '.join(sorted(unknown))}")
 
 
+def _flag(value: Any) -> str:
+    """A yes/no as Proxmox stores it: YAML writes true, yes, on; the API 1."""
+    return "1" if str(value).lower() in ("1", "true", "yes", "on") else "0"
+
+
+def norm_value(key: str, value: Any, kinds: dict[str, Any]) -> str:
+    return _flag(value) if kinds.get(key) is bool else str(value)
+
+
 def norm_rule(rule: dict[str, Any]) -> dict[str, Any]:
-    """A rule as compared: configuration only, enable explicit, values as text."""
-    out = {k: str(v) for k, v in rule.items() if k in _RULE_KEYS and v not in (None, "")}
-    out["enable"] = "1" if str(rule.get("enable", 1)) in ("1", "True", "true") else "0"
+    """A rule as compared: configuration only, enable explicit, values as text.
+
+    `log: nolog` is no log at all, as when the key is left out.
+    """
+    out = {k: str(v) for k, v in rule.items()
+           if k in _RULE_KEYS and v not in (None, "") and not (k == "log" and v == "nolog")}
+    out["enable"] = _flag(rule.get("enable", 1))
     return out
 
 
@@ -165,39 +180,51 @@ def _is_ip(text: str) -> bool:
 
 
 def check_refs(doc: dict[str, Any], dc_now: dict[str, set[str]]) -> None:
-    """Every alias and IP set a rule of the file names exists once it is imported.
+    """Every object the file names exists once it is imported.
 
-    dc_now: the aliases and IP sets of the datacenter as they are, used when
-    the file leaves the datacenter out.
+    Rules name aliases and IP sets (source, dest) and security groups (a
+    group rule); IP set entries name aliases. dc_now: the aliases, IP sets
+    and groups of the datacenter as they are, when the file leaves it out.
     """
     dc = doc.get("datacenter")
     if dc is not None:
         dc_objects = {"alias": {a["name"] for a in (dc or {}).get("aliases") or []},
-                      "ipset": {s["name"] for s in (dc or {}).get("ipsets") or []}}
+                      "ipset": {s["name"] for s in (dc or {}).get("ipsets") or []},
+                      "group": {g["name"] for g in (dc or {}).get("groups") or []}}
     else:
         dc_objects = dc_now
     problems = []
 
+    def exists(what: str, name: str, own: dict[str, set[str]] | None) -> bool:
+        if name.startswith("dc/"):
+            return name[3:] in dc_objects[what]
+        if name.startswith("guest/"):
+            return own is not None and name[6:] in own[what]
+        return name in dc_objects[what] or (own is not None and name in own[what])
+
     def check(label: str, rules: Any, own: dict[str, set[str]] | None) -> None:
         for i, r in enumerate(rules or []):
+            if r.get("type") == "group":
+                if r.get("action") not in dc_objects["group"]:
+                    problems.append(f"{label}, rule {i}: no security group '{r.get('action')}'")
+                continue
             for fld in ("source", "dest"):
                 for token in str(r.get(fld) or "").split(","):
                     named = _names(token) if token.strip() else None
-                    if not named:
-                        continue
-                    what, name = named
-                    if name.startswith("dc/"):
-                        ok = name[3:] in dc_objects[what]
-                    elif name.startswith("guest/"):
-                        ok = own is not None and name[6:] in own[what]
-                    else:
-                        ok = name in dc_objects[what] or (own is not None and name in own[what])
-                    if not ok:
-                        problems.append(f"{label}, rule {i} ({fld}): no {'IP set' if what == 'ipset' else 'alias'} "
-                                        f"'{name.split('/')[-1]}'")
+                    if named and not exists(named[0], named[1], own):
+                        problems.append(f"{label}, rule {i} ({fld}): no {'IP set' if named[0] == 'ipset' else 'alias'} "
+                                        f"'{named[1].split('/')[-1]}'")
+
+    def check_sets(label: str, sets: Any, own: dict[str, set[str]] | None) -> None:
+        for st in sets or []:
+            for e in st.get("entries") or []:
+                named = _names(str(e.get("cidr", "")))
+                if named and named[0] == "alias" and not exists("alias", named[1], own):
+                    problems.append(f"{label}, IP set {st['name']}: no alias '{named[1].split('/')[-1]}'")
 
     if dc is not None:
         check("datacenter", (dc or {}).get("rules"), None)
+        check_sets("datacenter", (dc or {}).get("ipsets"), None)
         for g in (dc or {}).get("groups") or []:
             check(f"security group {g['name']}", g.get("rules"), None)
     for name, level in (doc.get("nodes") or {}).items():
@@ -205,12 +232,43 @@ def check_refs(doc: dict[str, Any], dc_now: dict[str, set[str]]) -> None:
     for vmid, level in (doc.get("guests") or {}).items():
         level = level or {}
         own = {"alias": {a["name"] for a in level.get("aliases") or []},
-               "ipset": {s["name"] for s in level.get("ipsets") or []}}
+               "ipset": {s["name"] for s in level.get("ipsets") or []}, "group": set()}
         check(f"guest {vmid}", level.get("rules"), own)
+        check_sets(f"guest {vmid}", level.get("ipsets"), own)
     for name, level in (doc.get("vnets") or {}).items():
         check(f"vnet {name}", (level or {}).get("rules"), None)
     if problems:
         fail("The file names objects that would not exist:\n  " + "\n  ".join(problems))
+
+
+async def used_outside(client: ProxmoxClient, doc: dict[str, Any], removed: dict[str, list[str]],
+                       force: bool) -> None:
+    """Refuse removing datacenter objects that levels the file leaves out still use.
+
+    The levels the file names are checked by check_refs: they become what
+    the file says. Every other level keeps its rules, and loses what they name.
+    """
+    from .firewall_edit import find_refs, refuse_if_used
+
+    in_file = {"cluster", "group"}
+    nodes = set((doc.get("nodes") or {}).keys())
+    guests = {int(v) for v in (doc.get("guests") or {}).keys()}
+    vnets = set((doc.get("vnets") or {}).keys())
+
+    def outside(scope: Scope) -> bool:
+        if scope.kind in in_file:
+            return False
+        if scope.kind == "node":
+            return scope.name not in nodes
+        if scope.is_guest:
+            return scope.vmid not in guests
+        return scope.name not in vnets
+
+    for obj, names in removed.items():
+        for name in names:
+            refs = [r for r in await find_refs(client, obj, name, cluster_scope()) if outside(r.scope)]
+            what = {"alias": "Alias", "ipset": "IP set", "group": "Security group"}[obj]
+            refuse_if_used(f"{what} '{name}', which the file removes from the datacenter,", refs, force)
 
 
 # ── the plan ─────────────────────────────────────────────────────────────
@@ -295,7 +353,10 @@ def _add_rule(scope: Scope, pos: int, rule: dict[str, Any]) -> Any:
 def _plan_options(plan: Plan, scope: Scope, current: dict[str, Any], target: dict[str, Any]) -> None:
     plan.seen[scope.options_path] = current
     clean = {k: v for k, v in current.items() if k != "digest"}
-    data: dict[str, Any] = {k: v for k, v in target.items() if str(clean.get(k)) != str(v)}
+    kinds = OPTION_TYPES[scope.kind]
+    target = {k: (int(_flag(v)) if kinds.get(k) is bool else v) for k, v in target.items()}
+    data: dict[str, Any] = {k: v for k, v in target.items()
+                            if k not in clean or norm_value(k, clean[k], kinds) != norm_value(k, v, kinds)}
     gone = [k for k in clean if k not in target]
     if gone:
         data["delete"] = ",".join(sorted(gone))
@@ -305,8 +366,9 @@ def _plan_options(plan: Plan, scope: Scope, current: dict[str, Any], target: dic
                      + [f"{k} back to default" for k in gone])
     # Turned off first, so nothing half-undone is ever enforced; turned on
     # last, once its rules and objects are in place
-    turned_off = "enable" in clean and str(clean["enable"]) in ("1", "True", "true") and (
-        "enable" in gone or str(data.get("enable", "1")) in ("0", "False", "false"))
+    was_on = is_on(effective(scope.kind, clean, "enable"))
+    will_be_on = is_on(effective(scope.kind, target, "enable"))
+    turned_off = was_on and not will_be_on
     plan.add(-1 if turned_off else 5, f"{scope.label}: options {text}", _put(scope.options_path, data))
 
 
@@ -365,7 +427,8 @@ async def _plan_objects(client: ProxmoxClient, plan: Plan, scope: Scope, level: 
             if cidr not in current:
                 plan.add(0, f"{scope.label}: add {'!' if e.get('nomatch') else ''}{cidr} to {name}",
                          _post(f"{base}/ipset/{name}", data))
-            elif any(str(current[cidr].get(k) or "") != str(e.get(k) or "") for k in ("comment", "nomatch")):
+            elif ((current[cidr].get("comment") or "") != (e.get("comment") or "")
+                  or _flag(current[cidr].get("nomatch") or 0) != _flag(e.get("nomatch") or 0)):
                 plan.add(0, f"{scope.label}: change {cidr} in {name}", _change_entry(base, name, cidr, data))
         for cidr in current.keys() - entries.keys():
             plan.add(3, f"{scope.label}: remove {cidr} from {name}", _delete(f"{base}/ipset/{name}/{cidr}"))
@@ -379,15 +442,24 @@ def _change_entry(base: str, name: str, cidr: str, data: dict[str, Any]) -> Any:
     return run
 
 
-async def build_plan(client: ProxmoxClient, doc: dict[str, Any]) -> Plan:
+async def build_plan(client: ProxmoxClient, doc: dict[str, Any], force: bool = False) -> Plan:
     plan = Plan()
     if "datacenter" not in doc:
         check_refs(doc, {"alias": {a["name"] for a in await client.get("/cluster/firewall/aliases") or []},
-                         "ipset": {s["name"] for s in await client.get("/cluster/firewall/ipset") or []}})
+                         "ipset": {s["name"] for s in await client.get("/cluster/firewall/ipset") or []},
+                         "group": {g["group"] for g in await client.get("/cluster/firewall/groups") or []}})
     else:
-        check_refs(doc, {"alias": set(), "ipset": set()})
+        check_refs(doc, {"alias": set(), "ipset": set(), "group": set()})
     if "datacenter" in doc:
         level = doc["datacenter"] or {}
+        await used_outside(client, doc, {
+            "alias": sorted({a["name"] for a in await client.get("/cluster/firewall/aliases") or []}
+                            - {a["name"] for a in level.get("aliases") or []}),
+            "ipset": sorted({x["name"] for x in await client.get("/cluster/firewall/ipset") or []}
+                            - {x["name"] for x in level.get("ipsets") or []}),
+            "group": sorted({g["group"] for g in await client.get("/cluster/firewall/groups") or []}
+                            - {g["name"] for g in level.get("groups") or []}),
+        }, force)
         dc = cluster_scope()
         plan.scopes.append(dc)
         await _plan_objects(client, plan, dc, level)
@@ -488,7 +560,8 @@ def add_import_command(app: typer.Typer) -> None:
     async def import_firewall(
         file: str = typer.Argument(..., help="A file written by cluster firewall export"),
         force: bool = typer.Option(False, "--force", "-f", help="Go on even if the API would be closed "
-                                                                "to this machine"),
+                                                                "to this machine, or objects removed are "
+                                                                "still used by levels outside the file"),
         profile: str = typer.Option(None, "--profile", "-p", help="Profile to use"),
         yes: bool = typer.Option(False, "--yes", "-y", help="Do not ask for confirmation"),
     ) -> None:
@@ -497,7 +570,7 @@ def add_import_command(app: typer.Typer) -> None:
         profile_config = ConfigManager().get_profile(profile)
         try:
             async with ProxmoxClient(profile_config) as client:
-                plan = await build_plan(client, doc)
+                plan = await build_plan(client, doc, force)
                 for scope in plan.scopes:
                     require_write(profile_config, profile, scope)
                 if not plan.steps:
@@ -509,7 +582,10 @@ def add_import_command(app: typer.Typer) -> None:
                 from .firewall_edit import guarded_change
                 from .firewall_guard import api_node
 
-                node = await api_node(client, profile_config.host)
+                try:
+                    node = await api_node(client, profile_config.host)
+                except PVECliError:
+                    node = None
                 watch, _ = await guarded_change(client, profile_config, force, access_mutation(doc, node))
                 if not approved(yes):
                     return
@@ -522,6 +598,11 @@ def add_import_command(app: typer.Typer) -> None:
                         if i:
                             print_info(f"{i} of {len(plan.steps)} changes were made: run the import again "
                                        "to finish, it starts from what is there now")
+                            # Half done, the access may already be another one
+                            if watch:
+                                from .firewall_guard import check_after
+
+                                await check_after(profile_config, "the import stopped half way")
                         raise typer.Exit(1)
                 print_success(f"{len(plan.steps)} change{'' if len(plan.steps) == 1 else 's'} made")
                 if watch:

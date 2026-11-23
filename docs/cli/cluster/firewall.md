@@ -36,7 +36,7 @@ pvecli cluster firewall enable [OPTIONS]
 
 | Option | Description |
 |:--|:--|
-| `-f`, `--force` | Go on even if the API would be closed to this machine (undone if it is). |
+| `-f`, `--force` | Go on even if the API would be closed to this machine. |
 | `-p`, `--profile VALUE` | Profile to use. |
 | `-y`, `--yes` | Do not ask for confirmation. |
 
@@ -74,7 +74,7 @@ pvecli cluster firewall set [SETTINGS] [OPTIONS]
 | Option | Description |
 |:--|:--|
 | `--clear VALUE` | Options back to their default, comma separated. |
-| `-f`, `--force` | Go on even if the API would be closed to this machine (undone if it is). |
+| `-f`, `--force` | Go on even if the API would be closed to this machine. |
 | `-p`, `--profile VALUE` | Profile to use. |
 | `-y`, `--yes` | Do not ask for confirmation. |
 
@@ -189,6 +189,6 @@ pvecli cluster firewall import FILE [OPTIONS]
 
 | Option | Description |
 |:--|:--|
-| `-f`, `--force` | Go on even if the API would be closed to this machine. |
+| `-f`, `--force` | Go on even if the API would be closed to this machine, or objects removed are still used by levels outside the file. |
 | `-p`, `--profile VALUE` | Profile to use. |
 | `-y`, `--yes` | Do not ask for confirmation. |

@@ -194,6 +194,9 @@ class Ref:
     field: str  # source, dest, action, or the IP set name for an entry
     value: str
     entry: dict[str, Any] | None = None
+    # The forms that name the object here: on a guest with its own object
+    # of that name, only the dc/ form names the datacenter one
+    forms: frozenset[str] = frozenset()
 
     def where(self) -> str:
         if self.kind == "rule":
@@ -282,7 +285,7 @@ async def find_refs(client: ProxmoxClient, obj: str, name: str, owner: Scope) ->
                 continue
             for fld in ("source", "dest"):
                 if r.get(fld) and forms & set(_tokens(r[fld])):
-                    refs.append(Ref(scope, "rule", r.get("pos"), fld, r[fld]))
+                    refs.append(Ref(scope, "rule", r.get("pos"), fld, r[fld], forms=frozenset(forms)))
     # An alias can also be an entry of an IP set
     if obj == "alias":
         holders = [s for s in levels if s.kind == "cluster" or s.is_guest]
@@ -297,7 +300,7 @@ async def find_refs(client: ProxmoxClient, obj: str, name: str, owner: Scope) ->
             for s in await client.get(f"{scope.base}/ipset") or []:
                 for e in await client.get(f"{scope.base}/ipset/{s['name']}") or []:
                     if e.get("cidr") in forms:
-                        refs.append(Ref(scope, "entry", None, s["name"], e["cidr"], e))
+                        refs.append(Ref(scope, "entry", None, s["name"], e["cidr"], e, frozenset(forms)))
     return refs
 
 
@@ -318,7 +321,7 @@ def refuse_if_used(what: str, refs: list[Ref], force: bool) -> None:
 async def rewrite_refs(w: Writer, refs: list[Ref], old: set[str], new_name: str) -> None:
     """Point every reference at the new name: rules in place, entries re-added."""
     for r in refs:
-        value = renamed(r.value, old, new_name)
+        value = renamed(r.value, set(r.forms) or old, new_name)
         if r.kind == "rule":
             await w.put(f"{r.scope.rules_path}/{r.pos}", {r.field: value})
         else:
@@ -386,6 +389,43 @@ def _fail(e: PVECliError) -> None:
 YES = typer.Option(False, "--yes", "-y", help="Do not ask for confirmation")
 PROFILE = typer.Option(None, "--profile", "-p", help="Profile to use")
 COMMENT = typer.Option(None, "--comment", "-c", help="Comment")
+
+
+async def guard_dc(client: ProxmoxClient, profile: str | None, scope: Scope, force: bool, mutate: Any) -> bool:
+    """The access guard for a change of a datacenter object.
+
+    Aliases, IP sets and groups of the datacenter decide who reaches the API
+    through the management set and the rules of the datacenter and nodes.
+    Returns whether to check the access once the change is applied.
+    """
+    if scope.kind not in ("cluster", "group"):
+        return False
+    watch, _ = await guarded_change(client, ConfigManager().get_profile(profile), force, mutate)
+    return watch
+
+
+async def check_dc(profile: str | None, what: str) -> None:
+    from .firewall_guard import check_after
+
+    await check_after(ConfigManager().get_profile(profile), what)
+
+
+def rename_in(inputs: dict[str, Any], obj: str, old: str, new: str) -> None:
+    """In the inputs of the guard: a datacenter object renamed, its references followed."""
+    forms = ref_forms_all(obj, old, cluster_scope())
+
+    def follow(rules: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return [{**r, **{f: renamed(r[f], forms, new) for f in ("source", "dest") if r.get(f)}} for r in rules]
+
+    inputs["dc_rules"] = follow(inputs["dc_rules"])
+    inputs["node_rules"] = follow(inputs["node_rules"])
+    inputs["groups"] = {g: follow(rs) for g, rs in inputs["groups"].items()}
+    if obj == "alias":
+        inputs["aliases"][new] = inputs["aliases"].pop(old)
+        inputs["ipsets"] = {n: [{**e, "cidr": renamed(str(e.get("cidr", "")), forms, new)} for e in es]
+                            for n, es in inputs["ipsets"].items()}
+    else:
+        inputs["ipsets"][new] = inputs["ipsets"].pop(old, [])
 
 
 def add_object_commands(alias_app: typer.Typer, ipset_app: typer.Typer, kind: str,
@@ -477,6 +517,13 @@ def add_object_commands(alias_app: typer.Typer, ipset_app: typer.Typer, kind: st
             w = Writer(client, {f"{scope.base}/aliases": aliases})
             await w.snapshot(ref_sections(refs))
             show_plan(f"Change on {scope.label}:", lines)
+
+            def mutate(inputs: dict[str, Any]) -> None:
+                inputs["aliases"][name] = new_cidr
+                if rename and rename != name:
+                    rename_in(inputs, "alias", name, rename)
+
+            watch = await guard_dc(client, profile, scope, False, mutate)
             if not approved(yes):
                 return
             data = {"cidr": new_cidr, **({"comment": new_comment} if new_comment else {})}
@@ -487,6 +534,8 @@ def add_object_commands(alias_app: typer.Typer, ipset_app: typer.Typer, kind: st
             else:
                 await w.put(f"{scope.base}/aliases/{name}", data)
             print_success(f"Alias '{rename or name}' updated on {scope.label}")
+            if watch:
+                await check_dc(profile, f"the change to the alias {name}")
 
         try:
             await session(profile, target, body)
@@ -516,10 +565,14 @@ def add_object_commands(alias_app: typer.Typer, ipset_app: typer.Typer, kind: st
                 raise typer.Exit(1)
             refuse_if_used(f"Alias '{name}'", await find_refs(client, "alias", name, scope), force)
             show_plan(f"Remove from {scope.label}:", [f"alias {name}"])
+            watch = await guard_dc(client, profile, scope, force,
+                                   lambda inputs: inputs["aliases"].pop(name, None))
             if not approved(yes):
                 return
             await Writer(client, {f"{scope.base}/aliases": aliases}).delete(f"{scope.base}/aliases/{name}")
             print_success(f"Alias '{name}' removed from {scope.label}")
+            if watch:
+                await check_dc(profile, f"the removal of the alias {name}")
 
         try:
             await session(profile, target, body)
@@ -556,17 +609,17 @@ def add_object_commands(alias_app: typer.Typer, ipset_app: typer.Typer, kind: st
                 print_info(f"Nothing to add: IP set '{name}' already holds every entry")
                 return
             show_plan(f"Change on {scope.label}:", lines)
-            watch = False
             if scope.kind == "cluster" and name == "management":
                 console.print("  [yellow]The 'management' IP set opens the web interface and SSH of "
                               "every node when the firewall is on: once it exists, only its members "
                               "are management hosts.[/yellow]")
-                added = [{"cidr": c, **({"nomatch": 1} if nomatch else {})} for c in todo]
+            added = [{"cidr": c, **({"nomatch": 1} if nomatch else {})} for c in todo]
 
-                def mutate(inputs: dict[str, Any]) -> None:
-                    inputs["ipsets"]["management"] = list(entries) + added
+            def mutate(inputs: dict[str, Any]) -> None:
+                # Any set can be named by a rule of the node or of the datacenter
+                inputs["ipsets"][name] = list(entries) + added
 
-                watch, _ = await guarded_change(client, ConfigManager().get_profile(profile), False, mutate)
+            watch = await guard_dc(client, profile, scope, False, mutate)
             if not approved(yes):
                 return
             w = Writer(client, {f"{scope.base}/ipset": sets, f"{scope.base}/ipset/{name}": entries})
@@ -637,6 +690,11 @@ def add_object_commands(alias_app: typer.Typer, ipset_app: typer.Typer, kind: st
             w = Writer(client, {f"{scope.base}/ipset": sets})
             await w.snapshot(ref_sections(refs))
             show_plan(f"Change on {scope.label}:", lines)
+            if scope.kind == "cluster" and name == "management":
+                console.print("  [yellow]Renamed, 'management' no longer exists: the management hosts become "
+                              "the cluster network.[/yellow]")
+            watch = await guard_dc(client, profile, scope, False,
+                                   lambda inputs: rename_in(inputs, "ipset", name, rename))
             if not approved(yes):
                 return
             await w.post(f"{scope.base}/ipset", {"name": rename, **({"comment": new_comment} if new_comment else {})})
@@ -646,6 +704,8 @@ def add_object_commands(alias_app: typer.Typer, ipset_app: typer.Typer, kind: st
             await rewrite_refs(w, refs, ref_forms_all("ipset", name, scope), rename)
             await w.delete(f"{scope.base}/ipset/{name}", {"force": 1})
             print_success(f"IP set '{name}' renamed to '{rename}' on {scope.label}")
+            if watch:
+                await check_dc(profile, f"the renaming of the IP set {name}")
 
         try:
             await session(profile, target, body)
@@ -683,15 +743,14 @@ def add_object_commands(alias_app: typer.Typer, ipset_app: typer.Typer, kind: st
                     print_error(f"Not in IP set '{name}': {', '.join(missing)}")
                     raise typer.Exit(1)
                 show_plan(f"Change on {scope.label}:", [f"remove {c} from {name}" for c in cidrs])
-                watch = False
                 if scope.kind == "cluster" and name == "management":
                     console.print("  [yellow]Removing an address from 'management' closes the web "
                                   "interface and SSH of every node to it when the firewall is on.[/yellow]")
 
-                    def mutate(inputs: dict[str, Any]) -> None:
-                        inputs["ipsets"]["management"] = [e for e in entries if e.get("cidr") not in cidrs]
+                def mutate(inputs: dict[str, Any]) -> None:
+                    inputs["ipsets"][name] = [e for e in entries if e.get("cidr") not in cidrs]
 
-                    watch, _ = await guarded_change(client, ConfigManager().get_profile(profile), force, mutate)
+                watch = await guard_dc(client, profile, scope, force, mutate)
                 if not approved(yes):
                     return
                 for c in cidrs:
@@ -705,15 +764,11 @@ def add_object_commands(alias_app: typer.Typer, ipset_app: typer.Typer, kind: st
             refuse_if_used(f"IP set '{name}'", await find_refs(client, "ipset", name, scope), force)
             show_plan(f"Remove from {scope.label}:",
                       [f"IP set {name} and its {len(entries)} entr{'y' if len(entries) == 1 else 'ies'}"])
-            watch = False
             if scope.kind == "cluster" and name == "management":
                 console.print("  [yellow]Without a 'management' IP set, the management hosts are the "
                               "cluster network.[/yellow]")
-
-                def mutate_set(inputs: dict[str, Any]) -> None:
-                    inputs["ipsets"].pop("management", None)
-
-                watch, _ = await guarded_change(client, ConfigManager().get_profile(profile), force, mutate_set)
+            watch = await guard_dc(client, profile, scope, force,
+                                   lambda inputs: inputs["ipsets"].pop(name, None))
             if not approved(yes):
                 return
             await w.delete(f"{scope.base}/ipset/{name}", {"force": 1})
@@ -849,6 +904,9 @@ def add_group_commands(group_app: typer.Typer) -> None:
             rules = await read_rules(client, gscope)
             show_plan("Remove from datacenter:", [f"security group {name}"]
                       + [f"with its rule {r.get('pos')}: {describe_rule(r)}" for r in rules])
+            # With --force, rules that insert it lose what it let in
+            watch = await guard_dc(client, profile, cluster_scope(), force,
+                                   lambda inputs: inputs["groups"].pop(name, None))
             if not approved(yes):
                 return
             w = Writer(client, {"/cluster/firewall/groups": groups, gscope.rules_path: rules})
@@ -857,6 +915,8 @@ def add_group_commands(group_app: typer.Typer) -> None:
                 await w.delete(f"{gscope.rules_path}/{r['pos']}")
             await w.delete(f"/cluster/firewall/groups/{name}")
             print_success(f"Security group '{name}' removed")
+            if watch:
+                await check_dc(profile, f"the removal of the security group {name}")
 
         try:
             await session(profile, body)
@@ -1026,11 +1086,13 @@ def add_rule_commands(rule_app: typer.Typer, kind: str, target_arg: Any, drop_ta
         """
         if scope.kind not in ("cluster", "group", "node"):
             return False
-        from .firewall_guard import api_node
 
         profile_config = ConfigManager().get_profile(profile)
-        if scope.kind == "node" and scope.name != await api_node(client, profile_config.host):
-            return False
+        if scope.kind == "node":
+            # Unknown, the API node may be any node: guard them all
+            api = await _api_node_or_none(client, profile_config.host)
+            if api is not None and scope.name != api:
+                return False
 
         def mutate(inputs: dict[str, Any]) -> None:
             if scope.kind == "group":
@@ -1418,6 +1480,7 @@ async def guarded_change(client: ProxmoxClient, profile_config: Any, force: bool
     access must be checked once it is applied.
     """
     import copy
+    import socket
 
     from .firewall_guard import api_node, check_access, judge, read_access_inputs, source_address
 
@@ -1429,10 +1492,16 @@ async def guarded_change(client: ProxmoxClient, profile_config: Any, force: bool
         print_warning(f"pvecli cannot read what decides its access to the API ({e})")
     if node is None or inputs is None:
         # Not checked before: checked after, which needs no reading
-        print_warning("The access to the API is not checked before the change: it is checked after, "
-                      "and the change is undone if it is lost")
+        print_warning("The access to the API is not checked before the change, only after it "
+                      "(with how to get back in if it is lost)")
         return True, None
     ip = source_address(profile_config.host, profile_config.port)
+    # A rule's dest is matched against the address pvecli connects to, which
+    # can be another interface than the cluster address of the node
+    try:
+        inputs["node_ip"] = socket.gethostbyname(profile_config.host)
+    except OSError:
+        pass
     after_inputs = copy.deepcopy(inputs)
     mutate(after_inputs)
     before, after = judge(ip, **inputs), judge(ip, **after_inputs)
@@ -1440,9 +1509,19 @@ async def guarded_change(client: ProxmoxClient, profile_config: Any, force: bool
         print_warning(f"This machine is already outside the management hosts: {after.reason}")
     else:
         check_access(after, force)
-    filtered = not after.reason.startswith(("the datacenter firewall is off", "the firewall of the node",
-                                             "the input policy is ACCEPT"))
+    filtered = not (after.reason.startswith(("the datacenter firewall is off", "the firewall of the node"))
+                    or "input policy is ACCEPT" in after.reason)
     return filtered, after
+
+
+async def _api_node_or_none(client: ProxmoxClient, host: str) -> str | None:
+    """The node pvecli talks to, None when it cannot tell (or not read it)."""
+    from .firewall_guard import api_node
+
+    try:
+        return await api_node(client, host)
+    except PVECliError:
+        return None
 
 
 def add_switch_commands(app: typer.Typer, kind: str, target_arg: Any, drop: Any) -> None:
@@ -1460,13 +1539,12 @@ def add_switch_commands(app: typer.Typer, kind: str, target_arg: Any, drop: Any)
         show_plan(f"Change the firewall of {scope.label}:", lines)
         watch = False
         if scope.kind in ("cluster", "node"):
-            from .firewall_guard import api_node
 
-            api = await api_node(client, profile_config.host)
+            api = await _api_node_or_none(client, profile_config.host)
             # The options of the datacenter, or of the node pvecli talks to,
             # decide whether it keeps the API
             key = "dc_opts" if scope.kind == "cluster" else "node_opts"
-            if scope.kind == "cluster" or scope.name == api:
+            if scope.kind == "cluster" or api is None or scope.name == api:
 
                 def mutate(inputs: dict[str, Any]) -> None:
                     opts = inputs[key]
@@ -1512,7 +1590,7 @@ def add_switch_commands(app: typer.Typer, kind: str, target_arg: Any, drop: Any)
                                                             "(a running guest loses its network briefly)")
             if kind in ("vm", "ct") and enable else None,  # type: ignore[assignment]
             force: bool = typer.Option(False, "--force", "-f", help="Go on even if the API would be closed "
-                                                                    "to this machine (undone if it is)")
+                                                                    "to this machine")
             if kind in ("cluster", "node") and enable else None,  # type: ignore[assignment]
             profile: str = PROFILE,
             yes: bool = YES,
@@ -1553,7 +1631,7 @@ def add_switch_commands(app: typer.Typer, kind: str, target_arg: Any, drop: Any)
                                              metavar="key=value..."),
         clear: str = typer.Option(None, "--clear", help="Options back to their default, comma separated"),
         force: bool = typer.Option(False, "--force", "-f", help="Go on even if the API would be closed "
-                                                                "to this machine (undone if it is)")
+                                                                "to this machine")
         if kind in ("cluster", "node") else None,  # type: ignore[assignment]
         profile: str = PROFILE,
         yes: bool = YES,
