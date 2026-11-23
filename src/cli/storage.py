@@ -1317,8 +1317,18 @@ async def remove_content(
                 print_cancelled()
                 return
 
-            for vol in selected_volumes:
-                await client.delete(f"/nodes/{node}/storage/{storage}/content/{vol}")
+            # Proxmox deletes each volume in a task: one sent before the
+            # previous task has ended can fail to start ("got no worker
+            # upid"), and a task can fail after the request was accepted
+            for done, vol in enumerate(selected_volumes):
+                try:
+                    upid = await client.delete(f"/nodes/{node}/storage/{storage}/content/{vol}")
+                    if isinstance(upid, str) and upid.startswith("UPID:"):
+                        await client.wait_for_task(node, upid, poll_interval=0.5)
+                except PVECliError as e:
+                    if done:
+                        print_info(f"{done} of {len(selected_volumes)} volumes deleted before '{vol}'")
+                    raise PVECliError(f"Failed to delete '{vol}': {e}") from e
 
             if len(selected_volumes) == 1:
                 print_success(f"Volume '{selected_volumes[0]}' deleted")
