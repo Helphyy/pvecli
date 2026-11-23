@@ -202,6 +202,11 @@ class FakeFirewall:
         if method == "DELETE":
             sets[name]["entries"] = [e for e in entries if e["cidr"] != cidr]
             return None
+        if method == "PUT":
+            entry = next(e for e in entries if e["cidr"] == cidr)
+            entry.clear()
+            entry.update({"cidr": cidr, **args})
+            return None
         raise AssertionError(f"fake firewall: {method} ipset entry")
 
     def _groups(self, method: str, parts: list[str], args: dict[str, Any]) -> Any:

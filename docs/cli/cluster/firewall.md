@@ -170,3 +170,25 @@ pvecli cluster firewall export [OPTIONS]
 | `-ou`, `--output VALUE` | Write to this file instead of the terminal. |
 | `-p`, `--profile VALUE` | Profile to use. |
 | `-js`, `--json` | Output raw JSON to stdout (no colors, no tables). |
+
+## import
+
+Make the firewall of the cluster match a file: only the levels it names.
+
+```text
+pvecli cluster firewall import FILE [OPTIONS]
+```
+
+### Arguments
+
+| Argument | Description |
+|:--|:--|
+| `FILE` | A file written by cluster firewall export. |
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `-f`, `--force` | Go on even if the API would be closed to this machine. |
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-y`, `--yes` | Do not ask for confirmation. |

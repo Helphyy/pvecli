@@ -421,3 +421,21 @@ def test_unreachable_cluster_exits_1(cli, api):
     assert r.exit_code == 1
     assert "Connection refused" in r.output
     assert api.writes() == []
+
+
+def test_firewall_pitfalls_are_warnings(cli, api):
+    from tests.fake_firewall import FakeFirewall
+
+    lab(api, "pve-9.1")
+    api.route("GET", "/cluster/sdn/vnets", [])
+    fw = FakeFirewall(api)
+    fw.level("/cluster/firewall").options["enable"] = 1
+    guests = [r for r in api.handle("h1", "GET", "/cluster/resources", None, None)
+              if r.get("type") == "qemu" and not r.get("template")]
+    g = guests[0]
+    api.route("GET", f"/nodes/{g['node']}/qemu/{g['vmid']}/config", {"net0": "virtio,bridge=vmbr0"})
+    fw.level(f"/nodes/{g['node']}/qemu/{g['vmid']}/firewall").options["enable"] = 1
+    r, doc = run_json(cli)
+    details = [f["detail"] for f in doc["findings"] if f["check"] == "Firewall"]
+    assert any(f"VM {g['vmid']}: no network card has firewall=1" in d for d in details), details
+    assert api.writes() == []

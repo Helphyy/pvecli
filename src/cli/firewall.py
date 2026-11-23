@@ -699,7 +699,7 @@ def build_app(kind: str) -> typer.Typer:
     """The `firewall` group of one kind of resource."""
     noun = _NOUN[kind]
     order = ["status", "enable", "disable", "set", "options", "rule", "group", "ipset", "alias", "log",
-             "macros", "refs", "export"]
+             "macros", "refs", "export", "import"]
     app = typer.Typer(
         help=f"Manage the firewall of {noun}",
         no_args_is_help=True,
@@ -939,8 +939,10 @@ def _add_cluster_only(app: typer.Typer, fail: Any) -> None:
     group_app = typer.Typer(help="Security groups: named lists of rules", no_args_is_help=True)
     app.add_typer(group_app, name="group")
     from .firewall_edit import add_group_commands
+    from .firewall_import import add_import_command
 
     add_group_commands(group_app)
+    add_import_command(app)
 
     @group_app.command("list")
     @fleet(parallel=True)

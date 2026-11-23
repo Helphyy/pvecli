@@ -156,6 +156,19 @@ async def _firewall(a: _Audit) -> None:
         a.add("Firewall", "WARN", "datacenter firewall is disabled: guest and node rules are not enforced")
     else:
         a.add("Firewall", "OK", f"enabled, input policy {opts.get('policy_in', 'DROP')}")
+        # What Proxmox accepts without a word: a guest on with no card
+        # filtered, rules left unenforced, rules broken by a missing object
+        from .firewall import cluster_overview
+
+        try:
+            view = await cluster_overview(a.client)
+        except PVECliError as e:
+            a.unreadable("Firewall", f"the firewall of each level ({e})")
+            return
+        issues = [(view["datacenter"].scope.label, i) for i in view["datacenter"].issues]
+        issues += [(st.scope.label, i) for st in view["levels"] for i in st.issues]
+        for label, issue in issues:
+            a.add("Firewall", "WARN", f"{label}: {issue}")
 
 
 async def _versions_and_subscription(a: _Audit, nodes: list[str]) -> None:
