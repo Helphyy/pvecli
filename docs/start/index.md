@@ -1,14 +1,14 @@
 ---
 icon: lucide/rocket
 title: Getting started
-description: Install pvecli, connect it to a Proxmox VE cluster and run your first commands.
+description: Install pvecli, connect it to a Proxmox VE node or cluster and run your first commands.
 hide:
   - toc
 ---
 
 # Getting started
 
-pvecli runs on your workstation with Python 3.10 or later and talks to the API of a Proxmox VE 8 or 9 cluster. Nothing is installed on the nodes. You need an API token on the cluster, or a user and password.
+pvecli runs on your workstation with Python 3.10 or later and talks to the API of Proxmox VE 8 or 9: a single node, or a cluster. Nothing is installed on the nodes. You need an API token, or a user and password.
 
 <div class="sketch" markdown>
 
@@ -23,14 +23,18 @@ config:
 ---
 flowchart TB
   you(["Your workstation<br/>pvecli + config.yaml"]):::pv
-  you -- "HTTPS pve1:8006<br/>token or password" --> p1
-  subgraph prod ["cluster prod (profile prod)#nbsp;"]
+  you -- "HTTPS pve:8006<br/>token or password" --> solo
+  you -. "or one node<br/>of a cluster" .-> p1
+  subgraph home ["a single node (profile home)#nbsp;"]
+    solo["pve"]:::host
+    solo -.- vm1["web-01"]:::vm
+    solo -.- ct1["dns-01"]:::ct
+  end
+  subgraph prod ["a cluster (profile prod)#nbsp;"]
     direction TB
     p1["pve1"]:::host --- lan(("cluster<br/>network")):::net
     lan --- p2["pve2"]:::host
     lan --- p3["pve3"]:::host
-    p2 -.- vm1["web-01"]:::vm
-    p3 -.- ct1["dns-01"]:::ct
   end
 
   classDef pv fill:#ffae0b80,stroke:#e57000,stroke-width:2px
@@ -39,12 +43,12 @@ flowchart TB
   classDef ct fill:#9775fa4d,stroke:#7048e8
   classDef net fill:#fcc41940,stroke:#f08c00
   classDef zone fill:#e570000d,stroke:#e57000,stroke-dasharray:6 4
-  class prod zone
+  class home,prod zone
 ```
 
 </div>
 
-pvecli sends its API requests to one node, the one of the profile. That node answers for the whole cluster: every node, VM and container.
+pvecli sends its API requests to the node of the profile. On a single node, that is all there is. In a cluster, that node answers for all of them: every node, VM and container.
 
 Follow these pages in order:
 
