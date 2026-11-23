@@ -62,13 +62,13 @@ Follow these pages in order:
 
     [:lucide-arrow-right: Install pvecli](install.md)
 
--   :lucide-key-round:{ .lg } __Connect to a cluster__
+-   :lucide-key-round:{ .lg } __Connect to Proxmox VE__
 
     ---
 
     Create an API token, save it in a profile, test it.
 
-    [:lucide-arrow-right: Connect to a cluster](connect.md)
+    [:lucide-arrow-right: Connect to Proxmox VE](connect.md)
 
 -   :lucide-square-terminal:{ .lg } __First commands__
 

@@ -1,12 +1,12 @@
 ---
 icon: lucide/key-round
-title: Connect to a cluster
-description: Create an API token on the cluster, save it in a pvecli profile, test it and make it the default.
+title: Connect to Proxmox VE
+description: Create an API token on a node or a cluster, save it in a pvecli profile, test it and make it the default.
 ---
 
-# Connect to a cluster
+# Connect to Proxmox VE
 
-pvecli reaches a cluster through a profile: a name, the address of one node, and the credentials to use. You create the credentials on the cluster first, then the profile with [config add](../cli/config/add.md).
+pvecli reaches Proxmox VE through a profile: a name, the address of a node, and the credentials to use. A single node and a cluster are set up the same way: for a cluster, the profile names one of its nodes. You create the credentials first, then the profile with [config add](../cli/config/add.md).
 
 ## Create an API token
 

@@ -17,7 +17,7 @@ pvecli config add prod
 pvecli cluster health -p prod
 ```
 
-`pvecli config add prod` asks for the address of a node and an API token, and saves them as the profile `prod`. [Connect to a cluster](start/connect.md) shows how to create the token.
+`pvecli config add prod` asks for the address of a node and an API token, and saves them as the profile `prod`. [Connect to Proxmox VE](start/connect.md) shows how to create the token.
 
 --8<-- "screens/home-health.html"
 

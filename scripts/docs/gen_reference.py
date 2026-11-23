@@ -44,7 +44,7 @@ SECTIONS: list[tuple[str, list[tuple[str, str]], list[str]]] = [
     ("Getting started", [
         ("Getting started", "start/index.md"),
         ("Install pvecli", "start/install.md"),
-        ("Connect to a cluster", "start/connect.md"),
+        ("Connect to Proxmox VE", "start/connect.md"),
         ("First commands", "start/first-commands.md"),
         ("Configuration file", "reference/config-file.md"),
         ("Permissions", "reference/permissions.md"),

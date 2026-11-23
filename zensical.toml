@@ -17,7 +17,7 @@ nav = [
     "start/index.md",
     { "Guides" = [
       { "Install pvecli" = "start/install.md" },
-      { "Connect to a cluster" = "start/connect.md" },
+      { "Connect to Proxmox VE" = "start/connect.md" },
       { "First commands" = "start/first-commands.md" },
     ] },
     { "Reference" = [

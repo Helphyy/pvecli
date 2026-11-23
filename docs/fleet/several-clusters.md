@@ -6,7 +6,7 @@ description: Give -p a list, a pattern or a group of profiles and run the same c
 
 # Run a command on several clusters
 
-Each cluster you manage is a profile in pvecli's configuration (add them with [config add](../cli/config/add.md), see [Connect to a cluster](../start/connect.md)). Give `-p` several profiles separated by commas: the command runs once per profile, under a header with the profile name. Here [vm list](../cli/vm/list.md):
+Each cluster you manage is a profile in pvecli's configuration (add them with [config add](../cli/config/add.md), see [Connect to Proxmox VE](../start/connect.md)). Give `-p` several profiles separated by commas: the command runs once per profile, under a header with the profile name. Here [vm list](../cli/vm/list.md):
 
 --8<-- "screens/fleet-vm-list.html"
 

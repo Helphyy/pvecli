@@ -19,7 +19,7 @@ pvecli is a command-line tool for Proxmox VE. It manages guests, nodes, storage,
 pipx install git+https://github.com/Helphyy/pvecli.git
 ```
 
-Then follow [Connect to a cluster](https://helphyy.github.io/pvecli/start/connect/) to create a token with the right role, and:
+Then follow [Connect to Proxmox VE](https://helphyy.github.io/pvecli/start/connect/) to create a token with the right role, and:
 
 ```bash
 pvecli config add prod
