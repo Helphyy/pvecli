@@ -6,7 +6,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.10+-3776AB?logo=python&logoColor=white)](https://www.python.org)
 [![License](https://img.shields.io/badge/license-GPLv3-22c55e)](LICENSE.txt)
-[![Version](https://img.shields.io/badge/version-1.12.3-6366f1)](https://github.com/Helphyy/pvecli/releases)
+[![Version](https://img.shields.io/badge/version-1.12.4-6366f1)](https://github.com/Helphyy/pvecli/releases)
 [![Proxmox VE](https://img.shields.io/badge/Proxmox%20VE-8%20%7C%209-E57000)](https://helphyy.github.io/pvecli/)
 
 **[Documentation](https://helphyy.github.io/pvecli/)** · [Installation](https://helphyy.github.io/pvecli/start/install/) · [Commands](https://helphyy.github.io/pvecli/cli/) · [Releases](https://github.com/Helphyy/pvecli/releases)
