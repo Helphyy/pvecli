@@ -163,7 +163,7 @@ With `iso` instead of `template`, pvecli creates the VM itself:
 | Windows | `os_type: windows`: UEFI with secure boot, a TPM 2.0 and the q35 machine, their small disks on `storage` |
 | Node | `node`, or the only online node |
 
-A VM is cloned or installed, never both: `template` and `iso` on the same guest are an error. When one comes from the defaults and the other from the guest, the guest's wins. An ISO install has no cloud-init: `user`, `upgrade`, `ssh_key`, `password_env`, `ip`, `gw`, `ip6`, `gw6`, `dns` and `search_domain` are refused on the guest and in `defaults.vm`, and left out when they come from the common `defaults`. `full` is refused too.
+A VM is cloned or installed, never both: `template` and `iso` on the same guest are an error. When one comes from the defaults and the other from the guest, the guest's wins. An ISO install has no cloud-init: `user`, `upgrade`, `ssh_key`, `password_env`, `ip`, `gw`, `ip6`, `gw6`, `dns` and `search_domain` are refused on the guest and in `defaults.vm` (a guest clears one of `defaults.vm` with `null`), and left out when they come from the common `defaults`. `full` is refused too.
 
 ### YAML anchors
 

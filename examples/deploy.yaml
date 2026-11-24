@@ -53,6 +53,20 @@ guests:
     # Never a password in this file: the name of a variable holding it.
     password_env: DB01_PASSWORD
 
+  # Installed from an ISO instead of cloned: iso: replaces template:. An
+  # empty disk, the ISO in the CD drive; the installer runs in the console.
+  # No cloud-init here: user, ssh_key, ip... are refused on this guest.
+  - type: vm
+    name: build01
+    iso: local:iso/debian-13.8.0-amd64-netinst.iso
+    user: null                       # clears the user of defaults.vm
+    storage: local-lvm               # required: the disk of the install
+    disk_size: 32G                   # required: whole GiB
+    cpu: host                        # nested virtualization
+    bridge: vmbr1
+    vlan: 30
+    power_on: false                  # created, not started
+
   # Containers from the file template of defaults.ct.
   - type: ct
     name: cache{n}

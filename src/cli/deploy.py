@@ -230,8 +230,8 @@ def _source(label: str, own: dict[str, Any], vm_defaults: dict[str, Any], merged
 
     The guest's own choice wins over the defaults. An ISO install has no
     cloud-init: a cloud-init key on the guest or in defaults.vm is an
-    error; one of the common defaults (shared with the containers and the
-    clones) is left out for it.
+    error, unless the guest clears it with null; one of the common
+    defaults (shared with the containers and the clones) is left out.
     """
     if "iso" in own and "template" not in own:
         merged.pop("template", None)
@@ -242,7 +242,9 @@ def _source(label: str, own: dict[str, Any], vm_defaults: dict[str, Any], merged
         return False
     if "iso" not in merged:
         return True
-    ci = [k for k in CLOUD_INIT_KEYS if k in own or k in vm_defaults]
+    # null on the guest clears a default of defaults.vm, as for any key
+    ci = [k for k in CLOUD_INIT_KEYS
+          if (own[k] if k in own else vm_defaults.get(k)) not in (None, [])]
     if ci:
         errors.append(f"{label}: an ISO install has no cloud-init: {', '.join(ci)} cannot apply")
         return False

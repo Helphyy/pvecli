@@ -294,8 +294,11 @@ def test_the_shipped_example_is_a_valid_file():
     specs, errors = parse_document(doc, None, "p1")
 
     assert errors == []
-    assert [s.name for s in specs] == ["web1", "web2", "web3", "db01", "cache1", "cache2", "proxy01", "mon01"]
-    proxy = specs[6]
+    assert [s.name for s in specs] == ["web1", "web2", "web3", "db01", "build01", "cache1", "cache2", "proxy01",
+                                       "mon01"]
+    build = specs[4]
+    assert (build.iso, build.template, build.user) == ("local:iso/debian-13.8.0-amd64-netinst.iso", "", None)
+    proxy = specs[7]
     assert (proxy.ssh_keys, proxy.storage, proxy.template) == ([], None, "920")
     assert file_duplicates(specs, lambda p: p) == []
 

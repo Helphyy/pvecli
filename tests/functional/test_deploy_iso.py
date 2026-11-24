@@ -246,3 +246,26 @@ def test_a_clone_moves_to_a_bridge_and_a_vlan_and_gets_a_cpu_type(cli, api, tmp_
     put = next(c for c in api.writes() if c.method == "PUT" and c.path.endswith("/config") and "net0" in c.data)
     assert put.data["cpu"] == "host"
     assert put.data["net0"] == "virtio=BC:24:11:96:77:50,bridge=vvlan,tag=30"
+
+
+def test_null_clears_a_cloud_init_default_for_an_iso_install(cli, api, tmp_path):
+    lab(api)
+    f = write(tmp_path, f"""
+        defaults:
+          profile: p1
+          vm:
+            template: 9000
+            user: debian
+        guests:
+          - type: vm
+            name: clone01
+          - type: vm
+            name: inst01
+            iso: {ISO}
+            user: null
+            storage: local-lvm
+            disk_size: 20G
+    """)
+    r = cli("deploy", f, "-y")
+    assert r.exit_code == 0, r.output
+    assert created(api)[0].data["name"] == "inst01"

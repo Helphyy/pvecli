@@ -170,7 +170,7 @@ installed, not both
 Error: 2 problem(s) in the file: nothing was created
 ```
 
-A key in the common `defaults` also feeds the containers and the clones: an ISO VM leaves its cloud-init keys out, without an error. In `defaults.vm`, a cloud-init key is meant for every VM, and an ISO VM refuses it. A `template` from the defaults gives way to the `iso` of the guest, and the other way round.
+A key in the common `defaults` also feeds the containers and the clones: an ISO VM leaves its cloud-init keys out, without an error. In `defaults.vm`, a cloud-init key is meant for every VM, and an ISO VM refuses it unless it clears it with `null` (`user: null`). A `template` from the defaults gives way to the `iso` of the guest, and the other way round.
 
 !!! note "The Windows installer waits for a key"
     The Windows ISO shows `Press any key to boot from CD or DVD` for a few seconds, then gives up. Deploy it with `power_on: false`, open its console, start it and press a key:
@@ -268,7 +268,7 @@ Each file below is complete. Run it with `--dry-run` first.
 
 === "Clones and ISO"
 
-    The template of `defaults.vm` feeds the clone; the ISO VM sets its own source, and the common `ssh_key` is left out for it. `user` goes on the clone: in `defaults.vm`, the ISO VM would refuse it:
+    The template of `defaults.vm` feeds the clone; the ISO VM sets its own source, and the common `ssh_key` is left out for it. `user` goes on the clone: in `defaults.vm`, the ISO VM would have to clear it with `user: null`:
 
     ```yaml
     defaults:
