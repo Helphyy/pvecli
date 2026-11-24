@@ -40,6 +40,7 @@ tasks/
 
 # Lab names of the documentation captures
 scripts/docs/screens.local.toml
+scripts/docs/screens.*.local.toml
 
 # Built documentation site
 site/

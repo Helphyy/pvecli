@@ -1,0 +1,9 @@
+<figure class="terminal" markdown="0"><pre class="terminal-body"><span class="terminal-prompt">$ </span><span class="terminal-command">pvecli node firewall rule add pve1 -ac DROP -pt tcp -dpt 8006 -y -p prod</span>
+
+<span style="font-weight: bold">Add to node pve1 at position </span><span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold">0</span><span style="font-weight: bold">:</span>
+  IN DROP tcp dport 8006
+<span style="color: #f87171; text-decoration-color: #f87171; font-weight: bold">Error:</span> This change <span class="mark mark-first" data-n="1">closes the API</span> to this machine: rule <span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold">0</span> of the node drops 
+<span style="color: #86efac; text-decoration-color: #86efac; font-weight: bold">10.0.0.7</span>, before the management hosts are let in.
+  Leave this machine out of the rule (a narrower source), or accept it in a rule
+above that one.
+  Or pass --force, if another way in is ready <span style="font-weight: bold">(</span>the console of the node<span style="font-weight: bold">)</span>.</pre></figure>

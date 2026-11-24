@@ -1,0 +1,9 @@
+<figure class="terminal" markdown="0"><pre class="terminal-body"><span class="terminal-prompt">$ </span><span class="terminal-command">pvecli vm firewall rule list 890 -p prod</span>
+<span style="font-style: italic">                  Firewall rules of VM 890                  </span>
+┏━━━━━┳━━━━━┳━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━━┓
+┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Pos </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Dir </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Action </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Service </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Source      </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Comment     </span>┃
+┡━━━━━╇━━━━━╇━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━━┩
+│   0 │ in  │ <span style="color: #4ade80; text-decoration-color: #4ade80">ACCEPT</span> │ SSH     │ 10.0.0.0/24 │ admins      │
+│   1 │ in  │ <span style="color: #4ade80; text-decoration-color: #4ade80">ACCEPT</span> │ icmp    │             │ ping        │
+│   2 │ in  │ <span style="color: #4ade80; text-decoration-color: #4ade80">ACCEPT</span> │ <span class="mark mark-first" data-n="1">HTTPS</span>   │             │ public site │
+└─────┴─────┴────────┴─────────┴─────────────┴─────────────┘</pre></figure>

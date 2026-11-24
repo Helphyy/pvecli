@@ -48,6 +48,7 @@ API_PORT = 8006
 class Access:
     kept: bool | None  # None when pvecli cannot tell
     reason: str
+    by_rule: bool = False  # closed by a rule, which comes before the management hosts
 
 
 def source_address(host: str, port: int) -> str | None:
@@ -186,7 +187,7 @@ def judge(ip: str | None, dc_opts: dict[str, Any], node_opts: dict[str, Any],
             if action == "ACCEPT":
                 return Access(True, f"{r['_where']} lets {ip} in")
             return Access(False, f"{r['_where']} {'drops' if action == 'DROP' else 'rejects'} {ip}, before "
-                                 "the management hosts are let in")
+                                 "the management hosts are let in", by_rule=True)
     if "management" in ipsets:
         if in_set(ip, ipsets["management"], aliases):
             return Access(True, f"{ip} is in the 'management' IP set")
@@ -263,8 +264,13 @@ def check_access(access: Access, force: bool) -> None:
         console.print("  Pass --force to go on anyway.")
         raise typer.Exit(1)
     print_error(f"This change closes the API to this machine: {access.reason}.")
-    console.print("  Add this machine to the management hosts first:  pvecli cluster firewall ipset add "
-                  "management <your address>", highlight=False)
+    if access.by_rule:
+        # Being a management host does not help: the rule comes first
+        console.print("  Leave this machine out of the rule (a narrower source), or accept it in a rule "
+                      "above that one.", highlight=False)
+    else:
+        console.print("  Add this machine to the management hosts first:  pvecli cluster firewall ipset add "
+                      "management <your address>", highlight=False)
     if not force:
         import typer
 

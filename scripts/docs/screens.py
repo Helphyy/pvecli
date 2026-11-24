@@ -33,7 +33,8 @@ from rich.text import Text
 
 ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "docs" / "snippets" / "screens"
-LOCAL = Path(__file__).with_name("screens.local.toml")
+# PVECLI_SCREENS_CONF picks another lab: a single node, another cluster
+LOCAL = Path(os.environ.get("PVECLI_SCREENS_CONF") or Path(__file__).with_name("screens.local.toml")).resolve()
 WIDTH = 80  # columns: the classic terminal, readable at 13px on a page
 
 # Close to the site's dark palette, readable in both site themes

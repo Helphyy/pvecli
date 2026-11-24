@@ -68,6 +68,19 @@ The privileges Proxmox VE checks on the main call behind each command, from the 
 | [sdn vnet](../cli/sdn/vnet.md) `remove`, [sdn subnet](../cli/sdn/subnet.md) | `SDN.Allocate` on `/sdn/zones/ZONE/VNET` |
 | [cluster create](../cli/cluster/create.md), [cluster join](../cli/cluster/join.md) | `root@pam` only |
 
+## Firewall
+
+Each level of the firewall has its own privilege, from the code of Proxmox VE 9.1. Reading needs the first, any change the second. `ZONE` and `VNET` are the SDN zone and vnet.
+
+| Level | Read | Change |
+|:--|:--|:--|
+| Datacenter, security groups, and their aliases and IP sets ([cluster firewall](../cli/cluster/firewall.md)) | `Sys.Audit` on `/` | `Sys.Modify` on `/` |
+| Node ([node firewall](../cli/node/firewall.md)) | `Sys.Audit` on `/nodes/NODE` | `Sys.Modify` on `/nodes/NODE` |
+| Guest ([vm firewall](../cli/vm/firewall.md), [ct firewall](../cli/ct/firewall.md)) | `VM.Audit` on `/vms/ID` | `VM.Config.Network` on `/vms/ID`, which `--nics` also needs |
+| Vnet ([sdn vnet firewall](../cli/sdn/vnet.md#firewall-status)) | `SDN.Audit` or `SDN.Allocate` on `/sdn/zones/ZONE/VNET` | `SDN.Allocate` on `/sdn/zones/ZONE/VNET` |
+
+The log takes another privilege: `Sys.Syslog` on `/nodes/NODE` for [node firewall log](../cli/node/firewall.md#log), `VM.Console` on `/vms/ID` for [vm firewall log](../cli/vm/firewall.md#log). [cluster firewall status](../cli/cluster/firewall.md#status), `export` and `import` read every level, and skip the guests and vnets you cannot see. Changes to the datacenter, a node, a security group or a vnet also need `firewall_write: true` on the profile (see below).
+
 ## Refused calls
 
 When Proxmox VE refuses a call, pvecli names the method and path of the call, followed by the reason Proxmox VE gives, which usually names the missing privilege and the path it is checked on:
@@ -86,6 +99,7 @@ Error: Permission denied: POST /pools: Permission check failed (/pool/web, Pool.
 | [backup jobs run](../cli/backup/jobs.md#run) | Only `root@pam` may tie the run to its job ID. For other users pvecli warns `job-id refused` and runs the same backup without it. |
 | [node maintenance enter](../cli/node/maintenance.md#enter), [node maintenance exit](../cli/node/maintenance.md#exit) | `VM.Migrate` on each guest moved; `Sys.Modify` on `/` to set or clear the Ceph `noout` flag (skip it with `--no-ceph-flag`); `Sys.Console` on `/` to pause and resume HA failback when HA uses rules. pvecli checks these first and changes nothing if one is missing. |
 | [sdn apply](../cli/sdn/apply.md), [sdn discard](../cli/sdn/discard.md), [sdn unlock](../cli/sdn/unlock.md), [sdn zone](../cli/sdn/zone.md) `add`, `set` and `remove`, [sdn vnet](../cli/sdn/vnet.md) and [sdn subnet](../cli/sdn/subnet.md) `add` and `remove` | `sdn_write: true` on the profile, in the [configuration file](config-file.md). This is a pvecli setting, not a Proxmox VE privilege. |
+| The commands of [cluster firewall](../cli/cluster/firewall.md), [node firewall](../cli/node/firewall.md) and [sdn vnet firewall](../cli/sdn/vnet.md#firewall-status) that write, and [cluster firewall import](../cli/cluster/firewall.md#import) of a file that names those levels | `firewall_write: true` on the profile, in the [configuration file](config-file.md). The firewall of a guest does not need it. |
 
 ## Results that depend on what you can see
 

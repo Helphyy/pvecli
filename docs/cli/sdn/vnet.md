@@ -55,10 +55,289 @@ pvecli sdn vnet remove [VNET] [OPTIONS]
 | `-y`, `--yes` | Skip confirmation. |
 | `-p`, `--profile VALUE` | Profile to use. |
 
-## firewall
+## firewall status
 
-Manage the firewall of a vnet
+Show whether the firewall is enforced here, and why not.
 
 ```text
-pvecli sdn vnet firewall
+pvecli sdn vnet firewall status [TARGET] [OPTIONS]
 ```
+
+### Arguments
+
+| Argument | Description |
+|:--|:--|
+| `TARGET` | Vnet name. |
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-js`, `--json` | Output raw JSON to stdout (no colors, no tables). |
+
+## firewall enable
+
+Turn the firewall of a vnet on.
+
+```text
+pvecli sdn vnet firewall enable [TARGET] [OPTIONS]
+```
+
+### Arguments
+
+| Argument | Description |
+|:--|:--|
+| `TARGET` | Vnet name. |
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-y`, `--yes` | Do not ask for confirmation. |
+
+## firewall disable
+
+Turn the firewall of a vnet off.
+
+```text
+pvecli sdn vnet firewall disable [TARGET] [OPTIONS]
+```
+
+### Arguments
+
+| Argument | Description |
+|:--|:--|
+| `TARGET` | Vnet name. |
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-y`, `--yes` | Do not ask for confirmation. |
+
+## firewall set
+
+Change firewall options: policies, log levels, filters.
+
+```text
+pvecli sdn vnet firewall set [TARGET] [SETTINGS] [OPTIONS]
+```
+
+### Arguments
+
+| Argument | Description |
+|:--|:--|
+| `TARGET` | Vnet name. |
+| `SETTINGS` | KEY=VALUE pairs, as `options` names them. |
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `--clear VALUE` | Options back to their default, comma separated. |
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-y`, `--yes` | Do not ask for confirmation. |
+
+## firewall options
+
+Show the firewall options, with the defaults Proxmox applies.
+
+```text
+pvecli sdn vnet firewall options [TARGET] [OPTIONS]
+```
+
+### Arguments
+
+| Argument | Description |
+|:--|:--|
+| `TARGET` | Vnet name. |
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-js`, `--json` | Output raw JSON to stdout (no colors, no tables). |
+
+## firewall rule list
+
+List the firewall rules, in the order they are evaluated.
+
+```text
+pvecli sdn vnet firewall rule list [TARGET] [OPTIONS]
+```
+
+### Arguments
+
+| Argument | Description |
+|:--|:--|
+| `TARGET` | Vnet name. |
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-js`, `--json` | Output raw JSON to stdout (no colors, no tables). |
+
+## firewall rule add
+
+Add a firewall rule (asked step by step without --action).
+
+```text
+pvecli sdn vnet firewall rule add [TARGET] [OPTIONS]
+```
+
+### Arguments
+
+| Argument | Description |
+|:--|:--|
+| `TARGET` | Vnet name. |
+
+### Options
+
+| Option | Default | Description |
+|:--|:--|:--|
+| `-ac`, `--action VALUE` |  | ACCEPT, DROP, REJECT, or a security group to insert. |
+| `-dn`, `--direction VALUE` |  | in, out or forward. |
+| `-ma`, `--macro VALUE` |  | A macro (cluster firewall macros): SSH, HTTPS. |
+| `-pt`, `--proto VALUE` |  | Protocol: tcp, udp, icmp... or a number. |
+| `-src`, `--source VALUE` |  | Source: address, network, alias or +ipset. |
+| `-dst`, `--dest VALUE` |  | Destination: address, network, alias or +ipset. |
+| `-spt`, `--sport VALUE` |  | Source port(s): 80, 80:90, 22,80. |
+| `-dpt`, `--dport VALUE` |  | Destination port(s): 443, 8000:8100, 22,443. |
+| `--icmp-type VALUE` |  | ICMP type, with --proto icmp. |
+| `--iface VALUE` |  | Interface: net0 on a guest, vmbr0 on a node. |
+| `-lg`, `--log VALUE` |  | Log level: emerg, alert, crit, err, warning, notice, info, debug, nolog. |
+| `-c`, `--comment VALUE` |  | Comment. |
+| `-po`, `--pos N` | `0` | Position: 0 is evaluated first (the default, like the web interface). |
+| `--disabled` |  | Add it disabled. |
+| `-p`, `--profile VALUE` |  | Profile to use. |
+| `-y`, `--yes` |  | Do not ask for confirmation. |
+
+## firewall rule edit
+
+Change a firewall rule: only the options given change.
+
+```text
+pvecli sdn vnet firewall rule edit [TARGET] [POSITION] [OPTIONS]
+```
+
+### Arguments
+
+| Argument | Description |
+|:--|:--|
+| `TARGET` | Vnet name. |
+| `POSITION` | Position of the rule. |
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `-ac`, `--action VALUE` | ACCEPT, DROP, REJECT, or a security group to insert. |
+| `-dn`, `--direction VALUE` | in, out or forward. |
+| `-ma`, `--macro VALUE` | A macro (cluster firewall macros): SSH, HTTPS. |
+| `-pt`, `--proto VALUE` | Protocol: tcp, udp, icmp... or a number. |
+| `-src`, `--source VALUE` | Source: address, network, alias or +ipset. |
+| `-dst`, `--dest VALUE` | Destination: address, network, alias or +ipset. |
+| `-spt`, `--sport VALUE` | Source port(s): 80, 80:90, 22,80. |
+| `-dpt`, `--dport VALUE` | Destination port(s): 443, 8000:8100, 22,443. |
+| `--icmp-type VALUE` | ICMP type, with --proto icmp. |
+| `--iface VALUE` | Interface: net0 on a guest, vmbr0 on a node. |
+| `-lg`, `--log VALUE` | Log level: emerg, alert, crit, err, warning, notice, info, debug, nolog. |
+| `-c`, `--comment VALUE` | Comment. |
+| `--clear VALUE` | Fields to empty, comma separated: macro, proto, source, dest, sport, dport, icmp-type, iface, log, comment. |
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-y`, `--yes` | Do not ask for confirmation. |
+
+## firewall rule remove
+
+Remove firewall rules.
+
+```text
+pvecli sdn vnet firewall rule remove [TARGET] [POSITIONS] [OPTIONS]
+```
+
+### Arguments
+
+| Argument | Description |
+|:--|:--|
+| `TARGET` | Vnet name. |
+| `POSITIONS` | Positions of the rules. |
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-y`, `--yes` | Do not ask for confirmation. |
+
+## firewall rule move
+
+Move a firewall rule: rules are evaluated from position 0 down.
+
+```text
+pvecli sdn vnet firewall rule move [TARGET] POSITION TO [OPTIONS]
+```
+
+### Arguments
+
+| Argument | Description |
+|:--|:--|
+| `TARGET` | Vnet name. |
+| `POSITION` | Position of the rule. |
+| `TO` | Its new position. |
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-y`, `--yes` | Do not ask for confirmation. |
+
+## firewall rule enable
+
+Enable firewall rules without removing them.
+
+```text
+pvecli sdn vnet firewall rule enable [TARGET] [POSITIONS] [OPTIONS]
+```
+
+### Arguments
+
+| Argument | Description |
+|:--|:--|
+| `TARGET` | Vnet name. |
+| `POSITIONS` | Positions of the rules. |
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-y`, `--yes` | Do not ask for confirmation. |
+
+## firewall rule disable
+
+Disable firewall rules without removing them.
+
+```text
+pvecli sdn vnet firewall rule disable [TARGET] [POSITIONS] [OPTIONS]
+```
+
+### Arguments
+
+| Argument | Description |
+|:--|:--|
+| `TARGET` | Vnet name. |
+| `POSITIONS` | Positions of the rules. |
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-y`, `--yes` | Do not ask for confirmation. |

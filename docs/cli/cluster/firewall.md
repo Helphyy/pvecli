@@ -93,37 +93,452 @@ pvecli cluster firewall options [OPTIONS]
 | `-p`, `--profile VALUE` | Profile to use. |
 | `-js`, `--json` | Output raw JSON to stdout (no colors, no tables). |
 
-## rule
+## rule list
 
-Firewall rules of the datacenter
-
-```text
-pvecli cluster firewall rule
-```
-
-## group
-
-Security groups: named lists of rules
+List the firewall rules, in the order they are evaluated.
 
 ```text
-pvecli cluster firewall group
+pvecli cluster firewall rule list [OPTIONS]
 ```
 
-## ipset
+### Options
 
-IP sets of the datacenter
+| Option | Description |
+|:--|:--|
+| `-g`, `--group VALUE` | Rules of this security group. |
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-js`, `--json` | Output raw JSON to stdout (no colors, no tables). |
+
+## rule add
+
+Add a firewall rule (asked step by step without --action).
 
 ```text
-pvecli cluster firewall ipset
+pvecli cluster firewall rule add [OPTIONS]
 ```
 
-## alias
+### Options
 
-Aliases of the datacenter
+| Option | Default | Description |
+|:--|:--|:--|
+| `-ac`, `--action VALUE` |  | ACCEPT, DROP, REJECT, or a security group to insert. |
+| `-dn`, `--direction VALUE` |  | in, out or forward. |
+| `-ma`, `--macro VALUE` |  | A macro (cluster firewall macros): SSH, HTTPS. |
+| `-pt`, `--proto VALUE` |  | Protocol: tcp, udp, icmp... or a number. |
+| `-src`, `--source VALUE` |  | Source: address, network, alias or +ipset. |
+| `-dst`, `--dest VALUE` |  | Destination: address, network, alias or +ipset. |
+| `-spt`, `--sport VALUE` |  | Source port(s): 80, 80:90, 22,80. |
+| `-dpt`, `--dport VALUE` |  | Destination port(s): 443, 8000:8100, 22,443. |
+| `--icmp-type VALUE` |  | ICMP type, with --proto icmp. |
+| `--iface VALUE` |  | Interface: net0 on a guest, vmbr0 on a node. |
+| `-lg`, `--log VALUE` |  | Log level: emerg, alert, crit, err, warning, notice, info, debug, nolog. |
+| `-c`, `--comment VALUE` |  | Comment. |
+| `-po`, `--pos N` | `0` | Position: 0 is evaluated first (the default, like the web interface). |
+| `--disabled` |  | Add it disabled. |
+| `-g`, `--group VALUE` |  | Rules of this security group. |
+| `-f`, `--force` |  | Go on even if the API would be closed to this machine. |
+| `-p`, `--profile VALUE` |  | Profile to use. |
+| `-y`, `--yes` |  | Do not ask for confirmation. |
+
+## rule edit
+
+Change a firewall rule: only the options given change.
 
 ```text
-pvecli cluster firewall alias
+pvecli cluster firewall rule edit [POSITION] [OPTIONS]
 ```
+
+### Arguments
+
+| Argument | Description |
+|:--|:--|
+| `POSITION` | Position of the rule. |
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `-ac`, `--action VALUE` | ACCEPT, DROP, REJECT, or a security group to insert. |
+| `-dn`, `--direction VALUE` | in, out or forward. |
+| `-ma`, `--macro VALUE` | A macro (cluster firewall macros): SSH, HTTPS. |
+| `-pt`, `--proto VALUE` | Protocol: tcp, udp, icmp... or a number. |
+| `-src`, `--source VALUE` | Source: address, network, alias or +ipset. |
+| `-dst`, `--dest VALUE` | Destination: address, network, alias or +ipset. |
+| `-spt`, `--sport VALUE` | Source port(s): 80, 80:90, 22,80. |
+| `-dpt`, `--dport VALUE` | Destination port(s): 443, 8000:8100, 22,443. |
+| `--icmp-type VALUE` | ICMP type, with --proto icmp. |
+| `--iface VALUE` | Interface: net0 on a guest, vmbr0 on a node. |
+| `-lg`, `--log VALUE` | Log level: emerg, alert, crit, err, warning, notice, info, debug, nolog. |
+| `-c`, `--comment VALUE` | Comment. |
+| `--clear VALUE` | Fields to empty, comma separated: macro, proto, source, dest, sport, dport, icmp-type, iface, log, comment. |
+| `-g`, `--group VALUE` | Rules of this security group. |
+| `-f`, `--force` | Go on even if the API would be closed to this machine. |
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-y`, `--yes` | Do not ask for confirmation. |
+
+## rule remove
+
+Remove firewall rules.
+
+```text
+pvecli cluster firewall rule remove [POSITIONS] [OPTIONS]
+```
+
+### Arguments
+
+| Argument | Description |
+|:--|:--|
+| `POSITIONS` | Positions of the rules. |
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `-g`, `--group VALUE` | Rules of this security group. |
+| `-f`, `--force` | Go on even if the API would be closed to this machine. |
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-y`, `--yes` | Do not ask for confirmation. |
+
+## rule move
+
+Move a firewall rule: rules are evaluated from position 0 down.
+
+```text
+pvecli cluster firewall rule move POSITION TO [OPTIONS]
+```
+
+### Arguments
+
+| Argument | Description |
+|:--|:--|
+| `POSITION` | Position of the rule. |
+| `TO` | Its new position. |
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `-g`, `--group VALUE` | Rules of this security group. |
+| `-f`, `--force` | Go on even if the API would be closed to this machine. |
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-y`, `--yes` | Do not ask for confirmation. |
+
+## rule enable
+
+Enable firewall rules without removing them.
+
+```text
+pvecli cluster firewall rule enable [POSITIONS] [OPTIONS]
+```
+
+### Arguments
+
+| Argument | Description |
+|:--|:--|
+| `POSITIONS` | Positions of the rules. |
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `-g`, `--group VALUE` | Rules of this security group. |
+| `-f`, `--force` | Go on even if the API would be closed to this machine. |
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-y`, `--yes` | Do not ask for confirmation. |
+
+## rule disable
+
+Disable firewall rules without removing them.
+
+```text
+pvecli cluster firewall rule disable [POSITIONS] [OPTIONS]
+```
+
+### Arguments
+
+| Argument | Description |
+|:--|:--|
+| `POSITIONS` | Positions of the rules. |
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `-g`, `--group VALUE` | Rules of this security group. |
+| `-f`, `--force` | Go on even if the API would be closed to this machine. |
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-y`, `--yes` | Do not ask for confirmation. |
+
+## group add
+
+Create an empty security group.
+
+```text
+pvecli cluster firewall group add NAME [OPTIONS]
+```
+
+### Arguments
+
+| Argument | Description |
+|:--|:--|
+| `NAME` | Security group name. |
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `-c`, `--comment VALUE` | Comment. |
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-y`, `--yes` | Do not ask for confirmation. |
+
+## group rename
+
+Rename a security group (the rules that insert it follow).
+
+```text
+pvecli cluster firewall group rename NAME NEW [OPTIONS]
+```
+
+### Arguments
+
+| Argument | Description |
+|:--|:--|
+| `NAME` | Security group name. |
+| `NEW` | New name. |
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-y`, `--yes` | Do not ask for confirmation. |
+
+## group remove
+
+Remove a security group and its rules, unless a level still inserts it.
+
+```text
+pvecli cluster firewall group remove [NAME] [OPTIONS]
+```
+
+### Arguments
+
+| Argument | Description |
+|:--|:--|
+| `NAME` | Security group name. |
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `-f`, `--force` | Remove it even if rules insert it. |
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-y`, `--yes` | Do not ask for confirmation. |
+
+## group list
+
+List the security groups and their number of rules.
+
+```text
+pvecli cluster firewall group list [OPTIONS]
+```
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-js`, `--json` | Output raw JSON to stdout (no colors, no tables). |
+
+## group info
+
+Show the rules of a security group and where it is used.
+
+```text
+pvecli cluster firewall group info [GROUP] [OPTIONS]
+```
+
+### Arguments
+
+| Argument | Description |
+|:--|:--|
+| `GROUP` | Security group. |
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-js`, `--json` | Output raw JSON to stdout (no colors, no tables). |
+
+## ipset list
+
+List the IP sets and their entries.
+
+```text
+pvecli cluster firewall ipset list [OPTIONS]
+```
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-js`, `--json` | Output raw JSON to stdout (no colors, no tables). |
+
+## ipset add
+
+Create an IP set and add entries to it.
+
+```text
+pvecli cluster firewall ipset add NAME [CIDRS] [OPTIONS]
+```
+
+### Arguments
+
+| Argument | Description |
+|:--|:--|
+| `NAME` | IP set name (created if missing). |
+| `CIDRS` | Addresses, networks or alias names to add. |
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `--nomatch` | Add them as exceptions (never match). |
+| `-c`, `--comment VALUE` | Comment of the entries, or of a new set. |
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-y`, `--yes` | Do not ask for confirmation. |
+
+## ipset edit
+
+Change the comment or the name of an IP set.
+
+```text
+pvecli cluster firewall ipset edit [NAME] [OPTIONS]
+```
+
+### Arguments
+
+| Argument | Description |
+|:--|:--|
+| `NAME` | IP set name. |
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `-c`, `--comment VALUE` | Comment. |
+| `--rename VALUE` | New name: every rule that names the set follows. |
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-y`, `--yes` | Do not ask for confirmation. |
+
+## ipset remove
+
+Remove entries from an IP set, or the whole set.
+
+```text
+pvecli cluster firewall ipset remove [NAME] [CIDRS] [OPTIONS]
+```
+
+### Arguments
+
+| Argument | Description |
+|:--|:--|
+| `NAME` | IP set name. |
+| `CIDRS` | Entries to remove; none removes the whole set. |
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `-f`, `--force` | Remove the set even if rules name it. |
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-y`, `--yes` | Do not ask for confirmation. |
+
+## alias list
+
+List the aliases: names for an address or a network.
+
+```text
+pvecli cluster firewall alias list [OPTIONS]
+```
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-js`, `--json` | Output raw JSON to stdout (no colors, no tables). |
+
+## alias add
+
+Create an alias: a name for an address or a network.
+
+```text
+pvecli cluster firewall alias add NAME CIDR [OPTIONS]
+```
+
+### Arguments
+
+| Argument | Description |
+|:--|:--|
+| `NAME` | Alias name. |
+| `CIDR` | Address or network. |
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `-c`, `--comment VALUE` | Comment. |
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-y`, `--yes` | Do not ask for confirmation. |
+
+## alias edit
+
+Change the address, the comment or the name of an alias.
+
+```text
+pvecli cluster firewall alias edit [NAME] [OPTIONS]
+```
+
+### Arguments
+
+| Argument | Description |
+|:--|:--|
+| `NAME` | Alias name. |
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `--cidr VALUE` | New address or network. |
+| `-c`, `--comment VALUE` | Comment. |
+| `--rename VALUE` | New name: every rule that names the alias follows. |
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-y`, `--yes` | Do not ask for confirmation. |
+
+## alias remove
+
+Remove an alias, unless a rule or an IP set still names it.
+
+```text
+pvecli cluster firewall alias remove [NAME] [OPTIONS]
+```
+
+### Arguments
+
+| Argument | Description |
+|:--|:--|
+| `NAME` | Alias name. |
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `-f`, `--force` | Remove it even if rules name it. |
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-y`, `--yes` | Do not ask for confirmation. |
 
 ## macros
 

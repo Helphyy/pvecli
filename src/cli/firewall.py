@@ -503,12 +503,23 @@ def print_overview(view: dict[str, Any]) -> None:
 # ── export ───────────────────────────────────────────────────────────────
 
 
+# The order of the keys in an export, whatever order the API answers in:
+# a file kept in git then changes only where the firewall does
+_KEY_ORDER = ("name", "type", "action", "macro", "proto", "source", "dest", "sport", "dport", "icmp-type",
+              "iface", "log", "cidr", "nomatch", "enable", "comment", "entries", "rules")
+
+
+def _ordered(item: dict[str, Any]) -> dict[str, Any]:
+    rank = {k: i for i, k in enumerate(_KEY_ORDER)}
+    return dict(sorted(item.items(), key=lambda kv: (rank.get(kv[0], len(rank)), kv[0])))
+
+
 def _clean_rule(rule: dict[str, Any]) -> dict[str, Any]:
-    return {k: v for k, v in rule.items() if k not in _RULE_META}
+    return _ordered({k: v for k, v in rule.items() if k not in _RULE_META})
 
 
 def _clean(items: list[dict[str, Any]], keep: tuple[str, ...] = ()) -> list[dict[str, Any]]:
-    return [{k: v for k, v in i.items() if k not in _RULE_META or k in keep} for i in items]
+    return [_ordered({k: v for k, v in i.items() if k not in _RULE_META or k in keep}) for i in items]
 
 
 async def _objects(client: ProxmoxClient, scope: Scope, keep: tuple[str, ...] = ()) -> dict[str, Any]:
@@ -523,8 +534,8 @@ async def _objects(client: ProxmoxClient, scope: Scope, keep: tuple[str, ...] = 
     sets = []
     for s in sorted(ipsets or [], key=lambda x: x.get("name", "")):
         entries = await client.get(f"{scope.base}/ipset/{s['name']}") or []
-        sets.append({**{k: v for k, v in s.items() if k not in _RULE_META},
-                     "entries": sorted(_clean(entries, keep), key=lambda e: e.get("cidr", ""))})
+        sets.append(_ordered({**{k: v for k, v in s.items() if k not in _RULE_META},
+                              "entries": sorted(_clean(entries, keep), key=lambda e: e.get("cidr", ""))}))
     out: dict[str, Any] = {}
     if aliases:
         out["aliases"] = sorted(_clean(aliases, keep), key=lambda a: a.get("name", ""))
@@ -540,7 +551,7 @@ async def export_cluster(client: ProxmoxClient) -> dict[str, Any]:
         read_options(client, dc), read_rules(client, dc),
         client.get("/cluster/firewall/groups"), _objects(client, dc),
     )
-    datacenter: dict[str, Any] = {"options": dc_opts, **dc_objects}
+    datacenter: dict[str, Any] = {"options": dict(sorted(dc_opts.items())), **dc_objects}
     if groups:
         datacenter["groups"] = []
         for g in sorted(groups, key=lambda x: x.get("group", "")):
@@ -548,7 +559,7 @@ async def export_cluster(client: ProxmoxClient) -> dict[str, Any]:
             entry = {"name": g["group"], "rules": [_clean_rule(r) for r in rules]}
             if g.get("comment"):
                 entry["comment"] = g["comment"]
-            datacenter["groups"].append(entry)
+            datacenter["groups"].append(_ordered(entry))
     if dc_rules:
         datacenter["rules"] = [_clean_rule(r) for r in dc_rules]
 
@@ -556,7 +567,7 @@ async def export_cluster(client: ProxmoxClient) -> dict[str, Any]:
         opts, rules = await asyncio.gather(read_options(client, scope), read_rules(client, scope))
         out: dict[str, Any] = {}
         if opts:
-            out["options"] = opts
+            out["options"] = dict(sorted(opts.items()))
         if rules:
             out["rules"] = [_clean_rule(r) for r in rules]
         if objects:

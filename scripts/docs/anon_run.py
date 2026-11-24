@@ -84,6 +84,19 @@ def install(conf: dict[str, Any]) -> None:
 
     ConfigManager.get_profile = anon_profile  # type: ignore[method-assign]
 
+    # The firewall guard prints this machine's address, found by a socket
+    # to the real host, not by the API: swapped too
+    from src.cli import firewall_guard
+
+    to_real = {v: k for k, v in to_fake.items()}
+    source_address = firewall_guard.source_address
+
+    def anon_source(host: str, port: int) -> str | None:
+        ip = source_address(_swap(host, to_real), port)
+        return _swap(ip, to_fake) if ip else ip
+
+    firewall_guard.source_address = anon_source  # type: ignore[assignment]
+
     # The lab profiles carry their documentation names (lab1 -> prod), so
     # pvecli prints and lays out those names itself. Every other profile of
     # this machine is left out: a capture cannot reach it, even by mistake.

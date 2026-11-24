@@ -117,29 +117,372 @@ pvecli vm firewall options [TARGET] [OPTIONS]
 | `-p`, `--profile VALUE` | Profile to use. |
 | `-js`, `--json` | Output raw JSON to stdout (no colors, no tables). |
 
-## rule
+## rule list
 
-Firewall rules of a VM
-
-```text
-pvecli vm firewall rule
-```
-
-## ipset
-
-IP sets of a VM
+List the firewall rules, in the order they are evaluated.
 
 ```text
-pvecli vm firewall ipset
+pvecli vm firewall rule list [TARGET] [OPTIONS]
 ```
 
-## alias
+### Arguments
 
-Aliases of a VM
+| Argument | Description |
+|:--|:--|
+| `TARGET` | VM ID. |
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-js`, `--json` | Output raw JSON to stdout (no colors, no tables). |
+
+## rule add
+
+Add a firewall rule (asked step by step without --action).
 
 ```text
-pvecli vm firewall alias
+pvecli vm firewall rule add [TARGET] [OPTIONS]
 ```
+
+### Arguments
+
+| Argument | Description |
+|:--|:--|
+| `TARGET` | VM ID. |
+
+### Options
+
+| Option | Default | Description |
+|:--|:--|:--|
+| `-ac`, `--action VALUE` |  | ACCEPT, DROP, REJECT, or a security group to insert. |
+| `-dn`, `--direction VALUE` |  | in, out or forward. |
+| `-ma`, `--macro VALUE` |  | A macro (cluster firewall macros): SSH, HTTPS. |
+| `-pt`, `--proto VALUE` |  | Protocol: tcp, udp, icmp... or a number. |
+| `-src`, `--source VALUE` |  | Source: address, network, alias or +ipset. |
+| `-dst`, `--dest VALUE` |  | Destination: address, network, alias or +ipset. |
+| `-spt`, `--sport VALUE` |  | Source port(s): 80, 80:90, 22,80. |
+| `-dpt`, `--dport VALUE` |  | Destination port(s): 443, 8000:8100, 22,443. |
+| `--icmp-type VALUE` |  | ICMP type, with --proto icmp. |
+| `--iface VALUE` |  | Interface: net0 on a guest, vmbr0 on a node. |
+| `-lg`, `--log VALUE` |  | Log level: emerg, alert, crit, err, warning, notice, info, debug, nolog. |
+| `-c`, `--comment VALUE` |  | Comment. |
+| `-po`, `--pos N` | `0` | Position: 0 is evaluated first (the default, like the web interface). |
+| `--disabled` |  | Add it disabled. |
+| `-p`, `--profile VALUE` |  | Profile to use. |
+| `-y`, `--yes` |  | Do not ask for confirmation. |
+
+## rule edit
+
+Change a firewall rule: only the options given change.
+
+```text
+pvecli vm firewall rule edit [TARGET] [POSITION] [OPTIONS]
+```
+
+### Arguments
+
+| Argument | Description |
+|:--|:--|
+| `TARGET` | VM ID. |
+| `POSITION` | Position of the rule. |
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `-ac`, `--action VALUE` | ACCEPT, DROP, REJECT, or a security group to insert. |
+| `-dn`, `--direction VALUE` | in, out or forward. |
+| `-ma`, `--macro VALUE` | A macro (cluster firewall macros): SSH, HTTPS. |
+| `-pt`, `--proto VALUE` | Protocol: tcp, udp, icmp... or a number. |
+| `-src`, `--source VALUE` | Source: address, network, alias or +ipset. |
+| `-dst`, `--dest VALUE` | Destination: address, network, alias or +ipset. |
+| `-spt`, `--sport VALUE` | Source port(s): 80, 80:90, 22,80. |
+| `-dpt`, `--dport VALUE` | Destination port(s): 443, 8000:8100, 22,443. |
+| `--icmp-type VALUE` | ICMP type, with --proto icmp. |
+| `--iface VALUE` | Interface: net0 on a guest, vmbr0 on a node. |
+| `-lg`, `--log VALUE` | Log level: emerg, alert, crit, err, warning, notice, info, debug, nolog. |
+| `-c`, `--comment VALUE` | Comment. |
+| `--clear VALUE` | Fields to empty, comma separated: macro, proto, source, dest, sport, dport, icmp-type, iface, log, comment. |
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-y`, `--yes` | Do not ask for confirmation. |
+
+## rule remove
+
+Remove firewall rules.
+
+```text
+pvecli vm firewall rule remove [TARGET] [POSITIONS] [OPTIONS]
+```
+
+### Arguments
+
+| Argument | Description |
+|:--|:--|
+| `TARGET` | VM ID. |
+| `POSITIONS` | Positions of the rules. |
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-y`, `--yes` | Do not ask for confirmation. |
+
+## rule move
+
+Move a firewall rule: rules are evaluated from position 0 down.
+
+```text
+pvecli vm firewall rule move [TARGET] POSITION TO [OPTIONS]
+```
+
+### Arguments
+
+| Argument | Description |
+|:--|:--|
+| `TARGET` | VM ID. |
+| `POSITION` | Position of the rule. |
+| `TO` | Its new position. |
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-y`, `--yes` | Do not ask for confirmation. |
+
+## rule enable
+
+Enable firewall rules without removing them.
+
+```text
+pvecli vm firewall rule enable [TARGET] [POSITIONS] [OPTIONS]
+```
+
+### Arguments
+
+| Argument | Description |
+|:--|:--|
+| `TARGET` | VM ID. |
+| `POSITIONS` | Positions of the rules. |
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-y`, `--yes` | Do not ask for confirmation. |
+
+## rule disable
+
+Disable firewall rules without removing them.
+
+```text
+pvecli vm firewall rule disable [TARGET] [POSITIONS] [OPTIONS]
+```
+
+### Arguments
+
+| Argument | Description |
+|:--|:--|
+| `TARGET` | VM ID. |
+| `POSITIONS` | Positions of the rules. |
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-y`, `--yes` | Do not ask for confirmation. |
+
+## ipset list
+
+List the IP sets and their entries.
+
+```text
+pvecli vm firewall ipset list [TARGET] [OPTIONS]
+```
+
+### Arguments
+
+| Argument | Description |
+|:--|:--|
+| `TARGET` | VM ID. |
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-js`, `--json` | Output raw JSON to stdout (no colors, no tables). |
+
+## ipset add
+
+Create an IP set and add entries to it.
+
+```text
+pvecli vm firewall ipset add [TARGET] NAME [CIDRS] [OPTIONS]
+```
+
+### Arguments
+
+| Argument | Description |
+|:--|:--|
+| `TARGET` | VM ID. |
+| `NAME` | IP set name (created if missing). |
+| `CIDRS` | Addresses, networks or alias names to add. |
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `--nomatch` | Add them as exceptions (never match). |
+| `-c`, `--comment VALUE` | Comment of the entries, or of a new set. |
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-y`, `--yes` | Do not ask for confirmation. |
+
+## ipset edit
+
+Change the comment or the name of an IP set.
+
+```text
+pvecli vm firewall ipset edit [TARGET] [NAME] [OPTIONS]
+```
+
+### Arguments
+
+| Argument | Description |
+|:--|:--|
+| `TARGET` | VM ID. |
+| `NAME` | IP set name. |
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `-c`, `--comment VALUE` | Comment. |
+| `--rename VALUE` | New name: every rule that names the set follows. |
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-y`, `--yes` | Do not ask for confirmation. |
+
+## ipset remove
+
+Remove entries from an IP set, or the whole set.
+
+```text
+pvecli vm firewall ipset remove [TARGET] [NAME] [CIDRS] [OPTIONS]
+```
+
+### Arguments
+
+| Argument | Description |
+|:--|:--|
+| `TARGET` | VM ID. |
+| `NAME` | IP set name. |
+| `CIDRS` | Entries to remove; none removes the whole set. |
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `-f`, `--force` | Remove the set even if rules name it. |
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-y`, `--yes` | Do not ask for confirmation. |
+
+## alias list
+
+List the aliases: names for an address or a network.
+
+```text
+pvecli vm firewall alias list [TARGET] [OPTIONS]
+```
+
+### Arguments
+
+| Argument | Description |
+|:--|:--|
+| `TARGET` | VM ID. |
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-js`, `--json` | Output raw JSON to stdout (no colors, no tables). |
+
+## alias add
+
+Create an alias: a name for an address or a network.
+
+```text
+pvecli vm firewall alias add [TARGET] NAME CIDR [OPTIONS]
+```
+
+### Arguments
+
+| Argument | Description |
+|:--|:--|
+| `TARGET` | VM ID. |
+| `NAME` | Alias name. |
+| `CIDR` | Address or network. |
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `-c`, `--comment VALUE` | Comment. |
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-y`, `--yes` | Do not ask for confirmation. |
+
+## alias edit
+
+Change the address, the comment or the name of an alias.
+
+```text
+pvecli vm firewall alias edit [TARGET] [NAME] [OPTIONS]
+```
+
+### Arguments
+
+| Argument | Description |
+|:--|:--|
+| `TARGET` | VM ID. |
+| `NAME` | Alias name. |
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `--cidr VALUE` | New address or network. |
+| `-c`, `--comment VALUE` | Comment. |
+| `--rename VALUE` | New name: every rule that names the alias follows. |
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-y`, `--yes` | Do not ask for confirmation. |
+
+## alias remove
+
+Remove an alias, unless a rule or an IP set still names it.
+
+```text
+pvecli vm firewall alias remove [TARGET] [NAME] [OPTIONS]
+```
+
+### Arguments
+
+| Argument | Description |
+|:--|:--|
+| `TARGET` | VM ID. |
+| `NAME` | Alias name. |
+
+### Options
+
+| Option | Description |
+|:--|:--|
+| `-f`, `--force` | Remove it even if rules name it. |
+| `-p`, `--profile VALUE` | Profile to use. |
+| `-y`, `--yes` | Do not ask for confirmation. |
 
 ## log
 

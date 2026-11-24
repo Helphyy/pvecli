@@ -110,6 +110,14 @@ flowchart TB
 
     [:lucide-arrow-right: Make a guest highly available](ha.md)
 
+-   :lucide-brick-wall-shield:{ .lg } __Filter a guest's traffic__
+
+    ---
+
+    Turn on the firewall of a guest, flag its cards, write its rules.
+
+    [:lucide-arrow-right: Filter a guest's traffic](firewall.md)
+
 -   :lucide-tags:{ .lg } __Organize guests with tags and pools__
 
     ---

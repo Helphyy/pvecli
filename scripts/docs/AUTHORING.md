@@ -94,6 +94,9 @@ fragments, shown as a dark code block with the real colors.
    `width=100` for wide tables, `manual=True` when it needs guests set up
    first or changes the lab.
 2. Run only your shots: `.venv/bin/python -m scripts.docs.screens NAME [NAME...]`.
+   Shots made on another lab (a single node...) run with
+   `PVECLI_SCREENS_CONF=scripts/docs/screens.NAME.local.toml`, a copy of
+   `screens.local.toml` for that lab (git-ignored).
 3. Include it: `--8<-- "screens/NAME.html"`. To explain parts of the
    output, a short list after it that quotes what it explains.
 

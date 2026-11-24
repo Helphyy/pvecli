@@ -60,6 +60,7 @@ SECTIONS: list[tuple[str, list[tuple[str, str]], list[str]]] = [
         ("Migrate a guest", "guests/migrate.md"),
         ("Take and roll back snapshots", "guests/snapshots.md"),
         ("Make a guest highly available", "guests/ha.md"),
+        ("Filter a guest's traffic", "guests/firewall.md"),
         ("Organize guests with tags and pools", "guests/tags-pools.md"),
         ("Deploy file format", "reference/deploy-file.md"),
     ], ["vm", "ct", "deploy", "snapshot", "tag", "pool"]),
@@ -72,6 +73,7 @@ SECTIONS: list[tuple[str, list[tuple[str, str]], list[str]]] = [
         ("Create or join a cluster", "infrastructure/create-join.md"),
         ("Add and manage storage", "infrastructure/storage.md"),
         ("Manage SDN zones and vnets", "infrastructure/sdn.md"),
+        ("Turn on the cluster firewall", "infrastructure/firewall.md"),
         ("Inspect Ceph", "infrastructure/ceph.md"),
     ], ["cluster", "node", "storage", "sdn", "ceph"]),
     ("Backups", [
@@ -88,8 +90,10 @@ SECTIONS: list[tuple[str, list[tuple[str, str]], list[str]]] = [
         ("Run a command on several clusters", "fleet/several-clusters.md"),
         ("Find a guest, an address or a disk", "fleet/find.md"),
         ("Audit a cluster", "fleet/audit.md"),
+        ("Keep the firewall in a file", "fleet/firewall.md"),
         ("Use pvecli in scripts", "fleet/scripting.md"),
         ("Exit codes", "reference/exit-codes.md"),
+        ("Firewall file format", "reference/firewall-file.md"),
     ], ["find", "audit"]),
 ]
 
@@ -221,10 +225,20 @@ def _command_page(path: list[str], cmd: Any) -> str:
     if not subs:
         lines += _command_body(path, cmd, 2)
     else:
-        lines += [f"{_summary(cmd)}.", ""]
-        for name, sub in subs:
-            lines += [f"## {name}", "", *_command_body([*path, name], sub, 3)]
+        lines += [f"{_summary(cmd)}.", ""] + _sections(path, cmd, [])
     return _front(title, _summary(cmd) + ".") + "\n".join(lines).rstrip() + "\n"
+
+
+def _sections(path: list[str], cmd: Any, rel: list[str]) -> list[str]:
+    """One section per command, a nested group flattened: ## rule add."""
+    out: list[str] = []
+    for name, sub in _subcommands(cmd):
+        here = [*rel, name]
+        if _subcommands(sub):
+            out += _sections([*path, name], sub, here)
+        else:
+            out += [f"## {' '.join(here)}", "", *_command_body([*path, name], sub, 3)]
+    return out
 
 
 def render() -> dict[str, str]:

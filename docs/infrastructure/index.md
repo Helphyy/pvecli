@@ -110,6 +110,14 @@ pvecli talks to one node of the cluster through the API, and that node answers f
 
     [:lucide-arrow-right: Manage SDN zones and vnets](sdn.md)
 
+-   :lucide-brick-wall-fire:{ .lg } __Turn on the cluster firewall__
+
+    ---
+
+    Turn the datacenter firewall on without losing the access, rules for the nodes, security groups.
+
+    [:lucide-arrow-right: Turn on the cluster firewall](firewall.md)
+
 -   :lucide-database:{ .lg } __Inspect Ceph__
 
     ---

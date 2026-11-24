@@ -107,3 +107,12 @@ def test_a_broken_rule_is_named_on_every_level():
     expected = "rule 3 is broken (source: no such alias 'gw'): Proxmox ignores it"
     assert pitfalls("cluster", True, True, [broken]) == [expected]
     assert expected in pitfalls("vm", True, True, [broken], {"net0": True})
+
+
+def test_export_keys_keep_one_order():
+    # The API answers in any order: a file in git must not change for that
+    from src.cli.firewall import _clean_rule
+
+    rule = {"comment": "c", "enable": 1, "pos": 3, "macro": "SSH", "type": "in", "action": "ACCEPT",
+            "source": "10.0.0.0/24", "digest": "x"}
+    assert list(_clean_rule(rule)) == ["type", "action", "macro", "source", "enable", "comment"]

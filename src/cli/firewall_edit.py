@@ -1596,16 +1596,15 @@ def add_switch_commands(app: typer.Typer, kind: str, target_arg: Any, drop: Any)
             yes: bool = YES,
         ) -> None:
             async def body(client: ProxmoxClient, scope: Scope) -> None:
+                if scope.is_guest and enable:
+                    await _enable_guest(client, scope, bool(nics), yes)
+                    return
                 opts = await read_options(client, scope)
                 if is_on(effective(scope.kind, opts, "enable")) == enable:
                     print_info(f"The firewall of {scope.label} is already {'on' if enable else 'off'}")
-                    if not (enable and nics):
-                        return
-                else:
-                    await apply(client, scope, profile, {"enable": 1 if enable else 0},
-                                [f"firewall: {'off -> on' if enable else 'on -> off'}"], bool(force), yes)
-                if scope.is_guest and enable:
-                    await _guest_cards(client, scope, bool(nics), yes)
+                    return
+                await apply(client, scope, profile, {"enable": 1 if enable else 0},
+                            [f"firewall: {'off -> on' if enable else 'on -> off'}"], bool(force), yes)
 
             try:
                 await run(profile, target, body)
@@ -1673,31 +1672,42 @@ def _strip(fn: Any, name: str) -> None:
     fn.__signature__ = sig.replace(parameters=[p for n, p in sig.parameters.items() if n != name])
 
 
-async def _guest_cards(client: ProxmoxClient, scope: Scope, nics: bool, yes: bool) -> None:
-    """Say which cards of a guest are not filtered, and flag them with --nics."""
-    from .firewall import guest_nics
+async def _enable_guest(client: ProxmoxClient, scope: Scope, nics: bool, yes: bool) -> None:
+    """Turn the firewall of a guest on and, with --nics, flag its cards: one plan, one question.
+
+    A card without firewall=1 is not filtered, whatever the rules say.
+    """
+    from .firewall import effective, guest_nics, is_on
 
     assert scope.node is not None and scope.vmid is not None
     api = "qemu" if scope.kind == "vm" else "lxc"
+    before = await client.get(scope.options_path) or {}
+    on = is_on(effective(scope.kind, before, "enable"))
     config = await client.get(f"/nodes/{scope.node}/{api}/{scope.vmid}/config") or {}
-    unflagged = [n for n, on in guest_nics(config).items() if not on]
-    if not unflagged:
-        return
-    if not nics:
+    unflagged = [n for n, flagged in guest_nics(config).items() if not flagged]
+    cards = unflagged if nics else []
+    if on:
+        print_info(f"The firewall of {scope.label} is already on")
+    lines = ([] if on else ["firewall: off -> on"]) + [f"{n}: firewall=1" for n in cards]
+    if lines:
+        show_plan(f"Change the firewall of {scope.label}:", lines)
+        if cards:
+            status = await client.get(f"/nodes/{scope.node}/{api}/{scope.vmid}/status/current") or {}
+            if status.get("status") == "running":
+                console.print("  [yellow]The guest is running: each card is plugged again, its network "
+                              "drops for a moment.[/yellow]")
+        if not approved(yes):
+            return
+        if not on:
+            await Writer(client, {scope.options_path: before}).put(scope.options_path, {"enable": 1})
+        if cards:
+            data = {n: _with_firewall(config[n]) for n in cards}
+            await client.put(f"/nodes/{scope.node}/{api}/{scope.vmid}/config",
+                             data={**data, "digest": config.get("digest")})
+        print_success(f"Firewall of {scope.label} changed")
+    if unflagged and not nics:
         print_warning(f"Not filtered: {', '.join(unflagged)} (no firewall=1). "
                       f"Pass --nics to flag them, or edit the guest.")
-        return
-    status = await client.get(f"/nodes/{scope.node}/{api}/{scope.vmid}/status/current") or {}
-    running = status.get("status") == "running"
-    show_plan(f"Flag the cards of {scope.label}:", [f"{n}: firewall=1" for n in unflagged])
-    if running:
-        console.print("  [yellow]The guest is running: each card is plugged again, its network "
-                      "drops for a moment.[/yellow]")
-    if not approved(yes):
-        return
-    data = {n: _with_firewall(config[n]) for n in unflagged}
-    await client.put(f"/nodes/{scope.node}/{api}/{scope.vmid}/config", data={**data, "digest": config.get("digest")})
-    print_success(f"firewall=1 on {', '.join(unflagged)} of {scope.label}")
 
 
 def _with_firewall(card: str) -> str:

@@ -75,6 +75,14 @@ flowchart TB
 
     [:lucide-arrow-right: Audit](audit.md)
 
+-   :lucide-file-cog:{ .lg } __Keep the firewall in a file__
+
+    ---
+
+    Export the firewall to YAML, review the plan, import it again or on another cluster.
+
+    [:lucide-arrow-right: Firewall in a file](firewall.md)
+
 -   :lucide-code:{ .lg } __Use pvecli in scripts__
 
     ---
@@ -87,4 +95,4 @@ flowchart TB
 
 [Run a command on several clusters](several-clusters.md){ .md-button .md-button--primary }
 
-Reference: [exit codes](../reference/exit-codes.md), [find](../cli/find.md), [audit](../cli/audit.md).
+Reference: [exit codes](../reference/exit-codes.md), [firewall file format](../reference/firewall-file.md), [find](../cli/find.md), [audit](../cli/audit.md).

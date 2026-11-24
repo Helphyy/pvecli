@@ -110,6 +110,7 @@ def test_a_node_rule_that_drops_this_machine_is_refused(cli, fw):
             "-y", "-p", "p1")
     assert r.exit_code == 1
     assert "rule 0 of the node drops 10.0.0.7, before the management hosts" in r.output
+    assert "a narrower source" in r.output and "ipset add management" not in r.output
     assert fw.level("/nodes/pve1/firewall").rules == []
 
 
@@ -175,3 +176,11 @@ def test_set_and_clear_on_a_guest(cli, fw):
 def test_set_a_node_number(cli, fw):
     ok(cli("node", "firewall", "set", "pve1", "nf_conntrack_max=524288", "tcpflags=yes", "-y", "-p", "p1"))
     assert fw.level("/nodes/pve1/firewall").options == {"nf_conntrack_max": 524288, "tcpflags": 1}
+
+
+def test_enable_with_nics_asks_once(cli, fw, api):
+    r = ok(cli("vm", "firewall", "enable", "101", "--nics", "-p", "p2", input="y\n"))
+    assert r.output.count("Apply?") == 1
+    assert "firewall: off -> on" in r.output and "net1: firewall=1" in r.output
+    assert fw.level(VM).options == {"enable": 1}
+    assert api.called("PUT", "/nodes/pve1/qemu/101/config")[0].data["net1"].endswith("firewall=1")

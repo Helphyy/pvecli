@@ -86,6 +86,7 @@ The forms `-p` accepts (one name, a list, a pattern, a group) are described in [
 | `rdp_user` | string | `Administrator` | User `vm rdp` gives the RDP client, unless `--user` is passed. `config add` and `config edit` store `Administrator` as unset, which means the same. |
 | `rdp_port` | integer | `3389` | RDP port of the guests. |
 | `sdn_write` | boolean | `false` | Allows the SDN commands that write on this cluster. See [Manage SDN zones and vnets](../infrastructure/sdn.md). |
+| `firewall_write` | boolean | `false` | Allows changes to the firewall of the datacenter, the nodes, the security groups and the vnets on this cluster. See [Turn on the cluster firewall](../infrastructure/firewall.md#allow-pvecli-to-change-the-cluster-firewall). |
 | `fleet` | boolean | `true` | `false` keeps the profile out of patterns and groups. |
 
 The options `-u`, `-P` and `-i` of the SSH commands take precedence over `ssh_user`, `ssh_port` and `ssh_key`; `-u` and `-P` of `vm rdp` over `rdp_user` and `rdp_port`.
@@ -104,7 +105,7 @@ pvecli keeps the keys it does not know in a profile and at the top level: a fiel
 
 ## Fields the commands do not edit
 
-`config edit` changes the name, host, port, user, authentication, `verify_ssl`, `ssh_user`, `ssh_port`, `rdp_user` and `rdp_port`, and keeps every other field as it is. Edit the file by hand for `timeout`, `ssh_key`, `sdn_write`, `fleet` and `groups`.
+`config edit` changes the name, host, port, user, authentication, `verify_ssl`, `ssh_user`, `ssh_port`, `rdp_user` and `rdp_port`, and keeps every other field as it is. Edit the file by hand for `timeout`, `ssh_key`, `sdn_write`, `firewall_write`, `fleet` and `groups`.
 
 Renaming a profile with `config edit` also renames it in `default_profile` and in the groups. Removing the default profile with `config remove` makes the first remaining profile the default. Removing a profile does not remove it from the groups: a group that still lists it fails with `Group 'all' lists unknown profile(s): ...` until you delete the name from the group.
 
