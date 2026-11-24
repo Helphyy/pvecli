@@ -6,7 +6,7 @@ description: Every key of the YAML file read by pvecli deploy, with its type, it
 
 # Deploy file format
 
-[deploy](../cli/deploy.md) reads a YAML file with two top-level keys: `defaults` (optional) and `guests` (a non-empty list). Any other top-level key is an error. How to run the file is in [Deploy guests from a YAML file](../guests/deploy-yaml.md).
+[deploy](../cli/deploy.md) reads a YAML file with two top-level keys: `defaults` (optional) and `guests` (a non-empty list). Keys that start with `x-` are ignored: they hold blocks for YAML anchors (see [YAML anchors](#yaml-anchors)). Any other top-level key is an error. How to run the file is in [Deploy guests from a YAML file](../guests/deploy-yaml.md).
 
 ## Example
 
@@ -79,13 +79,13 @@ Each entry of `guests` takes the keys below. Every key except `name`, `count`, `
 | `start` | integer | `1` | First number of the series. |
 | `id` | integer | next free ID | VMID of the guest. In a series, the first ID; the next guests take the following ones. |
 | `profile` | string | see below | Profile of the cluster the guest goes to. |
-| `template` | integer or string | required | VM: ID of a template VM; pvecli adds a cloud-init drive to the clone when the template has none. Container: a file template (`local:vztmpl/debian-13-standard_13.1-2_amd64.tar.zst`) or the ID of a container template, which is cloned. |
+| `template` | integer or string | required, or `iso` for a VM | VM: ID of a template VM; pvecli adds a cloud-init drive to the clone when the template has none. Container: a file template (`local:vztmpl/debian-13-standard_13.1-2_amd64.tar.zst`) or the ID of a container template, which is cloned. |
 | `node` | string | the template's node | Node of the new guest. A VM or container template on node-local storage can only be cloned on its own node. For a container from a file template, required unless exactly one node is online. |
-| `storage` | string |  | VM: storage of the full clone. Container from a file template: storage of the root disk (Proxmox VE's default is `local`). Container clone: storage of the full clone. Implies a full clone. |
+| `storage` | string |  | VM: storage of the full clone, or of the disk of an ISO install (required there). Container from a file template: storage of the root disk (Proxmox VE's default is `local`). Container clone: storage of the full clone. Implies a full clone. |
 | `full` | boolean | `false` | Full clone instead of a linked clone. A container template on a storage that has no linked clones is always cloned in full. |
 | `cores` | integer |  | vCPUs. |
 | `memory` | size |  | `2G`, `512M`. A bare number is in MiB. |
-| `disk_size` | size |  | VM and container clone: grows the boot disk to this size; a size below the template's disk is an error. Container from a file template: size of the root disk, a whole number of GiB. A bare number is in GiB. |
+| `disk_size` | size |  | VM and container clone: grows the boot disk to this size; a size below the template's disk is an error. Container from a file template, and VM from an ISO (required there): size of the new disk, a whole number of GiB. A bare number is in GiB. |
 | `tags` | list or comma-separated string |  | Tags of the guest. |
 | `pool` | string |  | Resource pool. Must exist. |
 | `ip` | IPv4 with prefix, or `dhcp` |  | Address of the first NIC. Containers also take `manual`. Steps by one in a series. |
@@ -96,6 +96,8 @@ Each entry of `guests` takes the keys below. Every key except `name`, `count`, `
 | `search_domain` | string |  | DNS search domain. |
 | `ssh_key` | string or list |  | Public keys: a file path or the key itself. Containers take keys only from a file template: a clone keeps those of its template. |
 | `password_env` | string |  | Environment variable holding the password. VM: the cloud-init user's password. Container: the root password, file templates only, 5 characters or more. |
+| `bridge` | string | `vmbr0` for a new NIC | Bridge of the first NIC. A clone keeps its MAC address and model. |
+| `vlan` | integer |  | VLAN tag of the first NIC, 1 to 4094. |
 | `power_on` | boolean | `true` | Start the guest once it is configured. |
 
 VMs only:
@@ -104,14 +106,16 @@ VMs only:
 |:--|:--|:--|:--|
 | `user` | string |  | User created by cloud-init. |
 | `upgrade` | boolean |  | Upgrade the packages at first boot. |
+| `iso` | string |  | Installer ISO, `STORAGE:iso/FILE.iso`, instead of `template`: see below. |
+| `os_type` | string | `linux` | ISO install: `linux`, `windows` (Windows 11, Server 2022/2025), or a type of Proxmox VE (`l26`, `win10`, `other`...). |
+| `virtio_iso` | string |  | ISO install of Windows: the VirtIO drivers ISO, in a second CD drive. |
+| `cpu` | string | `x86-64-v2-AES` for an ISO install | CPU type: `host` for nested virtualization. A clone keeps its template's unless set. |
 
 Containers only:
 
 | Key | Type | Default | Description |
 |:--|:--|:--|:--|
 | `swap` | size |  | Swap. `0` means no swap. |
-| `bridge` | string | `vmbr0` for a new NIC | Bridge of the NIC. |
-| `vlan` | integer |  | VLAN tag of the NIC, 1 to 4094. |
 | `unprivileged` | boolean | `true` at creation | A clone keeps the value of its template: setting another one is an error. |
 | `features` | mapping or string |  | `{nesting: 1}` or `nesting=1,keyctl=1`. Known: `force_rw_sys`, `fuse`, `keyctl`, `mknod`, `mount`, `nesting`. |
 
@@ -143,7 +147,37 @@ The first one set among:
 1. With `storage` from `defaults.ct`, the clone would be a full clone.
 2. A container clone takes no keys: without this line the default `ssh_key` is an error.
 
-`type`, `name`, `count`, `start`, `template`, `full` and `power_on` cannot be `null`.
+`type`, `name`, `count`, `start`, `template`, `iso`, `full` and `power_on` cannot be `null`.
+
+### A VM installed from an ISO
+
+With `iso` instead of `template`, pvecli creates the VM itself:
+
+| | |
+|:--|:--|
+| Disk | `scsi0`, empty, `disk_size` on `storage` (qcow2 on a file storage) |
+| CD drive | `ide2` with the ISO; `ide0` with `virtio_iso` |
+| Boot order | disk, CD, network: the empty disk is skipped on the first start, the installed system boots after |
+| Network | `net0`, VirtIO, on `bridge` (`vmbr0` by default) with `vlan` |
+| CPU and memory | `cores` (2 by default), `memory` (2 GiB by default), `cpu` |
+| Windows | `os_type: windows`: UEFI with secure boot, a TPM 2.0 and the q35 machine, their small disks on `storage` |
+| Node | `node`, or the only online node |
+
+A VM is cloned or installed, never both: `template` and `iso` on the same guest are an error. When one comes from the defaults and the other from the guest, the guest's wins. An ISO install has no cloud-init: `user`, `upgrade`, `ssh_key`, `password_env`, `ip`, `gw`, `ip6`, `gw6`, `dns` and `search_domain` are refused on the guest and in `defaults.vm`, and left out when they come from the common `defaults`. `full` is refused too.
+
+### YAML anchors
+
+The file is read as YAML, anchors included: `&name` names a value or a block, `*name` repeats it, `<<: *name` merges the keys of a block into a guest, the keys written next to it winning. A top-level key that starts with `x-` holds such blocks and is ignored:
+
+```yaml
+x-installer: &installer
+  iso: local:iso/debian-13.8.0-amd64-netinst.iso
+  storage: local-lvm
+  disk_size: 16G
+guests:
+  - {type: vm, name: build-01, <<: *installer}
+  - {type: vm, name: build-02, <<: *installer, disk_size: 32G}
+```
 
 ## What the check refuses
 
@@ -153,7 +187,8 @@ The whole file is checked on every cluster before anything is created, and every
 - two guests with the same name or the same `id` on one cluster,
 - the same static address twice in the file,
 - a series whose addresses leave their subnet,
-- a template, node, storage, bridge or pool the cluster does not have, or an `id` already taken.
+- `template` and `iso` on one VM, or a cloud-init key on a VM installed from an ISO,
+- an ISO, node, storage, bridge or pool the cluster does not have, a template that is not one, or an `id` already taken.
 
 A guest whose name already exists on its cluster is shown as `present` and skipped. An existing guest of the other type with that name is a conflict.
 

@@ -1,0 +1,25 @@
+<figure class="terminal terminal--wide" markdown="0"><pre class="terminal-body"><span class="terminal-prompt">$ </span><span class="terminal-command">pvecli deploy docs/guests/install.yaml -y -p prod</span>
+<span style="font-style: italic">node pve1 (profile prod)                                                                           </span>
+┏━━━━━━━━┳━━━━━━┳━━━━━━━━━━┳━━━━━┳━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━━━┓
+┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Action </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Type </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Name     </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> ID  </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Node </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Source                          </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Network </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Note        </span>┃
+┡━━━━━━━━╇━━━━━━╇━━━━━━━━━━╇━━━━━╇━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━━━━━┩
+│ <span style="color: #4ade80; text-decoration-color: #4ade80">create</span> │ VM   │ build-01 │ 810 │ pve1 │ debian-13.8.0-amd64-netinst.iso │ vmbr0   │             │
+│ <span style="color: #4ade80; text-decoration-color: #4ade80">create</span> │ VM   │ build-02 │ 811 │ pve1 │ debian-13.8.0-amd64-netinst.iso │ vmbr0   │ not started │
+│ <span style="color: #4ade80; text-decoration-color: #4ade80">create</span> │ VM   │ win-01   │ 812 │ pve1 │ windows-server-2025.iso         │ vmbr0   │ not started │
+└────────┴──────┴──────────┴─────┴──────┴─────────────────────────────────┴─────────┴─────────────┘
+<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold">3</span><span style="font-weight: bold"> </span><span style="color: #c084fc; text-decoration-color: #c084fc; font-weight: bold">guest</span><span style="font-weight: bold">(s) to create</span>
+<span style="font-weight: bold">build-01</span>: <span style="color: #2dd4bf; text-decoration-color: #2dd4bf">Creating VM 810 from debian-13.8.0-amd64-netinst.iso...</span>
+<span style="font-weight: bold">build-02</span>: <span style="color: #2dd4bf; text-decoration-color: #2dd4bf">Creating VM 811 from debian-13.8.0-amd64-netinst.iso...</span>
+<span style="font-weight: bold">win-01</span>: <span style="color: #2dd4bf; text-decoration-color: #2dd4bf">Creating VM 812 from windows-server-2025.iso...</span>
+<span style="font-weight: bold">build-01</span>: <span style="color: #4ade80; text-decoration-color: #4ade80">VM 810 (build-01) created on pve1, its </span><span class="mark mark-first" data-n="1" style="color: #4ade80; text-decoration-color: #4ade80">installer on the CD</span>
+<span style="font-weight: bold">build-02</span>: <span style="color: #4ade80; text-decoration-color: #4ade80">VM 811 (build-02) created on pve1, its installer on the CD</span>
+<span style="font-weight: bold">win-01</span>: <span style="color: #4ade80; text-decoration-color: #4ade80">VM 812 (win-01) created on pve1, its installer on the CD</span>
+<span style="font-weight: bold">build-01</span>: <span style="color: #4ade80; text-decoration-color: #4ade80">VM 810 started</span>
+<span style="font-style: italic">Result                                                             </span>
+┏━━━━━━━━━━┳━━━━━━┳━━━━━━━━━━━┳━━━━━┳━━━━━━┳━━━━━━━━━┳━━━━┳━━━━━━━┓
+┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Name     </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Type </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Cluster   </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> ID  </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Node </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Result  </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> IP </span>┃<span style="color: #2dd4bf; text-decoration-color: #2dd4bf; font-weight: bold"> Error </span>┃
+┡━━━━━━━━━━╇━━━━━━╇━━━━━━━━━━━╇━━━━━╇━━━━━━╇━━━━━━━━━╇━━━━╇━━━━━━━┩
+│ build-01 │ VM   │ node pve1 │ 810 │ pve1 │ <span style="color: #4ade80; text-decoration-color: #4ade80">created</span> │    │       │
+│ build-02 │ VM   │ node pve1 │ 811 │ pve1 │ <span style="color: #4ade80; text-decoration-color: #4ade80">created</span> │    │       │
+│ win-01   │ VM   │ node pve1 │ 812 │ pve1 │ <span style="color: #4ade80; text-decoration-color: #4ade80">created</span> │    │       │
+└──────────┴──────┴───────────┴─────┴──────┴─────────┴────┴───────┘</pre></figure>

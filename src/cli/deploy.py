@@ -30,16 +30,26 @@ from ..api.exceptions import PVECliError
 from ..config import ConfigManager
 from ..utils import confirm, console, print_cancelled, print_error, print_info, print_warning
 from ..utils.fleet import _cluster_identity, is_multi_profile
-from .cloudinit import ClusterState, Facts, GuestSpec, Outcome, create_vm, prepare_vm, validate_vm
+from .cloudinit import (
+    CLOUD_INIT_KEYS,
+    ClusterState,
+    Facts,
+    GuestSpec,
+    Outcome,
+    create_vm,
+    prepare_vm,
+    validate_vm,
+)
 from .ct_deploy import create_ct, prepare_ct, validate_ct
 
 # Keys of a guest entry, then those only one type takes
 _COMMON = {
     "type", "name", "count", "start", "profile", "id", "node", "template", "storage", "full", "cores", "memory",
     "disk_size", "tags", "pool", "ip", "gw", "ip6", "gw6", "dns", "search_domain", "ssh_key", "password_env",
-    "power_on",
+    "power_on", "bridge", "vlan",
 }
-_ONLY = {"vm": {"user", "upgrade"}, "ct": {"swap", "bridge", "vlan", "unprivileged", "features"}}
+_ONLY = {"vm": {"user", "upgrade", "iso", "os_type", "virtio_iso", "cpu"},
+         "ct": {"swap", "unprivileged", "features"}}
 # What makes one guest itself: meaningless as a default
 _PER_GUEST = {"name", "count", "start", "id"}
 _DEFAULT_KEYS = (_COMMON - _PER_GUEST) | _ONLY["vm"] | _ONLY["ct"]
@@ -72,7 +82,7 @@ def _in_file_terms(message: str) -> str:
 
 # null clears a default for these (back to PVE's own default); the others
 # always have a value
-_NULLABLE = (_COMMON | _ONLY["vm"] | _ONLY["ct"]) - {"type", "name", "count", "start", "template", "full", "power_on"}
+_NULLABLE = (_COMMON | _ONLY["vm"] | _ONLY["ct"]) - {"type", "name", "count", "start", "template", "iso", "full", "power_on"}
 
 
 def _coerce(key: str, value: Any) -> Any:
@@ -152,8 +162,9 @@ def parse_document(doc: Any, cli_profile: str | None, fallback_profile: str | No
     if not isinstance(doc, dict):
         return [], ["The file must be a mapping with 'guests' (and optionally 'defaults')"]
     for key in doc:
-        if key not in ("defaults", "guests"):
-            errors.append(f"Unknown top-level key '{key}' (expected: defaults, guests)")
+        # x-...: blocks for YAML anchors to point at, as in docker compose
+        if key not in ("defaults", "guests") and not str(key).startswith("x-"):
+            errors.append(f"Unknown top-level key '{key}' (expected: defaults, guests, or x-... for anchors)")
 
     raw_defaults = doc.get("defaults") or {}
     if not isinstance(raw_defaults, dict):
@@ -198,15 +209,46 @@ def parse_document(doc: Any, cli_profile: str | None, fallback_profile: str | No
         merged = {**{k: v for k, v in common.items() if k not in other}, **per_type[kind], **own}
         # Without these the guest cannot be built; one already refused is
         # not reported a second time as missing
-        needed = ("name", "template", "count", "start")
+        needed = ("name", "template", "iso", "count", "start")
         if any(k in entry and k not in own for k in needed):
             continue
-        missing = [k for k in ("name", "template") if k not in merged]
+        if kind == "vm" and not _source(label, own, per_type["vm"], merged, errors):
+            continue
+        missing = [k for k in ("name",) if k not in merged]
+        if "template" not in merged and "iso" not in merged:
+            missing.append("template" if kind == "ct" else "template (or iso)")
         if missing:
             errors += [f"{label}: {k} is missing" for k in missing]
             continue
         specs += _expand(label, i, kind, merged, cli_profile or fallback_profile, errors)
     return specs, errors
+
+
+def _source(label: str, own: dict[str, Any], vm_defaults: dict[str, Any], merged: dict[str, Any],
+            errors: list[str]) -> bool:
+    """A VM is cloned from a template or installed from an ISO, never both.
+
+    The guest's own choice wins over the defaults. An ISO install has no
+    cloud-init: a cloud-init key on the guest or in defaults.vm is an
+    error; one of the common defaults (shared with the containers and the
+    clones) is left out for it.
+    """
+    if "iso" in own and "template" not in own:
+        merged.pop("template", None)
+    elif "template" in own and "iso" not in own:
+        merged.pop("iso", None)
+    if "iso" in merged and "template" in merged:
+        errors.append(f"{label}: template and iso both given: a VM is cloned or installed, not both")
+        return False
+    if "iso" not in merged:
+        return True
+    ci = [k for k in CLOUD_INIT_KEYS if k in own or k in vm_defaults]
+    if ci:
+        errors.append(f"{label}: an ISO install has no cloud-init: {', '.join(ci)} cannot apply")
+        return False
+    for k in CLOUD_INIT_KEYS:
+        merged.pop(k, None)
+    return True
 
 
 def _expand(label: str, index: int, kind: str, entry: dict[str, Any], profile: str | None,
@@ -300,6 +342,10 @@ def _cluster_label(ident: Any, profile: str) -> str:
 
 
 def _network(spec: GuestSpec) -> str:
+    if spec.iso:
+        # No address to show: the installer sets it. Where the card goes, then
+        bridge = spec.src.get("bridge") or spec.bridge or "vmbr0"
+        return bridge + (f" vlan {spec.vlan}" if spec.vlan is not None else "")
     return ", ".join(x for x in (spec.ip, spec.ip6) if x) or "-"
 
 
@@ -320,8 +366,9 @@ def _print_plan(rows: list[_Row], label_of: dict[str | None, str]) -> None:
             table.add_row(f"[{style[r.action]}]{r.action}[/{style[r.action]}]", s.what, escape(s.name or ""),
                           str(vmid or "-"), escape(str(node or "-")),
                           # the file name says it; the storage:vztmpl/ prefix only widens the table
-                          escape(s.template.rsplit("/", 1)[-1] if r.action != "present" else "-"), escape(_network(s)),
-                          escape(r.note))
+                          escape((s.iso or s.template).rsplit("/", 1)[-1] if r.action != "present" else "-"),
+                          escape(_network(s)),
+                          escape(r.note or ("not started" if r.action == "create" and not s.start else "")))
         console.print(table)
 
 

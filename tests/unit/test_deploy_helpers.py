@@ -108,11 +108,11 @@ def test_every_error_is_listed_at_once():
 
 
 def test_a_key_of_the_other_type_is_an_error_on_an_entry():
-    _, errors = parse([{"type": "vm", "name": "x", "template": 9000, "bridge": "vmbr1"},
+    _, errors = parse([{"type": "vm", "name": "x", "template": 9000, "swap": "512M"},
                        {"type": "ct", "name": "y", "template": TPL, "user": "debian"}])
 
     assert len(errors) == 2
-    assert "'bridge'" in errors[0] and "vm" in errors[0]
+    assert "'swap'" in errors[0] and "vm" in errors[0]
     assert "'user'" in errors[1] and "ct" in errors[1]
 
 

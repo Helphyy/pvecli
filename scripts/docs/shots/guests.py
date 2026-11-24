@@ -20,6 +20,13 @@ YES = [("(n): ", "y")]
 NO = [("(n): ", "n")]
 
 SHOTS = [
+    # Install VMs from an ISO (docs/guests/install.yaml), on a single node lab
+    Shot("guests-deploy-iso-dry-run", ["deploy", "docs/guests/install.yaml", "--dry-run", "-p", "{profile}"],
+         "The plan of VMs installed from an ISO: bridge, not started", width=100,
+         marks=["not started"], manual=True),
+    Shot("guests-deploy-iso-run", ["deploy", "docs/guests/install.yaml", "-y", "-p", "{profile}"],
+         "VMs created from an ISO, only the first one started", width=100,
+         marks=["installer on the CD"], manual=True),
     # Create a VM
     Shot("guests-vm-template", ["vm", "template", "819", "-p", "{profile}"],
          "A stopped VM converted to a template, after the confirmation",

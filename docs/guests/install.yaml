@@ -1,0 +1,30 @@
+x-installer: &installer
+  iso: local:iso/debian-13.8.0-amd64-netinst.iso
+  storage: local
+  disk_size: 16G
+  memory: 2G
+  cores: 2
+
+guests:
+  - type: vm
+    name: build-01
+    id: 810
+    <<: *installer
+
+  - type: vm
+    name: build-02
+    id: 811
+    <<: *installer
+    disk_size: 32G
+    power_on: false
+
+  - type: vm
+    name: win-01
+    id: 812
+    iso: local:iso/windows-server-2025.iso
+    virtio_iso: local:iso/virtio-win-0.1.285.iso
+    os_type: windows
+    storage: local
+    disk_size: 64G
+    memory: 4G
+    power_on: false

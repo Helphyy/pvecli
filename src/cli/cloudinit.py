@@ -329,7 +329,7 @@ class GuestSpec:
 
     kind: str  # "vm" or "ct"
     name: str | None
-    template: str  # template VM/CT ID, or a vztmpl volume for a container
+    template: str = ""  # template VM/CT ID, or a vztmpl volume for a container
     profile: str | None = None
     vmid: int | None = None
     node: str | None = None
@@ -355,6 +355,11 @@ class GuestSpec:
     vlan: int | None = None
     unprivileged: bool | None = None
     features: str | None = None
+    # A VM installed from an ISO instead of cloned from a template
+    iso: str | None = None
+    os_type: str | None = None
+    virtio_iso: str | None = None
+    cpu: str | None = None
     start: bool = True
     wait_ip: int = 0
     label: str = ""  # where it comes from, for messages
@@ -551,7 +556,11 @@ async def check_common(facts: Facts, spec: GuestSpec) -> list[str]:
 
 def prepare_vm(spec: GuestSpec) -> list[str]:
     """Check what needs no cluster and work out the API values."""
+    if spec.iso:
+        return _prepare_iso_vm(spec)
     errors = check_name(spec.name, "name") + check_dns(spec.dns)
+    if spec.os_type or spec.virtio_iso:
+        errors.append("os_type and virtio_iso apply to a VM installed from an ISO (iso:), not to a clone")
     if not spec.template.isdigit():
         errors.append(f"A VM template is given by its ID, got '{spec.template}'")
     attempt(errors, lambda: _ipconfig(spec.ip, spec.gw, spec.ip6, spec.gw6))
@@ -561,6 +570,8 @@ def prepare_vm(spec: GuestSpec) -> list[str]:
     mem = attempt(errors, lambda: _parse_memory(str(spec.memory))) if spec.memory else None
     if spec.disk_size and not re.fullmatch(r"\d+[KMGT]", spec.disk_size, re.IGNORECASE):
         errors.append(f"Invalid --disk-size '{spec.disk_size}', use e.g. 20G")
+    if spec.vlan is not None and not 1 <= spec.vlan <= 4094:
+        errors.append(f"Invalid --vlan {spec.vlan}: 1 to 4094")
     if not errors:
         spec.params = {
             "memory": mem,
@@ -572,6 +583,8 @@ def prepare_vm(spec: GuestSpec) -> list[str]:
 
 async def validate_vm(facts: Facts, spec: GuestSpec) -> list[str]:
     """Everything the cluster must offer before the clone starts."""
+    if spec.iso:
+        return await _validate_iso_vm(facts, spec)
     tid = int(spec.template)
     src = next((g for g in await facts.guests() if g.get("vmid") == tid and g.get("type") == "qemu"), None)
     if not src:
@@ -599,6 +612,10 @@ async def validate_vm(facts: Facts, spec: GuestSpec) -> list[str]:
     current = extract_size(str(cfg.get(boot, ""))) if boot else ""
     if spec.disk_size and current and size_bytes(spec.disk_size) < size_bytes(current):
         errors.append(f"--disk-size {spec.disk_size} is smaller than the template disk ({current}): a disk can only grow")
+    if spec.bridge and spec.bridge not in await facts.bridges(target):
+        errors.append(f"Bridge '{spec.bridge}' not found on {target}")
+    if (spec.bridge or spec.vlan is not None) and not str(cfg.get("net0", "")):
+        errors.append(f"Template {tid} has no net0 to put on a bridge or a VLAN")
     errors += await check_common(facts, spec)
     spec.src = {"node": node, "target": target}
     return errors
@@ -607,6 +624,9 @@ async def validate_vm(facts: Facts, spec: GuestSpec) -> list[str]:
 async def create_vm(facts: Facts, spec: GuestSpec, say: Say, out: Outcome) -> None:
     """Clone, size, cloud-init, start. Raises on the first failure; `out`
     tells what exists by then."""
+    if spec.iso:
+        await _create_iso_vm(facts, spec, say, out)
+        return
     client = facts.client
     tid, node, target = int(spec.template), spec.src["node"], spec.src["target"]
     newid = spec.vmid or await facts.next_id()
@@ -629,6 +649,13 @@ async def create_vm(facts: Facts, spec: GuestSpec, say: Say, out: Outcome) -> No
         hw["memory"] = spec.params["memory"]
     if spec.tags:
         hw["tags"] = ";".join(spec.tags)
+    if spec.cpu:
+        hw["cpu"] = spec.cpu
+    if spec.bridge or spec.vlan is not None:
+        cfg = await client.get(f"/nodes/{target}/qemu/{newid}/config") or {}
+        if not cfg.get("net0"):
+            raise PVECliError(f"VM {newid} created, but it has no net0 to put on a bridge or a VLAN")
+        hw["net0"] = _net_on(str(cfg["net0"]), spec.bridge, spec.vlan)
     if hw:
         await client.put(f"/nodes/{target}/qemu/{newid}/config", data=hw)
     if spec.disk_size:
@@ -640,7 +667,10 @@ async def create_vm(facts: Facts, spec: GuestSpec, say: Say, out: Outcome) -> No
     for note in await _apply(client, target, newid, spec.params.get("ci", {}), None):
         say("info", note)
     say("ok", f"VM {newid} ({spec.name}) created on {target}")
+    await _start(client, spec, target, newid, say, out)
 
+
+async def _start(client: ProxmoxClient, spec: GuestSpec, target: str, newid: int, say: Say, out: Outcome) -> None:
     if spec.start:
         upid = await client.start_vm(target, newid)
         await client.wait_for_task(target, upid, timeout=300)
@@ -653,6 +683,143 @@ async def create_vm(facts: Facts, spec: GuestSpec, say: Say, out: Outcome) -> No
             else:
                 say("warn", "No address from the guest agent (not installed in the image, or still booting). "
                             f"Look for it with: pvecli find {newid}")
+
+
+def _net_on(net: str, bridge: str | None, vlan: int | None) -> str:
+    """net0 of a clone on another bridge or VLAN: its model and MAC kept."""
+    parts = [p for p in net.split(",") if p and not (bridge and p.startswith("bridge="))
+             and not (vlan is not None and p.startswith("tag="))]
+    if bridge:
+        parts.append(f"bridge={bridge}")
+    if vlan is not None:
+        parts.append(f"tag={vlan}")
+    return ",".join(parts)
+
+
+# ── VM from an ISO ──
+
+# A VM installed from an ISO: what cloud-init would set means nothing to it
+CLOUD_INIT_KEYS = ("user", "upgrade", "ssh_key", "password_env", "ip", "gw", "ip6", "gw6", "dns", "search_domain")
+_ISO = re.compile(r"^[\w.-]+:iso/[^/]+$")
+_OSTYPES = {"l26", "l24", "win11", "win10", "win8", "win7", "w2k8", "wvista", "wxp", "w2k", "solaris", "other"}
+_FILE_STORAGES = {"dir", "nfs", "cifs", "glusterfs"}
+
+
+def _ostype(os_type: str | None) -> str | None:
+    """linux, windows, or an ostype of Proxmox VE as is (None: not one)."""
+    wanted = (os_type or "linux").strip().lower()
+    return {"linux": "l26", "windows": "win11"}.get(wanted, wanted if wanted in _OSTYPES else None)
+
+
+def _prepare_iso_vm(spec: GuestSpec) -> list[str]:
+    errors = check_name(spec.name, "name")
+    used = [k for k, v in (("user", spec.user), ("upgrade", spec.upgrade), ("ssh_key", spec.ssh_keys),
+                           ("password_env", spec.password_env), ("ip", spec.ip), ("gw", spec.gw),
+                           ("ip6", spec.ip6), ("gw6", spec.gw6), ("dns", spec.dns),
+                           ("search_domain", spec.search_domain)) if v not in (None, [], "")]
+    if used:
+        errors.append(f"An ISO install has no cloud-init: {', '.join(used)} cannot apply (configure the "
+                      "guest in its installer, or use a cloud-init template)")
+    if spec.full:
+        errors.append("full applies to a clone, not to a VM installed from an ISO")
+    for key, vol in (("iso", spec.iso), ("virtio_iso", spec.virtio_iso)):
+        if vol and not _ISO.match(vol):
+            errors.append(f"{key} '{vol}' is not an ISO volume: use STORAGE:iso/FILE.iso")
+    ostype = _ostype(spec.os_type)
+    if ostype is None:
+        errors.append(f"os_type '{spec.os_type}': linux, windows, or one of {', '.join(sorted(_OSTYPES))}")
+    if spec.virtio_iso and ostype and not ostype.startswith("w"):
+        errors.append("virtio_iso is for a Windows install (os_type: windows)")
+    if not spec.storage:
+        errors.append("An ISO install needs storage: for its disk")
+    if not spec.disk_size:
+        errors.append("An ISO install needs disk_size: (e.g. 32G)")
+    elif not re.fullmatch(r"\d+G", spec.disk_size, re.IGNORECASE):
+        errors.append(f"Invalid disk_size '{spec.disk_size}' for a new disk: whole GiB, e.g. 32G")
+    if spec.vlan is not None and not 1 <= spec.vlan <= 4094:
+        errors.append(f"Invalid vlan {spec.vlan}: 1 to 4094")
+    mem = attempt(errors, lambda: _parse_memory(str(spec.memory))) if spec.memory else 2048
+    if not errors:
+        spec.params = {"memory": mem, "ostype": ostype}
+    return errors
+
+
+async def _validate_iso_vm(facts: Facts, spec: GuestSpec) -> list[str]:
+    """The node, the ISOs, the storage and the bridge, before anything is created."""
+    node = spec.node
+    if not node:
+        online = [n for n, status in (await facts.nodes()).items() if status == "online"]
+        if len(online) != 1:
+            return ["An ISO install is created on one node: set node:"]
+        node = online[0]
+    err = await check_node(facts, node)
+    if err:
+        return [err]
+    errors = []
+    for vol in (spec.iso, spec.virtio_iso):
+        if not vol:
+            continue
+        store = vol.split(":", 1)[0]
+        err = await check_storage(facts, node, store, "iso")
+        if err:
+            errors.append(err)
+        elif vol not in await facts.volumes(node, store, "iso"):
+            errors.append(f"ISO '{vol}' not found on {node} (pvecli storage content list {node} {store})")
+    assert spec.storage
+    err = await check_storage(facts, node, spec.storage, "images")
+    if err:
+        errors.append(err)
+    bridge = spec.bridge or "vmbr0"
+    if bridge not in await facts.bridges(node):
+        errors.append(f"Bridge '{bridge}' not found on {node}" + ("" if spec.bridge else " (the default): set bridge:"))
+    errors += await check_common(facts, spec)
+    stype = (await facts.storages(node)).get(spec.storage, {}).get("type")
+    spec.src = {"node": node, "target": node, "qcow2": stype in _FILE_STORAGES, "bridge": bridge}
+    return errors
+
+
+def iso_config(spec: GuestSpec) -> dict[str, Any]:
+    """The API config of a VM installed from an ISO.
+
+    The empty disk boots first: on the first start it is skipped and the
+    ISO starts, once installed the system on it does. No eject is needed.
+    """
+    ostype = spec.params["ostype"]
+    size = spec.disk_size[:-1] if spec.disk_size else "32"
+    disk = f"{spec.storage}:{size}" + (",format=qcow2" if spec.src.get("qcow2") else "")
+    net = f"virtio,bridge={spec.src['bridge']}" + (f",tag={spec.vlan}" if spec.vlan is not None else "")
+    cfg: dict[str, Any] = {
+        "name": spec.name, "ostype": ostype, "agent": 1, "sockets": 1, "cores": spec.cores or 2,
+        "cpu": spec.cpu or "x86-64-v2-AES", "memory": spec.params["memory"],
+        "scsihw": "virtio-scsi-single", "scsi0": disk, "ide2": f"{spec.iso},media=cdrom",
+        "net0": net, "boot": "order=scsi0;ide2;net0",
+    }
+    if ostype.startswith("w"):
+        if spec.virtio_iso:
+            cfg["ide0"] = f"{spec.virtio_iso},media=cdrom"
+        if ostype == "win11":
+            # Windows 11 and Server 2022/2025 want UEFI with secure boot and a TPM
+            cfg.update(bios="ovmf", machine="q35", efidisk0=f"{spec.storage}:1,efitype=4m,pre-enrolled-keys=1",
+                       tpmstate0=f"{spec.storage}:1,version=v2.0")
+    if spec.pool:
+        cfg["pool"] = spec.pool
+    if spec.tags:
+        cfg["tags"] = ";".join(spec.tags)
+    return cfg
+
+
+async def _create_iso_vm(facts: Facts, spec: GuestSpec, say: Say, out: Outcome) -> None:
+    client = facts.client
+    node = spec.src["node"]
+    newid = spec.vmid or await facts.next_id()
+    spec.vmid = out.vmid = newid
+    out.node = node
+    upid = await client.create_vm(node, newid, **iso_config(spec))
+    out.created = True
+    say("step", f"Creating VM {newid} from {spec.iso.rsplit('/', 1)[-1] if spec.iso else ''}...")
+    await client.wait_for_task(node, upid, timeout=600)
+    say("ok", f"VM {newid} ({spec.name}) created on {node}, its installer on the CD")
+    await _start(client, spec, node, newid, say, out)
 
 
 def split_tags(tags: str | None) -> list[str]:

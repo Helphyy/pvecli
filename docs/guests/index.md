@@ -66,7 +66,7 @@ flowchart TB
 
     ---
 
-    Describe VMs and containers in a file, check it, create what is missing.
+    Describe VMs and containers in a file, clones or ISO installs, check it, create what is missing.
 
     [:lucide-arrow-right: Deploy guests from a YAML file](deploy-yaml.md)
 
