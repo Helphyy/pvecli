@@ -1,5 +1,7 @@
 """Main CLI application."""
 
+import inspect
+import re
 import sys
 
 import typer
@@ -99,8 +101,27 @@ def _pad_order_option(args: list[str]) -> list[str]:
     return out
 
 
+_EXAMPLES = re.compile(r"\n\s*Examples?:\s*\n.*", re.S)
+
+
+def _drop_examples(group: typer.Typer) -> None:
+    """Keep the examples of the docstrings out of --help.
+
+    They stay in the docstrings: the command reference of the docs is
+    built from them.
+    """
+    for info in group.registered_commands:
+        doc = info.help or (info.callback and info.callback.__doc__)
+        if doc and _EXAMPLES.search(doc):
+            info.help = _EXAMPLES.sub("", inspect.cleandoc(doc))
+    for sub in group.registered_groups:
+        if sub.typer_instance:
+            _drop_examples(sub.typer_instance)
+
+
 def run() -> None:
     """Console entry point."""
+    _drop_examples(app)
     app(args=_pad_order_option(sys.argv[1:]))
 
 
